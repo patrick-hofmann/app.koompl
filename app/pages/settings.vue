@@ -18,6 +18,10 @@ const links = [[{
   label: 'Security',
   icon: 'i-lucide-shield',
   to: '/settings/security'
+}, {
+  label: 'AI',
+  icon: 'i-lucide-brain',
+  to: '/settings/ai'
 }], [{
   label: 'Documentation',
   icon: 'i-lucide-book-open',

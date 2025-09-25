@@ -121,10 +121,19 @@ export default defineEventHandler(async (event) => {
     // Prepare settings for mailgun
     const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
     const mailgunKey = firstString((settings as Record<string, unknown>)['mailgunApiKey'])
+    const allowedDomains = firstString((settings as Record<string, unknown>)['allowedDomains'])
+
+    // Check domain filtering before processing AI response
+    let isDomainAllowed = false
+    if (allowedDomains && fromEmail) {
+      // Import domain matcher utility
+      const { isEmailAllowed } = await import('~/utils/domainMatcher')
+      isDomainAllowed = isEmailAllowed(fromEmail, allowedDomains)
+    }
 
     // Generate AI response using the agent respond route
     let aiAnswer: string | null = null
-    if (agent) {
+    if (agent && isDomainAllowed) {
       try {
         const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`/api/agents/${agent.id}/respond`, {
           method: 'POST',
@@ -148,17 +157,23 @@ export default defineEventHandler(async (event) => {
     }
 
     // Compose TOFU response: answer text on top, full quote below
-    const answerText = aiAnswer || 'Sorry, I\'m not sure how to respond to that. There may be a problem with your email or the agent may not be configured correctly.'
+    let answerText: string
+    if (!isDomainAllowed) {
+      answerText = 'Sorry, your email domain is not authorized to receive automated responses. Please contact the administrator if you believe this is an error.'
+    } else if (aiAnswer) {
+      answerText = aiAnswer
+    } else {
+      answerText = 'Sorry, I\'m not sure how to respond to that. There may be a problem with your email or the agent may not be configured correctly.'
+    }
+
     const quoted = String(text || '')
       .split('\n')
       .map(line => `> ${line}`)
       .join('\n')
     const tofuBody = `${answerText}\n\nOn ${receivedAt}, ${from || '(sender)'} wrote:\n${quoted}`
 
-    // Ensure the email body is properly formatted and doesn't contain problematic characters
-    const cleanBody = tofuBody
-      .replace(/[^\x20-\x7E\r\n\t]/g, '') // Keep only printable ASCII, newlines, tabs, carriage returns
-      .trim()
+    // Preserve UTF-8 characters (no ASCII-only sanitization)
+    const cleanBody = String(tofuBody || '').trim()
 
     // Send reply via Mailgun if we have credentials and a resolvable routing
     let outboundResult: { ok: boolean, id?: string, message?: string, error?: string } = { ok: false }
@@ -176,7 +191,7 @@ export default defineEventHandler(async (event) => {
           form.set('o:tracking-opens', 'no')
           form.set('h:Content-Type', 'text/plain; charset=utf-8')
           form.set('h:MIME-Version', '1.0')
-          form.set('h:Content-Transfer-Encoding', '8bit')
+          // Let Mailgun set appropriate transfer encoding for UTF-8
 
           const url = `https://api.mailgun.net/v3/${encodeURIComponent(domain)}/messages`
           const res: { id?: string, message?: string, status?: string } = await $fetch(url, {
@@ -219,6 +234,7 @@ export default defineEventHandler(async (event) => {
       agentId: agent?.id || null,
       usedOpenAI: Boolean(aiAnswer),
       mailgunSent: Boolean(outboundResult?.ok),
+      domainFiltered: !isDomainAllowed,
       storageInboundKey: inboundKey
     })
     await agentsStorage.setItem(logKey, currentLog)
