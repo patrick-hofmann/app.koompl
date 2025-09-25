@@ -54,7 +54,7 @@ async function refreshAvatar() {
 </script>
 
 <template>
-  <UModal :open="open" @update:open="emit('update:open', $event)">
+  <UModal title="Edit Koompl" description="Edit the Koompl settings" :open="open" @update:open="emit('update:open', $event)">
     <template #content>
       <UCard>
         <h3 class="font-medium text-highlighted mb-2">Edit Koompl</h3>

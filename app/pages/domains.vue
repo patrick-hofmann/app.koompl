@@ -3,9 +3,22 @@ import type { TableColumn } from '@nuxt/ui'
 import type { Component } from 'vue'
 
 const { data: settings } = await useFetch<{ mailgunApiKey?: string }>('/api/settings', { server: false })
+const toast = useToast()
+const errorMessage = ref<string | null>(null)
 const { data: domains, refresh } = await useAsyncData('mailgun-domains', async () => {
-  const res = await $fetch<{ ok: boolean, error?: string, domains: { name: string, state: string, created_at: string }[] }>('/api/mailgun/domains')
-  return res
+  errorMessage.value = null
+  try {
+    const res = await $fetch<{ ok: boolean, error?: string, domains: { name: string, state: string, created_at: string }[] }>('/api/mailgun/domains')
+    return res
+  } catch (e: unknown) {
+    const err = e as { statusCode?: number, statusMessage?: string, data?: { error?: string } }
+    const msg = err?.statusMessage || 'Failed to fetch Mailgun domains.'
+    errorMessage.value = msg
+    // Show toast for immediate visibility
+    toast.add({ title: 'Mailgun error', description: msg, color: 'error', icon: 'i-lucide-alert-triangle' })
+    // Return safe fallback so table renders
+    return { ok: false, error: err?.data?.error || 'unknown_error', domains: [] }
+  }
 }, { server: false })
 
 // Component refs for render functions
@@ -110,6 +123,15 @@ function onSent() {
         </UCard>
 
         <UCard v-show="hasKey">
+          <div v-if="errorMessage" class="mb-3">
+            <UAlert
+              icon="i-lucide-alert-triangle"
+              title="Unable to load Mailgun domains"
+              :description="errorMessage"
+              color="error"
+              variant="subtle"
+            />
+          </div>
           <div class="flex items-center justify-between mb-3">
             <div class="text-sm text-muted">{{ domains?.domains?.length || 0 }} domain(s)</div>
             <UButton icon="i-lucide-refresh-ccw" label="Refresh" color="neutral" variant="outline" @click="refresh" />
@@ -128,7 +150,7 @@ function onSent() {
   <DomainsEditDomainModal :open="editOpen" :domain="selectedDomain" mode="edit" @update:open="(v: boolean) => { editOpen = v }" @saved="refresh" />
   <DomainsSendTestModal :open="sendOpen" :domain="selectedDomain?.name || null" @update:open="(v: boolean) => { sendOpen = v }" @sent="onSent" />
 
-  <UModal v-model:open="deleteOpen">
+  <UModal v-model:open="deleteOpen" title="Delete domain" description="Are you sure you want to delete the domain?">
     <template #content>
       <UCard>
         <h3 class="font-medium text-highlighted mb-2">Delete domain</h3>

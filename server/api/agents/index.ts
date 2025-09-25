@@ -13,13 +13,23 @@ function generateAvatar(name: string, email: string | undefined, id: string) {
 
 export default defineEventHandler(async (event) => {
   const storage = useStorage('agents')
+  const prefix = 'agents'
+  const collectionKey = `${prefix}.json`
   const method = getMethod(event)
 
+  async function readAgents(): Promise<Agent[]> {
+    const list = await storage.getItem<Agent[]>(collectionKey)
+    return Array.isArray(list) ? list : []
+  }
+
+  async function writeAgents(agents: Agent[]): Promise<void> {
+    await storage.setItem(collectionKey, agents)
+  }
+
   if (method === 'GET') {
-    // List all agents
-    const keys = await storage.getKeys('')
-    const agents = await Promise.all(keys.map(key => storage.getItem<Agent>(key)))
-    return agents.filter(Boolean)
+    // List all agents from single collection
+    const agents = await readAgents()
+    return agents
   }
 
   if (method === 'POST') {
@@ -30,8 +40,9 @@ export default defineEventHandler(async (event) => {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') || 'agent'
     let id = body.id || baseSlug
-    // Ensure uniqueness
-    if (await storage.hasItem(`${id}.json`)) {
+    // Ensure uniqueness against existing collection
+    const existingAgents = await readAgents()
+    if (existingAgents.some(a => a?.id === id)) {
       id = `${baseSlug}-${nanoid(4)}`
     }
     const name = body.name || 'Unnamed'
@@ -43,7 +54,8 @@ export default defineEventHandler(async (event) => {
       prompt: body.prompt || '',
       avatar: body.avatar || generateAvatar(name, body.email, id)
     }
-    await storage.setItem(`${id}.json`, agent)
+    const updatedAgents = [...existingAgents, agent]
+    await writeAgents(updatedAgents)
     return agent
   }
 
@@ -52,12 +64,15 @@ export default defineEventHandler(async (event) => {
     if (!body.id) {
       throw createError({ statusCode: 400, statusMessage: 'Missing agent id' })
     }
-    const existing = await storage.getItem<Agent>(`${body.id}.json`)
-    if (!existing) {
+    const agents = await readAgents()
+    const idx = agents.findIndex(a => a?.id === body.id)
+    if (idx === -1) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
+    const existing = agents[idx]
     const updated = { ...existing, ...body }
-    await storage.setItem(`${existing.id}.json`, updated)
+    agents.splice(idx, 1, updated as Agent)
+    await writeAgents(agents)
     return updated
   }
 
@@ -67,7 +82,9 @@ export default defineEventHandler(async (event) => {
     if (!id) {
       throw createError({ statusCode: 400, statusMessage: 'Missing id' })
     }
-    await storage.removeItem(`${id}.json`)
+    const agents = await readAgents()
+    const next = agents.filter(a => a?.id !== id)
+    await writeAgents(next)
     return { ok: true }
   }
 

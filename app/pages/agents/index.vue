@@ -9,7 +9,8 @@ const UBadge = resolveComponent('UBadge')
 const UDropdownMenu = resolveComponent('UDropdownMenu')
 const UCheckbox = resolveComponent('UCheckbox')
 
-const { data: agents, refresh } = await useAsyncData('agents', () => $fetch<Agent[]>('/api/agents'))
+// Client-only lazy fetch to avoid SSR blocking on storage
+const { data: agents, refresh, pending: _unusedPending } = await useAsyncData('agents', () => $fetch<Agent[]>('/api/agents'), { server: false, lazy: true })
 
 const showAdd = ref(false)
 const newAgent = reactive<Partial<Agent>>({ name: '', email: '', role: 'Agent', prompt: '' })
@@ -34,12 +35,12 @@ function openEdit(agent: Agent) {
   editOpen.value = true
 }
 
-async function saveEdit() {
-  if (!editAgent.id) return
-  await $fetch(`/api/agents/${editAgent.id}`, { method: 'PATCH', body: editAgent })
-  editOpen.value = false
-  await refresh()
-}
+// async function saveEdit() {
+//   if (!editAgent.id) return
+//   await $fetch(`/api/agents/${editAgent.id}`, { method: 'PATCH', body: editAgent })
+//   editOpen.value = false
+//   await refresh()
+// }
 
 // Delete confirmation
 const deleteOpen = ref(false)
@@ -57,7 +58,7 @@ async function confirmDelete() {
 }
 
 // Table setup (similar to customers)
-const toast = useToast()
+// const toast = useToast()
 const table = useTemplateRef('table')
 
 const columnFilters = ref([{ id: 'email', value: '' }])
@@ -72,6 +73,22 @@ function getRowItems(row: Row<Agent>) {
       icon: 'i-lucide-list',
       onSelect() {
         navigateTo(`/agents/${row.original.id}`)
+      }
+    },
+    {
+      label: 'Test prompt',
+      icon: 'i-lucide-flask-conical',
+      onSelect() {
+        testAgentId.value = row.original.id
+        testOpen.value = true
+      }
+    },
+    {
+      label: 'Test round-trip',
+      icon: 'i-lucide-rotate-ccw',
+      onSelect() {
+        roundTripAgentId.value = row.original.id
+        roundTripOpen.value = true
       }
     },
     { type: 'separator' as const },
@@ -94,15 +111,15 @@ const columns: TableColumn<Agent>[] = [
     id: 'select',
     header: ({ table }) =>
       h(UCheckbox, {
-        modelValue: table.getIsSomePageRowsSelected() ? 'indeterminate' : table.getIsAllPageRowsSelected(),
+        'modelValue': table.getIsSomePageRowsSelected() ? 'indeterminate' : table.getIsAllPageRowsSelected(),
         'onUpdate:modelValue': (value: boolean | 'indeterminate') => table.toggleAllPageRowsSelected(!!value),
-        ariaLabel: 'Select all'
+        'ariaLabel': 'Select all'
       }),
     cell: ({ row }) =>
       h(UCheckbox, {
-        modelValue: row.getIsSelected(),
+        'modelValue': row.getIsSelected(),
         'onUpdate:modelValue': (value: boolean | 'indeterminate') => row.toggleSelected(!!value),
-        ariaLabel: 'Select row'
+        'ariaLabel': 'Select row'
       })
   },
   { accessorKey: 'id', header: 'ID' },
@@ -110,7 +127,7 @@ const columns: TableColumn<Agent>[] = [
     accessorKey: 'name',
     header: 'Name',
     cell: ({ row }) => h('div', { class: 'flex items-center gap-3' }, [
-      h(UAvatar, { ...(row.original.avatar as any), size: 'lg' }),
+      h(UAvatar, { ...(row.original.avatar), size: 'lg' }),
       h('div', undefined, [
         h('p', { class: 'font-medium text-highlighted' }, row.original.name),
         h('p', undefined, `@${row.original.id}`)
@@ -142,6 +159,13 @@ const columns: TableColumn<Agent>[] = [
 ]
 
 const pagination = ref({ pageIndex: 0, pageSize: 10 })
+
+// Test Agent modal state
+const testOpen = ref(false)
+const testAgentId = ref<string | null>(null)
+// Round-trip modal state
+const roundTripOpen = ref(false)
+const roundTripAgentId = ref<string | null>(null)
 </script>
 
 <template>
@@ -186,7 +210,7 @@ const pagination = ref({ pageIndex: 0, pageSize: 10 })
         :ui="{ base: 'table-fixed border-separate border-spacing-0', thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none', tbody: '[&>tr]:last:[&>td]:border-b-0', th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r', td: 'border-b border-default' }"
       />
 
-      <UModal v-model:open="showAdd">
+      <UModal v-model:open="showAdd" title="Add Koompl" description="Add a new Koompl">
         <template #content>
           <UCard>
             <h3 class="font-medium text-highlighted mb-2">
@@ -219,10 +243,16 @@ const pagination = ref({ pageIndex: 0, pageSize: 10 })
   </UDashboardPanel>
 
   <!-- Edit Modal -->
-  <AgentsEditAgentModal :open="editOpen" :agent="editAgent" @update:open="(v:boolean)=> editOpen = v" @saved="refresh" />
+  <AgentsEditAgentModal :open="editOpen" :agent="editAgent" @update:open="(v:boolean) => editOpen = v" @saved="refresh" />
+
+  <!-- Test Agent Modal -->
+  <AgentsTestAgentModal :open="testOpen" :agent-id="testAgentId" @update:open="(v:boolean) => testOpen = v" />
+
+  <!-- Round-trip Test Modal -->
+  <AgentsRoundTripAgentModal :open="roundTripOpen" :agent-id="roundTripAgentId" @update:open="(v:boolean) => roundTripOpen = v" />
 
   <!-- Delete Confirmation Modal -->
-  <UModal v-model:open="deleteOpen">
+  <UModal v-model:open="deleteOpen" title="Delete Koompl" description="Are you sure you want to delete the Koompl?">
     <template #content>
       <UCard>
         <h3 class="font-medium text-highlighted mb-2">Delete Koompl</h3>
@@ -235,4 +265,3 @@ const pagination = ref({ pageIndex: 0, pageSize: 10 })
     </template>
   </UModal>
 </template>
-

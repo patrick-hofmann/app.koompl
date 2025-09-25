@@ -135,26 +135,62 @@ export default defineNuxtConfig({
     '/api/**': {
       cors: true
     }
+    // Cache-read heavy endpoints briefly to mask storage latency
+    // '/api/agents': {
+    //   cache: { maxAge: 30, swr: true, staleMaxAge: 300 }
+    // },
+    // '/api/agents/**': {
+    //   cache: { maxAge: 30, swr: true, staleMaxAge: 300 }
+    // },
+    // '/api/settings': {
+    //   cache: { maxAge: 60, swr: true, staleMaxAge: 600 }
+    // },
+    // Disable SSR for agents UI to avoid blocking on server storage
+    // '/agents': { ssr: false },
+    // '/agents/**': { ssr: false }
   },
 
   compatibilityDate: '2024-07-11',
 
   nitro: {
+    timing: true,
     storage: {
+      // Fast in-memory cache storage for routeRules/response caching
+      // cache: {
+      //   driver: 'memory'
+      // },
       // Filesystem storage for agents (Koompls)
       agents: {
-        driver: 'fs',
-        base: './.data/agents'
+        // driver: 'fs',
+        // base: './.data/agents'
+        driver: 's3',
+        bucket: process.env.S3_BUCKET_AGENTS,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
       },
       // Filesystem storage for app settings
       settings: {
-        driver: 'fs',
-        base: './.data/settings'
+        // driver: 'fs',
+        // base: './.data/settings'
+        driver: 's3',
+        bucket: process.env.S3_BUCKET_SETTINGS,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
       },
       // Inbound emails archive
       inbound: {
-        driver: 'fs',
-        base: './.data/inbound'
+        // driver: 'fs',
+        // base: './.data/inbound'
+        driver: 's3',
+        bucket: process.env.S3_BUCKET_INBOUND,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
       }
     }
   },
@@ -166,6 +202,11 @@ export default defineNuxtConfig({
         braceStyle: '1tbs'
       }
     }
+  },
+
+  fonts: {
+    bunny: false,
+    unifont: false
   }
 
   // security: {

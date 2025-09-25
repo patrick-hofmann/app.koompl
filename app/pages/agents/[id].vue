@@ -4,7 +4,11 @@ import type { Mail } from '~/types'
 const route = useRoute()
 const agentId = computed(() => String(route.params.id))
 
-const { data: agent, refresh } = await useAsyncData(() => `agent-${agentId.value}`, () => $fetch<Agent>(`/api/agents/${agentId.value}`))
+// Client-only lazy fetch to avoid SSR blocking on storage
+const { data: agent, refresh, pending } = await useAsyncData(() => `agent-${agentId.value}`,
+  () => $fetch<Agent>(`/api/agents/${agentId.value}`),
+  { server: false, lazy: true }
+)
 
 // Static mock mailbox: reuse server API route to keep UI consistent
 const { data: mails } = await useFetch<Mail[]>('/api/mails', { default: () => [] })

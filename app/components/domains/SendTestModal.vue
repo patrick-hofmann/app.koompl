@@ -4,9 +4,9 @@ interface Props {
   domain: string | null
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'sent'): void }>()
+const emit = defineEmits<{ (e: 'update:open', v: boolean): void, (e: 'sent'): void }>()
 
-const form = reactive<{ to: string; subject: string; text: string; from?: string }>({ to: '', subject: 'Test from Koompl', text: 'This is a test email.' })
+const form = reactive<{ to: string, subject: string, text: string, from?: string }>({ to: '', subject: 'Test from Koompl', text: 'This is a test email.' })
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
@@ -26,7 +26,7 @@ async function send() {
 </script>
 
 <template>
-  <UModal :open="open" @update:open="emit('update:open', $event)">
+  <UModal title="Send Test Email" description="Send a test email to the domain" :open="open" @update:open="emit('update:open', $event)">
     <template #content>
       <UCard>
         <h3 class="font-medium text-highlighted mb-2">Send Test Email</h3>
@@ -54,5 +54,3 @@ async function send() {
     </template>
   </UModal>
 </template>
-
-
