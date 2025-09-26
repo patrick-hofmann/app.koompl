@@ -14,6 +14,29 @@ const items = [{
   color: 'error' as const,
   onSelect: () => console.log('Remove member')
 }] satisfies DropdownMenuItem[]
+
+// Map team roles to display
+function getRoleDisplay(role: string) {
+  switch (role) {
+    case 'admin':
+      return 'Admin'
+    case 'user':
+      return 'User'
+    default:
+      return role
+  }
+}
+
+function getRoleVariant(role: string) {
+  switch (role) {
+    case 'admin':
+      return 'admin'
+    case 'user':
+      return 'user'
+    default:
+      return 'neutral'
+  }
+}
 </script>
 
 <template>
@@ -40,11 +63,10 @@ const items = [{
       </div>
 
       <div class="flex items-center gap-3">
-        <USelect
-          :model-value="member.role"
-          :items="['member', 'owner']"
-          color="neutral"
-          :ui="{ value: 'capitalize', item: 'capitalize' }"
+        <UBadge
+          :label="getRoleDisplay(member.role)"
+          :color="getRoleVariant(member.role)"
+          variant="subtle"
         />
 
         <UDropdownMenu :items="items" :content="{ align: 'end' }">

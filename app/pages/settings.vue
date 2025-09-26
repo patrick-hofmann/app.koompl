@@ -1,15 +1,36 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const links = [[{
-  label: 'General',
-  icon: 'i-lucide-user',
-  to: '/settings',
-  exact: true
+const route = useRoute()
+
+// Determine if we're on team settings or user settings based on the current route
+const isTeamSettings = computed(() => {
+  const teamSettingRoutes = ['/settings/ai', '/settings/members']
+  return teamSettingRoutes.includes(route.path)
+})
+
+// Team Settings tabs - shown when navigating team settings pages
+const teamLinks: NavigationMenuItem[][] = [[{
+  label: 'AI Providers',
+  icon: 'i-lucide-brain',
+  to: '/settings/ai'
 }, {
   label: 'Members',
   icon: 'i-lucide-users',
   to: '/settings/members'
+}], [{
+  label: 'Documentation',
+  icon: 'i-lucide-book-open',
+  to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt',
+  target: '_blank'
+}]]
+
+// User Settings tabs - shown when navigating user settings pages
+const userLinks: NavigationMenuItem[][] = [[{
+  label: 'Profile',
+  icon: 'i-lucide-user',
+  to: '/settings',
+  exact: true
 }, {
   label: 'Notifications',
   icon: 'i-lucide-bell',
@@ -18,16 +39,15 @@ const links = [[{
   label: 'Security',
   icon: 'i-lucide-shield',
   to: '/settings/security'
-}, {
-  label: 'AI',
-  icon: 'i-lucide-brain',
-  to: '/settings/ai'
 }], [{
   label: 'Documentation',
   icon: 'i-lucide-book-open',
   to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt',
   target: '_blank'
-}]] satisfies NavigationMenuItem[][]
+}]]
+
+// Dynamic links based on the settings context
+const links = computed(() => isTeamSettings.value ? teamLinks : userLinks)
 </script>
 
 <template>

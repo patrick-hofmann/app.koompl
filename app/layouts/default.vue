@@ -51,19 +51,10 @@ const links = [[{
     open.value = false
   }
 }, {
-  label: 'Settings',
-  to: '/settings',
-  icon: 'i-lucide-settings',
-  defaultOpen: true,
+  label: 'Team Settings',
+  icon: 'i-lucide-users',
   type: 'trigger',
   children: [{
-    label: 'General',
-    to: '/settings',
-    exact: true,
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
     label: 'AI Providers',
     to: '/settings/ai',
     onSelect: () => {
@@ -72,6 +63,18 @@ const links = [[{
   }, {
     label: 'Members',
     to: '/settings/members',
+    onSelect: () => {
+      open.value = false
+    }
+  }]
+}, {
+  label: 'User Settings',
+  icon: 'i-lucide-user',
+  type: 'trigger',
+  children: [{
+    label: 'Profile',
+    to: '/settings',
+    exact: true,
     onSelect: () => {
       open.value = false
     }

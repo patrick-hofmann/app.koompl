@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import type { Member } from '~/types'
 
-const { data: members } = await useFetch<Member[]>('/api/members', { default: () => [] })
+const { session, loggedIn: _unusedLoggedIn } = await useUserSession()
+
+const { data: members } = await useFetch<Member[]>('/api/members', {
+  default: () => [],
+  server: false
+})
 
 const q = ref('')
 
 const filteredMembers = computed(() => {
-  return members.value.filter((member) => {
+  const membersList = Array.isArray(members.value) ? members.value : []
+  return membersList.filter((member) => {
     return member.name.search(new RegExp(q.value, 'i')) !== -1 || member.username.search(new RegExp(q.value, 'i')) !== -1
   })
 })
@@ -15,8 +21,8 @@ const filteredMembers = computed(() => {
 <template>
   <div>
     <UPageCard
-      title="Members"
-      description="Invite new members by email address."
+      :title="`Team Members ${session?.team ? '- ' + session.team.name : ''}`"
+      :description="session?.team ? `Manage team members for ${session.team.name}` : 'Invite new members by email address.'"
       variant="naked"
       orientation="horizontal"
       class="mb-4"
