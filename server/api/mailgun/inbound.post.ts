@@ -1,6 +1,9 @@
 export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens.
   try {
+    const config = useRuntimeConfig()
+    const mailgunKey = config?.mailgun?.key
+
     // Mailgun forwards MIME or parsed form fields depending on route settings.
     // We accept both JSON and form-urlencoded payloads.
 
@@ -120,7 +123,6 @@ export default defineEventHandler(async (event) => {
 
     // Prepare settings for mailgun
     const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
-    const mailgunKey = firstString((settings as Record<string, unknown>)['mailgunApiKey'])
     const allowedDomains = firstString((settings as Record<string, unknown>)['allowedDomains'])
 
     // Check domain filtering before processing AI response

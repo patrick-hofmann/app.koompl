@@ -130,7 +130,16 @@ export default defineNuxtConfig({
     enabled: true
   },
 
+  css: ['~/assets/css/main.css'],
+
   runtimeConfig: {
+    mailgun: {
+      key: process.env.MAILGUN_KEY || ''
+    },
+    feedback: {
+      email: '',
+      sender: ''
+    },
     session: {
       maxAge: 60 * 60 * 24 * 7 // 1 week
     },
@@ -138,8 +147,6 @@ export default defineNuxtConfig({
       sessionPassword: process.env.NUXT_SESSION_PASSWORD || 'dev-session-password-must-be-at-least-32-characters'
     }
   },
-
-  css: ['~/assets/css/main.css'],
 
   routeRules: {
     '/api/**': {

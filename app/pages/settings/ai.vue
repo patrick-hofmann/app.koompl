@@ -6,7 +6,6 @@ import { validateDomainPatterns } from '~/utils/domainMatcher'
 const schema = z.object({
   openaiKey: z.string().optional(),
   claudeKey: z.string().optional(),
-  mailgunApiKey: z.string().optional(),
   allowedDomains: z.string().optional()
 })
 type Schema = z.output<typeof schema>
@@ -14,7 +13,6 @@ type Schema = z.output<typeof schema>
 const state = reactive<Partial<Schema>>({
   openaiKey: '',
   claudeKey: '',
-  mailgunApiKey: '',
   allowedDomains: ''
 })
 
@@ -23,10 +21,8 @@ const domainValidation = ref({ isValid: true, errors: [] as string[] })
 
 onMounted(async () => {
   const settings = await $fetch<{
-    mailgunApiKey?: string
-    allowedDomains?: string
+    allowedDomains?: string 
   }>('/api/settings')
-  state.mailgunApiKey = settings.mailgunApiKey || ''
   state.allowedDomains = settings.allowedDomains || ''
 })
 
@@ -57,7 +53,6 @@ async function onSubmit(_unusedEvent: FormSubmitEvent<Schema>) {
   await $fetch('/api/settings', {
     method: 'PATCH',
     body: {
-      mailgunApiKey: state.mailgunApiKey,
       allowedDomains: state.allowedDomains
     }
   })
@@ -84,10 +79,6 @@ async function onSubmit(_unusedEvent: FormSubmitEvent<Schema>) {
       <USeparator />
       <UFormField name="claudeKey" label="Claude API Key" class="flex max-sm:flex-col justify-between items-start gap-4">
         <UInput v-model="state.claudeKey" placeholder="sk-ant-..." type="password" autocomplete="off" />
-      </UFormField>
-      <USeparator />
-      <UFormField name="mailgunApiKey" label="Mailgun API Key" class="flex max-sm:flex-col justify-between items-start gap-4">
-        <UInput v-model="state.mailgunApiKey" placeholder="key-..." type="password" autocomplete="off" />
       </UFormField>
     </UPageCard>
 

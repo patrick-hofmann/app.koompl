@@ -94,8 +94,7 @@ const links = [[{
 }], [{
   label: 'Feedback',
   icon: 'i-lucide-message-circle',
-  to: 'https://github.com/nuxt-ui-templates/dashboard',
-  target: '_blank'
+  to: '/feedback'
 }, {
   label: 'Help & Support',
   icon: 'i-lucide-info',

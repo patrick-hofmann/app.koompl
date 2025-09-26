@@ -4,7 +4,6 @@ export default defineEventHandler(async (event) => {
 
   if (method === 'GET') {
     const data = await storage.getItem<{ 
-      mailgunApiKey?: string
       allowedDomains?: string 
     }>('settings.json')
     return data || {}
@@ -12,11 +11,9 @@ export default defineEventHandler(async (event) => {
 
   if (method === 'PATCH' || method === 'PUT' || method === 'POST') {
     const body = await readBody<{ 
-      mailgunApiKey?: string
       allowedDomains?: string 
     }>(event)
     const current = (await storage.getItem<{ 
-      mailgunApiKey?: string
       allowedDomains?: string 
     }>('settings.json')) || {}
     const next = { ...current, ...body }
@@ -26,5 +23,3 @@ export default defineEventHandler(async (event) => {
 
   throw createError({ statusCode: 405, statusMessage: 'Method not allowed' })
 })
-
-
