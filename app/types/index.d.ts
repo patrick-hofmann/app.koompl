@@ -67,3 +67,29 @@ export interface Agent {
   prompt: string
   avatar?: AvatarProps | { src?: string; text?: string; alt?: string }
 }
+
+export interface Team {
+  id: string
+  name: string
+  description: string
+}
+
+export interface AuthUser {
+  id: string
+  name: string
+  email: string
+  password: string
+}
+
+export interface TeamMembership {
+  id: string
+  userId: string
+  teamId: string
+  role: 'admin' | 'user'
+}
+
+export interface UserTeamData {
+  user: AuthUser
+  team: Team
+  role: 'admin' | 'user'
+}

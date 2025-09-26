@@ -7,28 +7,47 @@ defineProps<{
 
 const colorMode = useColorMode()
 const appConfig = useAppConfig()
+const { user: sessionUser, session, loggedIn, clear } = await useUserSession()
 
 const colors = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose']
 const neutrals = ['slate', 'gray', 'zinc', 'neutral', 'stone']
 
-const user = ref({
-  name: 'Benjamin Canac',
-  avatar: {
-    src: 'https://github.com/benjamincanac.png',
-    alt: 'Benjamin Canac'
+// Get user from session
+const user = computed(() => {
+  if (loggedIn.value && sessionUser.value) {
+    const displayName = sessionUser.value.name || sessionUser.value.email
+    const teamName = session.value?.team?.name
+    const avatarName = sessionUser.value.name || sessionUser.value.email
+
+    return {
+      name: teamName ? `${displayName} (${teamName})` : displayName,
+      avatar: {
+        src: `https://ui-avatars.com/api/?name=${encodeURIComponent(avatarName)}&background=random`,
+        alt: displayName
+      }
+    }
+  }
+  return {
+    name: 'Guest',
+    avatar: {
+      src: 'https://ui-avatars.com/api/?name=Guest&background=gray',
+      alt: 'Guest'
+    }
   }
 })
 
-const items = computed<DropdownMenuItem[][]>(() => ([[{
+const items = computed<DropdownMenuItem[][]>(() => [[{
   type: 'label',
   label: user.value.name,
   avatar: user.value.avatar
 }], [{
   label: 'Profile',
-  icon: 'i-lucide-user'
+  icon: 'i-lucide-user',
+  to: loggedIn.value ? '/profile' : '#'
 }, {
-  label: 'Billing',
-  icon: 'i-lucide-credit-card'
+  label: 'Team Settings',
+  icon: 'i-lucide-users',
+  to: loggedIn.value ? '/settings/members' : '#'
 }, {
   label: 'Settings',
   icon: 'i-lucide-settings',
@@ -147,8 +166,11 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
   target: '_blank'
 }, {
   label: 'Log out',
-  icon: 'i-lucide-log-out'
-}]]))
+  icon: 'i-lucide-log-out',
+  onSelect: () => {
+    clear()
+  }
+}]])
 </script>
 
 <template>
@@ -160,7 +182,7 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
     <UButton
       v-bind="{
         ...user,
-        label: collapsed ? undefined : user?.name,
+        label: collapsed ? undefined : user.name,
         trailingIcon: collapsed ? undefined : 'i-lucide-chevrons-up-down'
       }"
       color="neutral"

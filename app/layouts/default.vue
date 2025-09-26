@@ -3,6 +3,22 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 
 const route = useRoute()
 const toast = useToast()
+const router = useRouter()
+
+// Check authentication status
+const { loggedIn } = await useUserSession()
+
+// Redirect to login if not authenticated
+watchEffect(() => {
+  if (!loggedIn.value && route.path !== '/login') {
+    router.push('/login')
+  }
+})
+
+// If not logged in and not on login page, redirect
+if (!loggedIn.value && route.path !== '/login') {
+  await navigateTo('/login')
+}
 
 const open = ref(false)
 
@@ -100,7 +116,12 @@ const groups = computed(() => [{
   }]
 }])
 
-onMounted(async () => {
+// Show cookie consent only for logged in users
+watch(loggedIn, async (isLoggedIn) => {
+  if (!isLoggedIn) {
+    return
+  }
+
   const cookie = useCookie('cookie-consent')
   if (cookie.value === 'accepted') {
     return
@@ -123,52 +144,60 @@ onMounted(async () => {
       variant: 'ghost'
     }]
   })
-})
+}, { immediate: true })
 </script>
 
 <template>
-  <UDashboardGroup unit="rem">
-    <UDashboardSidebar
-      id="default"
-      v-model:open="open"
-      collapsible
-      resizable
-      class="bg-elevated/25"
-      :ui="{ footer: 'lg:border-t lg:border-default' }"
-    >
-      <template #header="{ collapsed }">
-        <TeamsMenu :collapsed="collapsed" />
-      </template>
+  <!-- Show full dashboard with sidebar only when logged in -->
+  <div v-if="loggedIn">
+    <UDashboardGroup unit="rem">
+      <UDashboardSidebar
+        id="default"
+        v-model:open="open"
+        collapsible
+        resizable
+        class="bg-elevated/25"
+        :ui="{ footer: 'lg:border-t lg:border-default' }"
+      >
+        <template #header="{ collapsed }">
+          <TeamsMenu :collapsed="collapsed" />
+        </template>
 
-      <template #default="{ collapsed }">
-        <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
+        <template #default="{ collapsed }">
+          <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
 
-        <UNavigationMenu
-          :collapsed="collapsed"
-          :items="links[0]"
-          orientation="vertical"
-          tooltip
-          popover
-        />
+          <UNavigationMenu
+            :collapsed="collapsed"
+            :items="links[0]"
+            orientation="vertical"
+            tooltip
+            popover
+          />
 
-        <UNavigationMenu
-          :collapsed="collapsed"
-          :items="links[1]"
-          orientation="vertical"
-          tooltip
-          class="mt-auto"
-        />
-      </template>
+          <UNavigationMenu
+            :collapsed="collapsed"
+            :items="links[1]"
+            orientation="vertical"
+            tooltip
+            class="mt-auto"
+          />
+        </template>
 
-      <template #footer="{ collapsed }">
-        <UserMenu :collapsed="collapsed" />
-      </template>
-    </UDashboardSidebar>
+        <template #footer="{ collapsed }">
+          <UserMenu :collapsed="collapsed" />
+        </template>
+      </UDashboardSidebar>
 
-    <UDashboardSearch :groups="groups" />
+      <UDashboardSearch :groups="groups" />
 
+      <slot />
+
+      <NotificationsSlideover />
+    </UDashboardGroup>
+  </div>
+
+  <!-- Show only content when not logged in (like login page) -->
+  <div v-else>
     <slot />
-
-    <NotificationsSlideover />
-  </UDashboardGroup>
+  </div>
 </template>

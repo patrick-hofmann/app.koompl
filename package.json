@@ -21,6 +21,7 @@
     "aws4fetch": "^1.0.20",
     "date-fns": "^4.1.0",
     "nuxt": "^4.0.3",
+    "nuxt-auth-utils": "^0.5.25",
     "nuxt-security": "2.4.0",
     "tailwindcss": "^4.1.13",
     "vue": "^3.5.18",

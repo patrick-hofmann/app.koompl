@@ -121,12 +121,22 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
-    '@vueuse/nuxt'
+    '@vueuse/nuxt',
+    'nuxt-auth-utils'
     // 'nuxt-security'
   ],
 
   devtools: {
     enabled: true
+  },
+
+  runtimeConfig: {
+    session: {
+      maxAge: 60 * 60 * 24 * 7 // 1 week
+    },
+    public: {
+      sessionPassword: process.env.NUXT_SESSION_PASSWORD || 'dev-session-password-must-be-at-least-32-characters'
+    }
   },
 
   css: ['~/assets/css/main.css'],
