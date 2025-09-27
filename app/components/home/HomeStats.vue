@@ -6,57 +6,111 @@ const props = defineProps<{
   range: Range
 }>()
 
-function formatCurrency(value: number): string {
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0
-  })
+function formatPercentage(value: number): string {
+  return `${value}%`
 }
 
-const baseStats = [{
-  title: 'Customers',
-  icon: 'i-lucide-users',
-  minValue: 400,
-  maxValue: 1000,
-  minVariation: -15,
-  maxVariation: 25
-}, {
-  title: 'Conversions',
-  icon: 'i-lucide-chart-pie',
-  minValue: 1000,
-  maxValue: 2000,
-  minVariation: -10,
-  maxVariation: 20
-}, {
-  title: 'Revenue',
-  icon: 'i-lucide-circle-dollar-sign',
-  minValue: 200000,
-  maxValue: 500000,
-  minVariation: -20,
-  maxVariation: 30,
-  formatter: formatCurrency
-}, {
-  title: 'Orders',
-  icon: 'i-lucide-shopping-cart',
-  minValue: 100,
-  maxValue: 300,
-  minVariation: -5,
-  maxVariation: 15
-}]
+function getStatLink(title: string): string {
+  switch (title) {
+    case 'Koompls':
+      return '/agents'
+    case 'Email Responses':
+      return '/agents'
+    case 'Active Domains':
+      return '/domains'
+    case 'Success Rate':
+      return '/agents'
+    default:
+      return '/'
+  }
+}
 
-const { data: stats } = await useAsyncData<Stat[]>('stats', async () => {
-  return baseStats.map((stat) => {
-    const value = randomInt(stat.minValue, stat.maxValue)
-    const variation = randomInt(stat.minVariation, stat.maxVariation)
+function getStatColor(variation: number, title?: string): string {
+  // For Success Rate, lower percentage means worse performance
+  if (title === 'Success Rate') {
+    return variation < 0 ? 'error' : 'success'
+  }
+  
+  // For other metrics, positive variation is good
+  if (variation > 0) return 'success'
+  if (variation < 0) return 'error'
+  return 'neutral'
+}
 
-    return {
-      title: stat.title,
-      icon: stat.icon,
-      value: stat.formatter ? stat.formatter(value) : value,
-      variation
-    }
-  })
+const { data: stats } = await useAsyncData<Stat[]>('dashboard-stats', async () => {
+  try {
+    // Fetch real dashboard data
+    const statsData = await $fetch<{
+      agents: { count: number, variation: number },
+      emails: { received: number, responded: number, variation: number },
+      domains: { active: number, total: number, variation: number },
+      successRate: { percentage: number, variation: number }
+    }>('/api/stats/overview', {
+      query: {
+        period: props.period,
+        rangeStart: props.range.start.toISOString(),
+        rangeEnd: props.range.end.toISOString()
+      }
+    })
+
+    const newStats: Stat[] = [
+      {
+        title: 'Koompls',
+        icon: 'i-lucide-bot',
+        value: statsData.agents.count,
+        variation: statsData.agents.variation
+      },
+      {
+        title: 'Email Responses',
+        icon: 'i-lucide-mail-fast',
+        value: statsData.emails.responded,
+        variation: statsData.emails.variation
+      },
+      {
+        title: 'Active Domains',
+        icon: 'i-lucide-globe',
+        value: statsData.domains.active,
+        variation: statsData.domains.variation
+      },
+      {
+        title: 'Success Rate',
+        icon: 'i-lucide-check-circle',
+        value: formatPercentage(statsData.successRate.percentage),
+        variation: statsData.successRate.variation
+      }
+    ]
+
+    return newStats
+  } catch (error) {
+    // Fallback to basic stats if API is not available
+    console.error('Failed to fetch dashboard stats:', error)
+    return [
+      {
+        title: 'Koompls',
+        icon: 'i-lucide-bot',
+        value: 0,
+        variation: 0
+      },
+      {
+        title: 'Email Responses',
+        icon: 'i-lucide-mail-fast',
+        value: 0,
+        variation: 0
+      },
+      {
+        title: 'Active Domains',
+        icon: 'i-lucide-globe',
+        value: 0,
+        variation: 0
+      },
+      {
+        title: 'Success Rate',
+        icon: 'i-lucide-check-circle',
+        value: formatPercentage(0),
+        variation: 0
+      }
+    ]
+  }
 }, {
   watch: [() => props.period, () => props.range],
   default: () => []
@@ -70,7 +124,7 @@ const { data: stats } = await useAsyncData<Stat[]>('stats', async () => {
       :key="index"
       :icon="stat.icon"
       :title="stat.title"
-      to="/customers"
+      :to="getStatLink(stat.title)"
       variant="subtle"
       :ui="{
         container: 'gap-y-1.5',
@@ -86,9 +140,10 @@ const { data: stats } = await useAsyncData<Stat[]>('stats', async () => {
         </span>
 
         <UBadge
-          :color="stat.variation > 0 ? 'success' : 'error'"
+          :color="getStatColor(stat.variation, stat.title)"
           variant="subtle"
           class="text-xs"
+          v-if="stat.variation !== 0"
         >
           {{ stat.variation > 0 ? '+' : '' }}{{ stat.variation }}%
         </UBadge>

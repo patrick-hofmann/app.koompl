@@ -1,6 +1,6 @@
 export default defineEventHandler(async (event) => {
-  const settings = await useStorage('settings').getItem<{ mailgunApiKey?: string }>('settings.json')
-  const apiKey = settings?.mailgunApiKey
+  const config = useRuntimeConfig()
+  const apiKey = config.mailgun?.key
   if (!apiKey) {
     throw createError({ statusCode: 400, statusMessage: 'Missing Mailgun API key' })
   }

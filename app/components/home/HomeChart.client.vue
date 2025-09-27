@@ -12,32 +12,112 @@ const props = defineProps<{
 
 type DataRecord = {
   date: Date
-  amount: number
+  emails: number
 }
 
 const { width } = useElementSize(cardRef)
 
 const data = ref<DataRecord[]>([])
+const isLoading = ref(true)
 
-watch([() => props.period, () => props.range], () => {
-  const dates = ({
-    daily: eachDayOfInterval,
-    weekly: eachWeekOfInterval,
-    monthly: eachMonthOfInterval
-  } as Record<Period, typeof eachDayOfInterval>)[props.period](props.range)
+// Function to format number without currency
+const formatNumber = (value: number): string => new Intl.NumberFormat('en').format(value)
 
-  const min = 1000
-  const max = 10000
+// Helper function to format dates based on period for grouping 
+const formatDateForPeriod = (date: Date, period: Period): string => {
+  if (period === 'daily') {
+    return format(date, 'yyyy-MM-dd')
+  } else if (period === 'weekly') {
+    return format(date, 'yyyy-\'W\'ww')
+  } else if (period === 'monthly') {
+    return format(date, 'yyyy-MM')
+  }
+  return format(date, 'yyyy-MM-dd') // Default fallback
+}
 
-  data.value = dates.map(date => ({ date, amount: Math.floor(Math.random() * (max - min + 1)) + min }))
+// Fetch emails data based on current props period/range on-demand
+watch([() => props.period, () => props.range], async () => {
+  isLoading.value = true
+  
+  // Get emails data from API
+  try {
+    const emailsData = await $fetch<{
+      emails: { received: number, responded: number },
+      emailData: Array<{
+        timestamp: string
+        usedOpenAI: boolean
+        mailgunSent: boolean
+        domainFiltered: boolean
+      }>,
+      timestamp: number
+    }>('/api/stats/chart', {
+      query: {
+        period: props.period,
+        rangeStart: props.range.start.toISOString(),
+        rangeEnd: props.range.end.toISOString()
+      }
+    })
+    
+    const dates = ({
+      daily: eachDayOfInterval,
+      weekly: eachWeekOfInterval,
+      monthly: eachMonthOfInterval
+    } as Record<Period, typeof eachDayOfInterval>)[props.period](props.range)
+
+    // Use real email activity data to build chart
+    if (emailsData?.emailData && emailsData.emailData.length > 0) {
+      const emailActivity = emailsData.emailData
+      
+      // Group emails by date based on the period
+      const emailByDate = new Map<string, number>()
+      
+      emailActivity.forEach(email => {
+        const emailDate = new Date(email.timestamp)
+        const keyDate = formatDateForPeriod(emailDate, props.period)
+        
+        emailByDate.set(keyDate, (emailByDate.get(keyDate) || 0) + 1)
+      })
+      
+      // Build chart data based on dates
+      data.value = dates.map(date => {
+        const keyDate = formatDateForPeriod(date, props.period)
+        const emailsOnThisDate = emailByDate.get(keyDate) || 0
+        
+        return {
+          date,
+          emails: emailsOnThisDate
+        }
+      })
+    } else {
+      // If no real data, show a flat line
+      data.value = dates.map(date => ({
+        date,
+        emails: 0
+      }))
+    }
+  } catch (error) {
+    console.error('Failed to fetch email chart data:', error)
+    
+    // Fallback to empty dataset
+    const dates = ({
+      daily: eachDayOfInterval,
+      weekly: eachWeekOfInterval,
+      monthly: eachMonthOfInterval
+    } as Record<Period, typeof eachDayOfInterval>)[props.period](props.range)
+    
+    data.value = dates.map(date => ({
+      date,
+      emails: 0
+    }))
+  }
+  
+  isLoading.value = false
 }, { immediate: true })
 
 const x = (_: DataRecord, i: number) => i
-const y = (d: DataRecord) => d.amount
+const y = (d: DataRecord) => d.emails
 
-const total = computed(() => data.value.reduce((acc: number, { amount }) => acc + amount, 0))
-
-const formatNumber = new Intl.NumberFormat('en', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format
+const total = computed(() => data.value.reduce((acc: number, { emails }) => acc + emails, 0))
 
 const formatDate = (date: Date): string => {
   return ({
@@ -55,7 +135,7 @@ const xTicks = (i: number) => {
   return formatDate(data.value[i].date)
 }
 
-const template = (d: DataRecord) => `${formatDate(d.date)}: ${formatNumber(d.amount)}`
+const template = (d: DataRecord) => `${formatDate(d.date)}: ${formatNumber(d.emails)} emails`
 </script>
 
 <template>
@@ -63,7 +143,7 @@ const template = (d: DataRecord) => `${formatDate(d.date)}: ${formatNumber(d.amo
     <template #header>
       <div>
         <p class="text-xs text-muted uppercase mb-1.5">
-          Revenue
+          Emails Received
         </p>
         <p class="text-3xl text-highlighted font-semibold">
           {{ formatNumber(total) }}

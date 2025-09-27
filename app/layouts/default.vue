@@ -66,6 +66,12 @@ const links = [[{
     onSelect: () => {
       open.value = false
     }
+  }, {
+    label: 'Security',
+    to: '/settings/team-security',
+    onSelect: () => {
+      open.value = false
+    }
   }]
 }, {
   label: 'User Settings',

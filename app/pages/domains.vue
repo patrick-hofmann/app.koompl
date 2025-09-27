@@ -2,7 +2,6 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { Component } from 'vue'
 
-const { data: settings } = await useFetch<{ mailgunApiKey?: string }>('/api/settings', { server: false })
 const toast = useToast()
 const errorMessage = ref<string | null>(null)
 const { data: domains, refresh } = await useAsyncData('mailgun-domains', async () => {
@@ -52,7 +51,11 @@ function statusColor(status: string) {
   return status === 'active' || status === 'verified' ? 'success' : status === 'unknown' ? 'warning' : 'error'
 }
 
-const hasKey = computed(() => !!settings.value?.mailgunApiKey)
+const hasKey = computed(() => {
+  // Check if the domains API call indicates a missing key
+  const error = domains.value?.error || ''
+  return !error.includes('missing_api_key') && !error.includes('Missing Mailgun API key')
+})
 
 function canSend(state?: string) {
   const s = String(state || '').toLowerCase()

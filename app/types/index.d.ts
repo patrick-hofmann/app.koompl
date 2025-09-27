@@ -34,6 +34,8 @@ export interface Stat {
   value: number | string
   variation: number
   formatter?: (value: number) => string
+  status?: 'good' | 'warning' | 'error'
+  showTrend?: boolean
 }
 
 export interface Sale {

@@ -5,7 +5,7 @@ const route = useRoute()
 
 // Determine if we're on team settings or user settings based on the current route
 const isTeamSettings = computed(() => {
-  const teamSettingRoutes = ['/settings/ai', '/settings/members']
+  const teamSettingRoutes = ['/settings/ai', '/settings/members', '/settings/team-security']
   return teamSettingRoutes.includes(route.path)
 })
 
@@ -18,6 +18,10 @@ const teamLinks: NavigationMenuItem[][] = [[{
   label: 'Members',
   icon: 'i-lucide-users',
   to: '/settings/members'
+}, {
+  label: 'Security',
+  icon: 'i-lucide-shield',
+  to: '/settings/team-security'
 }], [{
   label: 'Documentation',
   icon: 'i-lucide-book-open',

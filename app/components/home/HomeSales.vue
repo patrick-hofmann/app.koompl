@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { h, resolveComponent } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
-import type { Period, Range, Sale } from '~/types'
+import type { Period, Range } from '~/types'
 
 const props = defineProps<{
   period: Period
@@ -10,42 +10,41 @@ const props = defineProps<{
 
 const UBadge = resolveComponent('UBadge')
 
-const sampleEmails = [
-  'james.anderson@example.com',
-  'mia.white@example.com',
-  'william.brown@example.com',
-  'emma.davis@example.com',
-  'ethan.harris@example.com'
-]
+type EmailActivity = {
+  id: string
+  date: string
+  status: string
+  email: string
+  agent: string
+  subject: string
+}
 
-const { data } = await useAsyncData('sales', async () => {
-  const sales: Sale[] = []
-  const currentDate = new Date()
-
-  for (let i = 0; i < 5; i++) {
-    const hoursAgo = randomInt(0, 48)
-    const date = new Date(currentDate.getTime() - hoursAgo * 3600000)
-
-    sales.push({
-      id: (4600 - i).toString(),
-      date: date.toISOString(),
-      status: randomFrom(['paid', 'failed', 'refunded']),
-      email: randomFrom(sampleEmails),
-      amount: randomInt(100, 1000)
+const { data, refresh } = await useAsyncData('recent-emails', async () => {
+  try {
+    const emails = await $fetch<EmailActivity[]>('/api/stats/recent-emails', {
+      query: {
+        rangeStart: props.range.start.toISOString(),
+        rangeEnd: props.range.end.toISOString()
+      }
     })
+    return emails || []
+  } catch (error) {
+    console.error('Failed to fetch recent emails:', error)
+    return []
   }
-
-  return sales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }, {
   watch: [() => props.period, () => props.range],
   default: () => []
 })
 
-const columns: TableColumn<Sale>[] = [
+const columns: TableColumn<EmailActivity>[] = [
   {
     accessorKey: 'id',
     header: 'ID',
-    cell: ({ row }) => `#${row.getValue('id')}`
+    cell: ({ row }) => {
+      const id = row.getValue('id') as string
+      return id.length > 20 ? `#${id.substring(0, 8)}...` : `#${id}`
+    }
   },
   {
     accessorKey: 'date',
@@ -64,49 +63,65 @@ const columns: TableColumn<Sale>[] = [
     accessorKey: 'status',
     header: 'Status',
     cell: ({ row }) => {
+      const status = row.getValue('status') as string
       const color = {
-        paid: 'success' as const,
+        responded: 'success' as const,
         failed: 'error' as const,
-        refunded: 'neutral' as const
-      }[row.getValue('status') as string]
+        blocked: 'warning' as const,
+        'no-agent': 'neutral' as const,
+        received: 'info' as const
+      }[status] || 'neutral'
 
       return h(UBadge, { class: 'capitalize', variant: 'subtle', color }, () =>
-        row.getValue('status')
+        status.replace('-', ' ')
       )
     }
   },
   {
     accessorKey: 'email',
-    header: 'Email'
+    header: 'From Email'
   },
   {
-    accessorKey: 'amount',
-    header: () => h('div', { class: 'text-right' }, 'Amount'),
+    accessorKey: 'agent',
+    header: 'Agent'
+  },
+  {
+    accessorKey: 'subject',
+    header: () => h('div', { class: 'text-left' }, 'Subject'),
     cell: ({ row }) => {
-      const amount = Number.parseFloat(row.getValue('amount'))
-
-      const formatted = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'EUR'
-      }).format(amount)
-
-      return h('div', { class: 'text-right font-medium' }, formatted)
+      const subject = row.getValue('subject') as string
+      const truncated = subject.length > 30 ? subject.substring(0, 30) + '...' : subject
+      return h('div', { class: 'max-w-xs text-left' }, truncated)
     }
   }
 ]
 </script>
 
 <template>
-  <UTable
-    :data="data"
-    :columns="columns"
-    class="shrink-0"
-    :ui="{
-      base: 'table-fixed border-separate border-spacing-0',
-      thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-      tbody: '[&>tr]:last:[&>td]:border-b-0',
-      th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-      td: 'border-b border-default'
-    }"
-  />
+  <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-semibold text-highlighted">Recent Email Activity</h3>
+      <UButton 
+        link 
+        icon="i-lucide-refresh-cw" 
+        size="sm"
+        @click="refresh()"
+      >
+        Refresh
+      </UButton>
+    </div>
+    
+    <UTable
+      :data="data"
+      :columns="columns"
+      class="shrink-0"
+      :ui="{
+        base: 'table-fixed border-separate border-spacing-0',
+        thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
+        tbody: '[&>tr]:last:[&>td]:border-b-0',
+        th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+        td: 'border-b border-default'
+      }"
+    />
+  </div>
 </template>

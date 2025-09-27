@@ -160,9 +160,9 @@ Office: (555) 345-6789`,
 Please find attached our Q1 2024 financial analysis report. Key highlights:
 
 PERFORMANCE METRICS:
-• Revenue: $12.4M (+15% YoY)
-• Operating Expenses: $8.2M (-3% vs. budget)
-• Net Profit Margin: 18.5% (+2.5% vs. Q4 2023)
+• Emails Received: 12,400 (+15% YoY)
+• Email Responses: 8,200 (+3% automation efficiency)
+• Success Rate: 98.5% (+2.5% vs. Q4 2023)
 
 AREAS OF OPTIMIZATION:
 1. Cloud infrastructure costs (+22% over budget)
