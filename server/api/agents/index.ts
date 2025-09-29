@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
 import { createHash } from 'node:crypto'
+import type { Agent } from '~/types'
 
 function generateAvatar(name: string, email: string | undefined, id: string) {
   const basis = email || name || id
@@ -9,6 +10,14 @@ function generateAvatar(name: string, email: string | undefined, id: string) {
   const src = `https://i.pravatar.cc/256?u=${seed}`
   const text = (name.split(' ').filter(w => w).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'AG').padEnd(2, (name[0] || 'A').toUpperCase())
   return { src, alt: name, text }
+}
+
+function normalizeMcpServerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const ids = value
+    .map(item => typeof item === 'string' ? item.trim() : '')
+    .filter(Boolean)
+  return Array.from(new Set(ids))
 }
 
 export default defineEventHandler(async (event) => {
@@ -52,7 +61,8 @@ export default defineEventHandler(async (event) => {
       email: body.email || `${id}@agents.local`,
       role: body.role || 'Agent',
       prompt: body.prompt || '',
-      avatar: body.avatar || generateAvatar(name, body.email, id)
+      avatar: body.avatar || generateAvatar(name, body.email, id),
+      mcpServerIds: normalizeMcpServerIds(body.mcpServerIds)
     }
     const updatedAgents = [...existingAgents, agent]
     await writeAgents(updatedAgents)
@@ -70,7 +80,10 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
     const existing = agents[idx]
-    const updated = { ...existing, ...body }
+    const mcpServerIds = body.mcpServerIds !== undefined
+      ? normalizeMcpServerIds(body.mcpServerIds)
+      : existing.mcpServerIds || []
+    const updated = { ...existing, ...body, mcpServerIds }
     agents.splice(idx, 1, updated as Agent)
     await writeAgents(agents)
     return updated

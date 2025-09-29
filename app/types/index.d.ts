@@ -61,6 +61,37 @@ export interface Range {
   end: Date
 }
 
+export type McpCategory = 'calendar' | 'todo' | 'project' | 'custom'
+
+export type McpProvider =
+  | 'google-calendar'
+  | 'microsoft-outlook'
+  | 'todoist'
+  | 'trello'
+  | 'custom'
+
+export interface McpServer {
+  id: string
+  name: string
+  provider: McpProvider
+  category: McpCategory
+  url?: string
+  description?: string
+  auth: {
+    type: 'oauth2' | 'apiKey' | 'basic' | 'bearer'
+    clientId?: string
+    clientSecret?: string
+    token?: string
+    apiKey?: string
+    username?: string
+    password?: string
+    scope?: string[]
+  }
+  metadata?: Record<string, unknown>
+  lastStatus?: 'ok' | 'error' | 'unknown'
+  lastCheckedAt?: string | null
+}
+
 export interface Agent {
   id: string
   name: string
@@ -68,6 +99,7 @@ export interface Agent {
   role: string
   prompt: string
   avatar?: AvatarProps | { src?: string; text?: string; alt?: string }
+  mcpServerIds?: string[]
 }
 
 export interface Team {

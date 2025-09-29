@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Agent, McpServer } from '~/types'
+
 interface Props {
   open: boolean
   agent: Partial<Agent> | null
@@ -9,7 +11,25 @@ const emit = defineEmits<{
   (e: 'saved'): void
 }>()
 
-const local = reactive<Partial<Agent>>({})
+const local = reactive<Partial<Agent>>({
+  mcpServerIds: []
+})
+
+type StoredMcpServer = McpServer & {
+  createdAt: string
+  updatedAt: string
+}
+
+const { data: mcpResponse, pending: mcpPending, refresh: refreshMcp } = await useAsyncData('mcp-servers-lite', async () => {
+  const result = await $fetch<{ servers: StoredMcpServer[] }>('/api/mcp')
+  return result.servers
+}, { server: false, lazy: true })
+
+const mcpServers = computed(() => mcpResponse.value ?? [])
+const mcpOptions = computed(() => mcpServers.value.map(server => ({
+  label: `${server.name} (${server.provider})`,
+  value: server.id
+})))
 
 function resetLocal(next?: Partial<Agent> | null) {
   // Clear existing reactive keys by reassigning to a new object
@@ -20,17 +40,20 @@ function resetLocal(next?: Partial<Agent> | null) {
   if (next) {
     Object.assign(local, next)
   }
+  local.mcpServerIds = Array.isArray(next?.mcpServerIds) ? [...next.mcpServerIds] : []
 }
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
     resetLocal(props.agent)
+    refreshMcp()
   }
 }, { immediate: true })
 
 watch(() => props.agent && (props.agent as Partial<Agent>).id, () => {
   if (props.open) {
     resetLocal(props.agent)
+    refreshMcp()
   }
 })
 
@@ -71,6 +94,24 @@ async function refreshAvatar() {
             </UFormField>
             <UFormField label="System Prompt">
               <UTextarea v-model="local.prompt" :rows="4" autoresize />
+            </UFormField>
+            <UFormField label="MCP Server" description="Kalender- und Aufgabenquellen, die der Agent nutzen darf.">
+              <USelectMenu
+                v-model="(local.mcpServerIds as string[] | undefined)"
+                multiple
+                :options="mcpOptions"
+                :loading="mcpPending"
+                value-attribute="value"
+                option-attribute="label"
+                placeholder="Server auswählen"
+              >
+                <template #empty>
+                  <div class="px-2 py-3 text-sm text-muted space-y-1">
+                    <p>Keine MCP Server vorhanden.</p>
+                    <NuxtLink to="/mcp" class="underline">MCP Server verwalten</NuxtLink>
+                  </div>
+                </template>
+              </USelectMenu>
             </UFormField>
             <div class="flex items-center gap-2">
               <UAvatar v-bind="local.avatar" />

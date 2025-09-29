@@ -1,3 +1,5 @@
+import type { Agent } from '~/types'
+
 export default defineEventHandler(async (event) => {
   try {
     const id = getRouterParam(event, 'id') as string
@@ -15,6 +17,13 @@ export default defineEventHandler(async (event) => {
       includeQuote?: boolean
       maxTokens?: number
       temperature?: number
+      mcpContexts?: Array<{
+        serverId?: string
+        serverName?: string
+        provider?: string
+        category?: string
+        summary?: string
+      }>
     }>(event)
 
     const subject = String(body?.subject || '')
@@ -23,6 +32,17 @@ export default defineEventHandler(async (event) => {
     const includeQuote = Boolean(body?.includeQuote ?? true)
     const maxTokens = Number(body?.maxTokens || 700)
     const temperature = Number(body?.temperature || 0.4)
+    const mcpContexts = Array.isArray(body?.mcpContexts)
+      ? body?.mcpContexts
+        .map(entry => ({
+          serverId: String(entry?.serverId || '').trim(),
+          serverName: String(entry?.serverName || '').trim(),
+          provider: String(entry?.provider || '').trim(),
+          category: String(entry?.category || '').trim(),
+          summary: String(entry?.summary || '').trim()
+        }))
+        .filter(entry => entry.summary.length > 0)
+      : []
 
     if (!text.trim()) {
       throw createError({ statusCode: 400, statusMessage: 'Email text is required' })
@@ -65,6 +85,15 @@ export default defineEventHandler(async (event) => {
       userContent += '\n\nTask: Write a concise, helpful reply. Do not include the original message or signatures.'
     } else {
       userContent += '\n\nTask: Write a concise, helpful reply.'
+    }
+
+    if (mcpContexts.length) {
+      userContent += '\n\nAdditional context from connected services:'
+      for (const context of mcpContexts) {
+        const label = context.serverName || context.serverId || context.provider || 'MCP Server'
+        userContent += `\n- [${label}] ${context.summary}`
+      }
+      userContent += '\n\nUse the context when it is relevant to the user\'s request.'
     }
 
     const messages = [

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { Agent } from '~/types'
 
 function generateAvatar(name: string, email: string | undefined, id: string) {
   const basis = email || name || id
@@ -7,6 +8,15 @@ function generateAvatar(name: string, email: string | undefined, id: string) {
   const src = `https://i.pravatar.cc/256?u=${seed}`
   const text = (name.split(' ').filter(w => w).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'AG').padEnd(2, (name[0] || 'A').toUpperCase())
   return { src, alt: name, text }
+}
+
+function normalizeMcpServerIds(value: unknown, fallback: string[] = []): string[] {
+  if (value === undefined) return fallback
+  if (!Array.isArray(value)) return []
+  const ids = value
+    .map(item => typeof item === 'string' ? item.trim() : '')
+    .filter(Boolean)
+  return Array.from(new Set(ids))
 }
 export default defineEventHandler(async (event) => {
   const storage = useStorage('agents')
@@ -50,7 +60,8 @@ export default defineEventHandler(async (event) => {
       ...existing,
       ...body,
       id,
-      avatar: body.avatar || generateAvatar(name, body.email, id)
+      avatar: body.avatar || generateAvatar(name, body.email, id),
+      mcpServerIds: normalizeMcpServerIds(body.mcpServerIds, existing.mcpServerIds || [])
     }
     agents.splice(idx, 1, updated as Agent)
     await writeAgents(agents)

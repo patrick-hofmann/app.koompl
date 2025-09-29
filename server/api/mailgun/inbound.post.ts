@@ -1,3 +1,8 @@
+import { listMcpServers } from '../../utils/mcpStorage'
+import { fetchMcpContext, type McpContextResult } from '../../utils/mcpClients'
+import type { Agent } from '~/types'
+import type { StoredMcpServer } from '../../utils/mcpStorage'
+
 export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens.
   try {
@@ -100,7 +105,8 @@ export default defineEventHandler(async (event) => {
       to,
       subject,
       text: String(text || ''),
-      html: String(html || '')
+      html: String(html || ''),
+      mcpContexts
     })
 
     // Helper: extract the bare email address from header-like strings
@@ -120,6 +126,30 @@ export default defineEventHandler(async (event) => {
     // Load agents and try to resolve the agent by recipient address
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
     const agent = toEmail ? agents.find(a => String(a?.email || '').toLowerCase() === toEmail) : undefined
+
+    let mcpContexts: McpContextResult[] = []
+    if (agent?.mcpServerIds?.length) {
+      try {
+        const allServers = await listMcpServers()
+        const selectedServers = allServers.filter(server => agent.mcpServerIds?.includes(server.id))
+        if (selectedServers.length) {
+          const emailContext = {
+            subject: String(subject || ''),
+            text: String(text || ''),
+            from: String(fromEmail || from || ''),
+            receivedAt
+          }
+          const results = await Promise.allSettled(selectedServers.map((server: StoredMcpServer) => fetchMcpContext(server, emailContext, { limit: 5 })))
+          mcpContexts = results
+            .filter((entry): entry is PromiseFulfilledResult<McpContextResult | null> => entry.status === 'fulfilled')
+            .map(entry => entry.value)
+            .filter((value): value is McpContextResult => Boolean(value))
+        }
+      } catch (err) {
+        console.error('Failed to fetch MCP context', err)
+        mcpContexts = []
+      }
+    }
 
     // Prepare settings for mailgun
     const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
@@ -145,7 +175,14 @@ export default defineEventHandler(async (event) => {
             from: String(fromEmail || from || ''),
             includeQuote: true,
             maxTokens: 700,
-            temperature: 0.4
+            temperature: 0.4,
+            mcpContexts: mcpContexts.map(entry => ({
+              serverId: entry.serverId,
+              serverName: entry.serverName,
+              provider: entry.provider,
+              category: entry.category,
+              summary: entry.summary
+            }))
           }
         })
 
@@ -237,7 +274,9 @@ export default defineEventHandler(async (event) => {
       usedOpenAI: Boolean(aiAnswer),
       mailgunSent: Boolean(outboundResult?.ok),
       domainFiltered: !isDomainAllowed,
-      storageInboundKey: inboundKey
+      storageInboundKey: inboundKey,
+      mcpServerIds: agent?.mcpServerIds || [],
+      mcpContextCount: mcpContexts.length
     })
     await agentsStorage.setItem(logKey, currentLog)
 
