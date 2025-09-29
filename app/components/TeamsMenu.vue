@@ -35,8 +35,7 @@ const availableTeams = computed(() => {
 
   // Simple validation check to see if duplicates exist
   if (availableTeamsRaw.length > 2) {
-    console.warn('🚨 Session contains more availability teams than expected:', availableTeamsRaw.length)
-    console.warn('Duplicate detected - consider clearing session to retry')
+    // More teams than expected - this might indicate a session issue
   }
 
   const filteredTeams = availableTeamsRaw.filter(team => team.id !== currentTeamId)

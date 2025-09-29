@@ -1,6 +1,4 @@
 <script setup lang="ts">
-// import type { FormError } from '#ui/types'
-
 const router = useRouter()
 const { fetch } = await useUserSession()
 

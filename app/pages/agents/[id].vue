@@ -5,7 +5,7 @@ const route = useRoute()
 const agentId = computed(() => String(route.params.id))
 
 // Client-only lazy fetch to avoid SSR blocking on storage
-const { data: agent, refresh, pending: _unusedPending } = await useAsyncData(() => `agent-${agentId.value}`,
+const { data: agent, refresh } = await useAsyncData(() => `agent-${agentId.value}`,
   () => $fetch<Agent>(`/api/agents/${agentId.value}`),
   { server: false, lazy: true }
 )

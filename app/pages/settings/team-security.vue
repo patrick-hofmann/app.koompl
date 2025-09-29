@@ -31,7 +31,7 @@ watch(() => state.allowedDomains, (newValue) => {
   }
 }, { immediate: true })
 
-async function onSubmit(_unusedEvent: FormSubmitEvent<Schema>) {
+async function onSubmit() {
   // Validate domain patterns before submitting
   if (state.allowedDomains) {
     const validation = validateDomainPatterns(state.allowedDomains)

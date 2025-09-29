@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Member } from '~/types'
 
-const { session, loggedIn: _unusedLoggedIn } = await useUserSession()
+const { session } = await useUserSession()
 
 const { data: members } = await useFetch<Member[]>('/api/members', {
   default: () => [],

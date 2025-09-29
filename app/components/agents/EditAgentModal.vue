@@ -31,12 +31,6 @@ const mcpOptions = computed(() => mcpServers.value.map(server => ({
   value: server.id
 })))
 
-// Debug logging
-watchEffect(() => {
-  console.log('MCP Servers loaded:', mcpServers.value.length)
-  console.log('MCP Options:', mcpOptions.value)
-  console.log('Selected MCP Server IDs:', local.mcpServerIds)
-})
 
 function resetLocal(next?: Partial<Agent> | null) {
   // Clear existing reactive keys by reassigning to a new object

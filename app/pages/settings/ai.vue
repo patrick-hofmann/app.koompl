@@ -15,7 +15,7 @@ const state = reactive<Partial<Schema>>({
 
 const toast = useToast()
 
-async function onSubmit(_unusedEvent: FormSubmitEvent<Schema>) {
+async function onSubmit() {
   await $fetch('/api/settings', {
     method: 'PATCH',
     body: {

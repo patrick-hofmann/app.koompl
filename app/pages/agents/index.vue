@@ -10,7 +10,7 @@ const UDropdownMenu = resolveComponent('UDropdownMenu')
 const UCheckbox = resolveComponent('UCheckbox')
 
 // Client-only lazy fetch to avoid SSR blocking on storage
-const { data: agents, refresh, pending: _unusedPending } = await useAsyncData('agents', () => $fetch<Agent[]>('/api/agents'), { server: false, lazy: true })
+const { data: agents, refresh } = await useAsyncData('agents', () => $fetch<Agent[]>('/api/agents'), { server: false, lazy: true })
 
 const showAdd = ref(false)
 const newAgent = reactive<Partial<Agent>>({ name: '', email: '', role: 'Agent', prompt: '' })
