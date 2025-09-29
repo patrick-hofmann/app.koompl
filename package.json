@@ -13,6 +13,8 @@
   "dependencies": {
     "@iconify-json/lucide": "^1.2.68",
     "@iconify-json/simple-icons": "^1.2.53",
+    "@langchain/anthropic": "^0.3.28",
+    "@langchain/openai": "^0.6.13",
     "@nuxt/ui": "^4.0.0",
     "@tailwindcss/vite": "^4.1.13",
     "@unovis/ts": "^1.6.1",
@@ -20,6 +22,7 @@
     "@vueuse/nuxt": "^13.9.0",
     "aws4fetch": "^1.0.20",
     "date-fns": "^4.1.0",
+    "mcp-use": "^0.1.18",
     "nuxt": "^4.0.3",
     "nuxt-auth-utils": "^0.5.25",
     "nuxt-security": "2.4.0",

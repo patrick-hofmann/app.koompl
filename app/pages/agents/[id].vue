@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Mail } from '~/types'
+import type { Agent, Mail } from '~/types'
 
 const route = useRoute()
 const agentId = computed(() => String(route.params.id))
@@ -34,12 +34,38 @@ const combinedMails = computed<Mail[]>(() => {
   return [...(mails.value || []), ...outgoingMails.value]
 })
 
-const actionsLog = ref([
-  { id: 1, time: 'Today, 09:10', action: 'Listed calendar events', server: 'Calendar MCP', status: 'success' },
-  { id: 2, time: 'Today, 09:15', action: 'Created calendar entry: 1:1 with CFO', server: 'Calendar MCP', status: 'success' },
-  { id: 3, time: 'Today, 09:22', action: 'Synced tasks from Linear', server: 'Linear MCP', status: 'warning' },
-  { id: 4, time: 'Yesterday, 17:40', action: 'Sent weekly summary to CEO', server: 'Email MCP', status: 'success' }
-])
+type AgentLogEntry = {
+  timestamp?: string
+  type?: string
+  messageId?: string
+  to?: string
+  from?: string
+  subject?: string
+  agentId?: string
+  mcpServerIds?: string[]
+  mcpContextCount?: number
+  mailgunSent?: boolean
+  domainFiltered?: boolean
+}
+
+const { data: logsData, pending: logsPending, refresh: refreshLogs } = await useAsyncData(
+  () => `agent-logs-${agentId.value}`,
+  async () => {
+    const res = await $fetch<{ ok: boolean; items: AgentLogEntry[] }>(`/api/agents/logs`, {
+      query: { agentId: agentId.value, limit: 200 }
+    })
+    return res.items || []
+  },
+  { server: false, lazy: true }
+)
+
+const logs = computed<AgentLogEntry[]>(() => logsData.value || [])
+
+function formatTs(value?: string) {
+  if (!value) return ''
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString()
+}
 
 const selectedMail = ref<Mail | null>()
 
@@ -108,16 +134,38 @@ async function deleteAgent() {
       <div v-if="selectedTab === 'log'">
         <UCard>
           <div class="flex items-center justify-between">
-            <h3 class="font-medium text-highlighted">MCP Actions Log</h3>
-            <UBadge variant="subtle">Static</UBadge>
+            <h3 class="font-medium text-highlighted">Mail & MCP Log</h3>
+            <div class="flex items-center gap-2">
+              <UBadge variant="subtle">{{ logs.length }} Einträge</UBadge>
+              <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" :loading="logsPending" @click="refreshLogs">Aktualisieren</UButton>
+            </div>
           </div>
-          <div class="mt-4 space-y-3">
-            <div v-for="item in actionsLog" :key="item.id" class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-sm text-highlighted truncate">{{ item.action }}</p>
-                <p class="text-xs text-muted truncate">{{ item.time }} · {{ item.server }}</p>
+          <div v-if="logsPending" class="mt-4 space-y-2">
+            <USkeleton class="h-4 w-full" />
+            <USkeleton class="h-4 w-3/4" />
+            <USkeleton class="h-4 w-2/3" />
+          </div>
+          <div v-else-if="logs.length === 0" class="mt-4 text-sm text-muted">Noch keine Aktivitäten protokolliert.</div>
+          <div v-else class="mt-4 space-y-3">
+            <div v-for="(entry, idx) in logs" :key="idx" class="border rounded p-3 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="font-medium">{{ entry.type || 'event' }}</span>
+                <span class="text-muted">{{ formatTs(entry.timestamp) }}</span>
               </div>
-              <UBadge :color="item.status === 'success' ? 'success' : item.status === 'warning' ? 'warning' : 'neutral'" variant="subtle">{{ item.status }}</UBadge>
+              <div class="mt-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div class="space-y-0.5">
+                  <div v-if="entry.messageId">Message-ID: <span class="text-muted">{{ entry.messageId }}</span></div>
+                  <div v-if="entry.to">To: <span class="text-muted">{{ entry.to }}</span></div>
+                  <div v-if="entry.from">From: <span class="text-muted">{{ entry.from }}</span></div>
+                  <div v-if="entry.subject">Subject: <span class="text-muted truncate inline-block max-w-full">{{ entry.subject }}</span></div>
+                </div>
+                <div class="space-y-0.5">
+                  <div>MCP Servers: <span class="text-muted">{{ (entry.mcpServerIds || []).join(', ') }}</span></div>
+                  <div>MCP Contexts: <span class="text-muted">{{ entry.mcpContextCount || 0 }}</span></div>
+                  <div>Mailgun sent: <span :class="entry.mailgunSent ? 'text-green-600' : 'text-muted'">{{ entry.mailgunSent ? 'yes' : 'no' }}</span></div>
+                  <div>Domain filtered: <span :class="entry.domainFiltered ? 'text-red-600' : 'text-muted'">{{ entry.domainFiltered ? 'yes' : 'no' }}</span></div>
+                </div>
+              </div>
             </div>
           </div>
         </UCard>

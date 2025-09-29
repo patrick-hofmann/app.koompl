@@ -245,6 +245,32 @@ async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promi
   }
 }
 
+async function fetchNuxtUIContext(server: StoredMcpServer, email: McpEmailContext, limit: number): Promise<McpContextResult | null> {
+  const baseUrl = server.url || 'https://ui.nuxt.com'
+  
+  // For Nuxt UI, we'll simulate a context by providing documentation links
+  // In a real implementation, this would connect to the actual Nuxt UI MCP server
+  const searchTerms = extractSearchTerms(email.text)
+  
+  const summary = searchTerms.length > 0 
+    ? `Nuxt UI Documentation für: ${searchTerms.join(', ')}. Verfügbare Komponenten und Beispiele unter ${baseUrl}`
+    : `Nuxt UI Documentation verfügbar unter ${baseUrl}. Bietet Komponenten, Beispiele und Anleitungen für Vue.js und Nuxt.`
+
+  return {
+    serverId: server.id,
+    serverName: server.name,
+    provider: server.provider,
+    category: server.category,
+    summary,
+    details: {
+      baseUrl,
+      searchTerms,
+      availableComponents: ['UButton', 'UCard', 'UInput', 'UModal', 'UForm', 'UAlert', 'UBadge', 'USkeleton'],
+      documentationSections: ['Getting Started', 'Components', 'Theming', 'Icons', 'Pro']
+    }
+  }
+}
+
 async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContext, limit: number): Promise<McpContextResult | null> {
   if (!server.url) {
     throw createError({ statusCode: 400, statusMessage: `Custom MCP Server ${server.name} benötigt eine URL.` })
@@ -283,6 +309,12 @@ async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContex
   }
 }
 
+function extractSearchTerms(text: string): string[] {
+  const commonTerms = ['button', 'card', 'input', 'modal', 'form', 'alert', 'badge', 'skeleton', 'component', 'ui', 'nuxt']
+  const words = text.toLowerCase().split(/\s+/)
+  return commonTerms.filter(term => words.some(word => word.includes(term)))
+}
+
 export async function fetchMcpContext(
   server: StoredMcpServer,
   email: McpEmailContext,
@@ -303,6 +335,9 @@ export async function fetchMcpContext(
         break
       case 'trello':
         result = await fetchTrelloContext(server, limit)
+        break
+      case 'nuxt-ui':
+        result = await fetchNuxtUIContext(server, email, limit)
         break
       default:
         result = await fetchCustomContext(server, email, limit)

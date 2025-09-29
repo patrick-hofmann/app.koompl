@@ -198,6 +198,15 @@ export default defineNuxtConfig({
         region: process.env.S3_REGION,
         endpoint: process.env.S3_ENDPOINT
       },
+      // MCP servers storage (falls back to settings bucket if dedicated bucket not set)
+      mcp: {
+        driver: 's3',
+        bucket: process.env.S3_BUCKET_MCPS || process.env.S3_BUCKET_SETTINGS,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
+      },
       // Inbound emails archive
       inbound: {
         // driver: 'fs',

@@ -1,4 +1,6 @@
 import type { Agent } from '~/types'
+import { listMcpServers } from '../../../utils/mcpStorage'
+import { fetchMcpContext, type McpContextResult } from '../../../utils/mcpClients'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -96,6 +98,31 @@ export default defineEventHandler(async (event) => {
       userContent += '\n\nUse the context when it is relevant to the user\'s request.'
     }
 
+    // Retrieve MCP context for this agent (fetched server-side)
+    let fetchedMcpContexts: McpContextResult[] = []
+    try {
+      const allServers = await listMcpServers()
+      const selectedServers = Array.isArray(agent.mcpServerIds)
+        ? allServers.filter(s => agent.mcpServerIds!.includes(s.id))
+        : []
+      if (selectedServers.length) {
+        const emailContext = {
+          subject,
+          text,
+          from,
+          receivedAt: new Date().toISOString()
+        }
+        const results = await Promise.allSettled(selectedServers.map((server) => fetchMcpContext(server, emailContext, { limit: 5 })))
+        fetchedMcpContexts = results
+          .filter((r): r is PromiseFulfilledResult<McpContextResult | null> => r.status === 'fulfilled')
+          .map(r => r.value)
+          .filter((v): v is McpContextResult => Boolean(v))
+      }
+    } catch (err) {
+      // keep going without MCP if it fails
+      fetchedMcpContexts = []
+    }
+
     const messages = [
       agent.prompt ? { role: 'system', content: String(agent.prompt) } : null,
       { role: 'user', content: userContent }
@@ -116,6 +143,29 @@ export default defineEventHandler(async (event) => {
     })
 
     const result = String(res?.choices?.[0]?.message?.content || '').trim()
+
+    // Write agent activity log entry
+    try {
+      const logKey = 'email:log.json'
+      const currentLog: Array<Record<string, unknown>> = (await agentsStorage.getItem<Array<Record<string, unknown>>>(logKey)) || []
+      currentLog.push({
+        timestamp: new Date().toISOString(),
+        type: 'agent_respond',
+        messageId: (globalThis as any)?.crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
+        to: '',
+        from,
+        subject,
+        agentId: agent.id,
+        usedOpenAI: true,
+        mailgunSent: false,
+        domainFiltered: false,
+        mcpServerIds: agent.mcpServerIds || [],
+        mcpContextCount: (Array.isArray(body?.mcpContexts) ? body!.mcpContexts!.length : 0) + fetchedMcpContexts.length
+      })
+      await agentsStorage.setItem(logKey, currentLog)
+    } catch {
+      // ignore logging errors
+    }
 
     return { ok: true, result }
   } catch (e) {

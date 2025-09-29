@@ -10,8 +10,8 @@ export type StoredMcpServer = McpServer & {
 const STORAGE_NAMESPACE = 'mcp'
 const STORAGE_KEY = 'servers.json'
 
-const VALID_PROVIDERS: McpProvider[] = ['google-calendar', 'microsoft-outlook', 'todoist', 'trello', 'custom']
-const VALID_CATEGORIES: McpCategory[] = ['calendar', 'todo', 'project', 'custom']
+const VALID_PROVIDERS: McpProvider[] = ['google-calendar', 'microsoft-outlook', 'todoist', 'trello', 'nuxt-ui', 'custom']
+const VALID_CATEGORIES: McpCategory[] = ['calendar', 'todo', 'project', 'documentation', 'custom']
 
 const PROVIDER_PRESETS: Record<McpProvider, {
   category: McpCategory
@@ -48,6 +48,13 @@ const PROVIDER_PRESETS: Record<McpProvider, {
     defaultUrl: 'https://api.trello.com/1',
     defaultAuthType: 'apiKey'
   },
+  'nuxt-ui': {
+    category: 'documentation',
+    defaultName: 'Nuxt UI Documentation',
+    defaultDescription: 'Access Nuxt UI component documentation, examples, and guidance.',
+    defaultUrl: 'https://ui.nuxt.com',
+    defaultAuthType: 'bearer'
+  },
   'custom': {
     category: 'custom',
     defaultName: 'Custom MCP Server',
@@ -65,8 +72,24 @@ function useMcpStorage() {
 }
 
 export async function listMcpServers(): Promise<StoredMcpServer[]> {
-  const servers = await useMcpStorage().getItem<StoredMcpServer[]>(STORAGE_KEY)
-  return Array.isArray(servers) ? servers : []
+  // Primary: read from dedicated 'mcp' storage
+  let servers = await useMcpStorage().getItem<StoredMcpServer[]>(STORAGE_KEY)
+  if (Array.isArray(servers) && servers.length > 0) return servers
+
+  // Fallback/migration: if empty, try reading legacy location in 'settings'
+  try {
+    const settingsStorage = useStorage('settings')
+    const legacy = await settingsStorage.getItem<StoredMcpServer[]>(STORAGE_KEY)
+    if (Array.isArray(legacy) && legacy.length > 0) {
+      // Migrate to 'mcp' storage for future reads
+      await writeMcpServers(legacy)
+      return legacy
+    }
+  } catch {
+    // ignore fallback errors
+  }
+
+  return []
 }
 
 async function writeMcpServers(servers: StoredMcpServer[]): Promise<void> {
@@ -278,4 +301,111 @@ export function listMcpProviderPresets() {
 
 export function getMcpProviderPreset(provider: McpProvider) {
   return PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom
+}
+
+export interface McpServerTemplate {
+  id: string
+  name: string
+  description: string
+  provider: McpProvider
+  category: McpCategory
+  icon: string
+  color: string
+  defaultConfig: Partial<McpServer>
+}
+
+export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
+  {
+    id: 'nuxt-ui-docs',
+    name: 'Nuxt UI Documentation',
+    description: 'Access Nuxt UI component documentation, examples, and guidance for Vue.js and Nuxt development.',
+    provider: 'nuxt-ui',
+    category: 'documentation',
+    icon: 'i-lucide-code',
+    color: 'primary',
+    defaultConfig: {
+      name: 'Nuxt UI Documentation',
+      provider: 'nuxt-ui',
+      category: 'documentation',
+      url: 'https://ui.nuxt.com',
+      description: 'Access Nuxt UI component documentation, examples, and guidance for Vue.js and Nuxt development.',
+      auth: {
+        type: 'bearer',
+        token: ''
+      },
+      metadata: {
+        version: 'latest'
+      }
+    }
+  },
+  {
+    id: 'google-calendar-template',
+    name: 'Google Calendar',
+    description: 'Sync upcoming events from Google Calendar using the official API.',
+    provider: 'google-calendar',
+    category: 'calendar',
+    icon: 'i-lucide-calendar',
+    color: 'blue',
+    defaultConfig: {
+      name: 'Google Calendar',
+      provider: 'google-calendar',
+      category: 'calendar',
+      url: 'https://www.googleapis.com/calendar/v3',
+      description: 'Sync upcoming events from Google Calendar using the official API.',
+      auth: {
+        type: 'oauth2',
+        token: ''
+      },
+      metadata: {
+        calendarId: 'primary'
+      }
+    }
+  },
+  {
+    id: 'todoist-template',
+    name: 'Todoist Tasks',
+    description: 'List and manage tasks from Todoist.',
+    provider: 'todoist',
+    category: 'todo',
+    icon: 'i-lucide-check-square',
+    color: 'green',
+    defaultConfig: {
+      name: 'Todoist Tasks',
+      provider: 'todoist',
+      category: 'todo',
+      url: 'https://api.todoist.com/rest/v2',
+      description: 'List and manage tasks from Todoist.',
+      auth: {
+        type: 'bearer',
+        token: ''
+      }
+    }
+  },
+  {
+    id: 'custom-template',
+    name: 'Custom MCP Server',
+    description: 'Create a custom MCP server integration.',
+    provider: 'custom',
+    category: 'custom',
+    icon: 'i-lucide-settings',
+    color: 'gray',
+    defaultConfig: {
+      name: 'Custom MCP Server',
+      provider: 'custom',
+      category: 'custom',
+      description: 'Custom Model Context Protocol server integration.',
+      auth: {
+        type: 'bearer',
+        token: ''
+      }
+    }
+  }
+]
+
+export function getMcpServerTemplates(): McpServerTemplate[] {
+  return MCP_SERVER_TEMPLATES
+}
+
+export function getMcpServerTemplate(templateId: string): McpServerTemplate | undefined {
+  return MCP_SERVER_TEMPLATES.find(template => template.id === templateId)
 }

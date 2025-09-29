@@ -29,12 +29,13 @@ type ProviderField = {
 const toast = useToast()
 
 const { data, pending, error, refresh } = await useAsyncData('mcp-servers', () =>
-  $fetch<{ servers: StoredMcpServer[]; presets: McpProviderPreset[] }>('/api/mcp'),
+  $fetch<{ servers: StoredMcpServer[]; presets: McpProviderPreset[]; templates: Array<{ id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }> }>('/api/mcp'),
   { server: false, lazy: true }
 )
 
 const servers = computed(() => data.value?.servers ?? [])
 const presets = computed(() => data.value?.presets ?? [])
+const templates = computed(() => data.value?.templates ?? [])
 const errorMessage = computed(() => {
   const value = error.value
   if (!value) return ''
@@ -52,9 +53,13 @@ const presetMap = computed(() => new Map(presets.value.map(preset => [preset.id,
 const providerOptions = computed(() => presets.value.map(preset => ({ label: preset.defaultName, value: preset.id })))
 
 const showModal = ref(false)
+const showAgentModal = ref(false)
+const showTemplateModal = ref(false)
 const editingId = ref<string | null>(null)
 const skipPresetSync = ref(false)
 const isSaving = ref(false)
+const isCreatingAgent = ref(false)
+const isCreatingFromTemplate = ref(false)
 
 const form = reactive({
   id: '',
@@ -93,6 +98,10 @@ const providerFieldDefinitions: Record<McpProvider, ProviderField[]> = {
     { key: 'auth.token', label: 'Token', placeholder: 'Trello Token', type: 'password' },
     { key: 'metadata.boardId', label: 'Board-ID', placeholder: 'abcdef1234567890' },
     { key: 'metadata.listId', label: 'Listen-ID (optional)', placeholder: 'abcdef12345678' }
+  ],
+  'nuxt-ui': [
+    { key: 'url', label: 'Documentation URL', placeholder: 'https://ui.nuxt.com' },
+    { key: 'metadata.version', label: 'Nuxt UI Version (optional)', placeholder: 'latest' }
   ],
   'custom': [
     { key: 'auth.token', label: 'Bearer Token (optional)', placeholder: 'token', type: 'password' },
@@ -152,7 +161,9 @@ function resetForm(provider: McpProvider = 'google-calendar') {
   form.description = preset.defaultDescription
   assignAuth(undefined, preset.defaultAuthType)
   form.metadata = {}
-  nextTick(() => { skipPresetSync.value = false })
+  nextTick(() => {
+    skipPresetSync.value = false
+  })
 }
 
 function openAdd(provider: McpProvider = 'google-calendar') {
@@ -176,7 +187,9 @@ function openEdit(server: StoredMcpServer) {
   }
   form.metadata = metadata
   showModal.value = true
-  nextTick(() => { skipPresetSync.value = false })
+  nextTick(() => {
+    skipPresetSync.value = false
+  })
 }
 
 watch(() => form.provider, (provider) => {
@@ -196,7 +209,9 @@ function getFieldValue(key: string): string {
   if (!field) return ''
   if (group === 'auth') {
     const value = (form.auth as Record<string, unknown>)[field]
-    if (Array.isArray(value)) return value.join(', ')
+    if (Array.isArray(value)) {
+      return value.join(', ')
+    }
     return typeof value === 'string' ? value : ''
   }
   if (group === 'metadata') {
@@ -280,9 +295,19 @@ async function testServer(server: StoredMcpServer) {
   try {
     const result = await $fetch<{ ok: boolean; summary?: string; error?: string }>(`/api/mcp/${server.id}/test`, { method: 'POST' })
     if (result.ok) {
-      toast.add({ title: 'Verbindung erfolgreich', description: result.summary || 'Test erfolgreich.', color: 'success', icon: 'i-lucide-check' })
+      toast.add({
+      title: 'Verbindung erfolgreich',
+      description: result.summary || 'Test erfolgreich.',
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
     } else {
-      toast.add({ title: 'Test fehlgeschlagen', description: result.error || 'Keine Daten erhalten.', color: 'warning', icon: 'i-lucide-alert-circle' })
+        toast.add({
+        title: 'Test fehlgeschlagen',
+        description: result.error || 'Keine Daten erhalten.',
+        color: 'warning',
+        icon: 'i-lucide-alert-circle'
+      })
     }
     await refresh()
   } catch (err) {
@@ -291,7 +316,7 @@ async function testServer(server: StoredMcpServer) {
 }
 
 async function deleteServer(server: StoredMcpServer) {
-  if (process.client && !window.confirm(`Soll der MCP Server "${server.name}" wirklich gelöscht werden?`)) {
+  if (import.meta.client && !window.confirm(`Soll der MCP Server "${server.name}" wirklich gelöscht werden?`)) {
     return
   }
   try {
@@ -321,17 +346,60 @@ function formatCheckedAt(value?: string | null) {
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
 }
+
+async function openAgentModal() {
+  showAgentModal.value = true
+}
+
+async function openTemplateModal() {
+  showTemplateModal.value = true
+}
+
+async function createFromTemplate(template: { id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }) {
+  if (isCreatingFromTemplate.value) return
+
+  isCreatingFromTemplate.value = true
+  try {
+    await $fetch('/api/mcp/from-template', {
+      method: 'POST',
+      body: { templateId: template.id }
+    })
+
+    toast.add({
+      title: 'Server erstellt',
+      description: `${template.name} wurde erfolgreich erstellt.`,
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+
+    showTemplateModal.value = false
+    await refresh()
+  } catch (err) {
+    toast.add({
+      title: 'Server-Erstellung fehlgeschlagen',
+      description: String(err),
+      color: 'error',
+      icon: 'i-lucide-alert-triangle'
+    })
+  } finally {
+    isCreatingFromTemplate.value = false
+  }
+}
 </script>
 
 <template>
   <UDashboardPanel id="mcp">
     <template #header>
-      <UDashboardNavbar title="MCP Servers">
+      <UDashboardNavbar title="MCP Servers & Agents">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UButton icon="i-lucide-plus" label="Server hinzufügen" color="neutral" variant="outline" @click="openAdd()" />
+          <div class="flex gap-2">
+            <UButton icon="i-lucide-brain" label="Agent erstellen" color="primary" variant="outline" @click="openAgentModal()" />
+            <UButton icon="i-lucide-layout-template" label="Aus Vorlage" color="secondary" variant="outline" @click="openTemplateModal()" />
+            <UButton icon="i-lucide-plus" label="Server hinzufügen" color="neutral" variant="outline" @click="openAdd()" />
+          </div>
         </template>
       </UDashboardNavbar>
     </template>
@@ -397,9 +465,12 @@ function formatCheckedAt(value?: string | null) {
         <div v-else class="text-center py-12 space-y-4">
           <div class="space-y-2">
             <h3 class="text-lg font-medium text-highlighted">Noch keine MCP Server verbunden</h3>
-            <p class="text-muted">Füge Google, Microsoft, Todoist, Trello oder eigene MCP Server hinzu, damit deine Agents auf Kalender und Aufgaben zugreifen können.</p>
+            <p class="text-muted">Füge Google, Microsoft, Todoist, Trello, Nuxt UI oder eigene MCP Server hinzu, damit deine Agents auf Kalender, Aufgaben und Dokumentation zugreifen können.</p>
           </div>
-          <UButton icon="i-lucide-plus" label="Jetzt Server hinzufügen" @click="openAdd()" />
+          <div class="flex flex-col sm:flex-row gap-2 justify-center">
+            <UButton icon="i-lucide-layout-template" label="Aus Vorlage erstellen" color="primary" variant="outline" @click="openTemplateModal()" />
+            <UButton icon="i-lucide-plus" label="Manuell hinzufügen" @click="openAdd()" />
+          </div>
         </div>
       </div>
     </template>
@@ -459,6 +530,89 @@ function formatCheckedAt(value?: string | null) {
             <UButton type="submit" :loading="isSaving" label="Speichern" />
           </div>
         </UForm>
+      </UCard>
+    </template>
+  </UModal>
+
+  <!-- Template Creation Modal -->
+  <UModal title="Server aus Vorlage erstellen" :open="showTemplateModal" @update:open="showTemplateModal = $event">
+    <template #content>
+      <UCard>
+        <div class="space-y-4">
+          <UAlert color="primary" variant="subtle" icon="i-lucide-layout-template" title="Server-Vorlagen">
+            Erstelle MCP Server schnell und einfach mit vorkonfigurierten Vorlagen.
+          </UAlert>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <UCard
+              v-for="template in templates"
+              :key="template.id"
+              class="cursor-pointer hover:bg-muted/50 transition-colors"
+              @click="createFromTemplate(template)"
+            >
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="`bg-${template.color}-100`">
+                  <Icon :name="template.icon" class="w-5 h-5" :class="`text-${template.color}-600`" />
+                </div>
+                <div class="flex-1">
+                  <h5 class="font-medium">{{ template.name }}</h5>
+                  <p class="text-sm text-muted">{{ template.description }}</p>
+                </div>
+                <UButton
+                  :loading="isCreatingFromTemplate"
+                  :disabled="isCreatingFromTemplate"
+                  size="sm"
+                  :color="template.color"
+                  variant="outline"
+                >
+                  Erstellen
+                </UButton>
+              </div>
+            </UCard>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-4">
+            <UButton color="neutral" variant="ghost" label="Abbrechen" @click="showTemplateModal = false" />
+          </div>
+        </div>
+      </UCard>
+    </template>
+  </UModal>
+
+  <!-- Agent Creation Modal -->
+  <UModal title="AI Agent erstellen" :open="showAgentModal" @update:open="showAgentModal = $event">
+    <template #content>
+      <UCard>
+        <div class="space-y-4">
+          <UAlert color="primary" variant="subtle" icon="i-lucide-brain" title="AI Agents">
+            Erstelle AI Agents, die MCP Server nutzen, um intelligente E-Mail-Antworten zu generieren.
+          </UAlert>
+
+          <div class="space-y-3">
+            <h4 class="font-medium text-highlighted">Agent erstellen</h4>
+            <p class="text-sm text-muted">
+              Erstelle einen neuen AI Agent und weise ihm MCP Server zu. Der Agent wird automatisch
+              die verfügbaren MCP Server nutzen, um kontextbezogene Antworten zu generieren.
+            </p>
+
+            <UButton
+              :loading="isCreatingAgent"
+              :disabled="isCreatingAgent"
+              size="lg"
+              color="primary"
+              variant="outline"
+              class="w-full"
+              @click="openAdd()"
+            >
+              <Icon name="i-lucide-plus" class="w-4 h-4 mr-2" />
+              Neuen Agent erstellen
+            </UButton>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-4">
+            <UButton color="neutral" variant="ghost" label="Abbrechen" @click="showAgentModal = false" />
+          </div>
+        </div>
       </UCard>
     </template>
   </UModal>

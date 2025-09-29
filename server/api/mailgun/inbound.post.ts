@@ -1,5 +1,6 @@
 import { listMcpServers } from '../../utils/mcpStorage'
 import { fetchMcpContext, type McpContextResult } from '../../utils/mcpClients'
+import { createGeneralAgent } from '../../utils/mcpAgent'
 import type { Agent } from '~/types'
 import type { StoredMcpServer } from '../../utils/mcpStorage'
 
@@ -106,7 +107,7 @@ export default defineEventHandler(async (event) => {
       subject,
       text: String(text || ''),
       html: String(html || ''),
-      mcpContexts
+      mcpContexts: []
     })
 
     // Helper: extract the bare email address from header-like strings
@@ -163,35 +164,93 @@ export default defineEventHandler(async (event) => {
       isDomainAllowed = isEmailAllowed(fromEmail, allowedDomains)
     }
 
-    // Generate AI response using the agent respond route
+    // Generate AI response using MCP agents
     let aiAnswer: string | null = null
     if (agent && isDomainAllowed) {
       try {
-        const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`/api/agents/${agent.id}/respond`, {
-          method: 'POST',
-          body: {
-            subject: String(subject || ''),
-            text: String(text || ''),
-            from: String(fromEmail || from || ''),
-            includeQuote: true,
-            maxTokens: 700,
-            temperature: 0.4,
-            mcpContexts: mcpContexts.map(entry => ({
-              serverId: entry.serverId,
-              serverName: entry.serverName,
-              provider: entry.provider,
-              category: entry.category,
-              summary: entry.summary
-            }))
-          }
-        })
+        // Create MCP agent based on agent configuration
+        const mcpAgent = createGeneralAgent()
 
-        if (response.ok && response.result) {
-          aiAnswer = response.result.trim()
+        // Get MCP servers for this agent
+        const allServers = await listMcpServers()
+        const agentServers = agent.mcpServerIds?.length
+          ? allServers.filter(server => agent.mcpServerIds?.includes(server.id))
+          : []
+
+        // Process email with MCP agent
+        const emailContext = {
+          subject: String(subject || ''),
+          text: String(text || ''),
+          from: String(fromEmail || from || ''),
+          receivedAt
         }
-      } catch {
-        // Swallow errors; we still return ok to Mailgun
-        aiAnswer = null
+
+        const agentResponse = await mcpAgent.processEmail(
+          emailContext,
+          agent.prompt || 'You are a helpful AI assistant.',
+          agentServers
+        )
+
+        if (agentResponse.success && agentResponse.result) {
+          aiAnswer = agentResponse.result.trim()
+        } else {
+          // Fallback to original method if MCP agent fails
+          const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`/api/agents/${agent.id}/respond`, {
+            method: 'POST',
+            body: {
+              subject: String(subject || ''),
+              text: String(text || ''),
+              from: String(fromEmail || from || ''),
+              includeQuote: true,
+              maxTokens: 700,
+              temperature: 0.4,
+              mcpContexts: mcpContexts.map(entry => ({
+                serverId: entry.serverId,
+                serverName: entry.serverName,
+                provider: entry.provider,
+                category: entry.category,
+                summary: entry.summary
+              }))
+            }
+          })
+
+          if (response.ok && response.result) {
+            aiAnswer = response.result.trim()
+          }
+        }
+
+        // Cleanup MCP agent
+        await mcpAgent.cleanup()
+      } catch (error) {
+        console.error('MCP Agent processing error:', error)
+        // Fallback to original method
+        try {
+          const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`/api/agents/${agent.id}/respond`, {
+            method: 'POST',
+            body: {
+              subject: String(subject || ''),
+              text: String(text || ''),
+              from: String(fromEmail || from || ''),
+              includeQuote: true,
+              maxTokens: 700,
+              temperature: 0.4,
+              mcpContexts: mcpContexts.map(entry => ({
+                serverId: entry.serverId,
+                serverName: entry.serverName,
+                provider: entry.provider,
+                category: entry.category,
+                summary: entry.summary
+              }))
+            }
+          })
+
+          if (response.ok && response.result) {
+            aiAnswer = response.result.trim()
+          }
+        } catch {
+          // Swallow errors; we still return ok to Mailgun
+          aiAnswer = null
+        }
       }
     }
 

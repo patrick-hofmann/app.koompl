@@ -1,4 +1,4 @@
-import { createMcpServer, listMcpProviderPresets, listMcpServers } from '../../utils/mcpStorage'
+import { createMcpServer, listMcpProviderPresets, listMcpServers, getMcpServerTemplates } from '../../utils/mcpStorage'
 import type { McpServer } from '~/types'
 
 export default defineEventHandler(async (event) => {
@@ -7,7 +7,8 @@ export default defineEventHandler(async (event) => {
   if (method === 'GET') {
     const servers = await listMcpServers()
     const presets = listMcpProviderPresets()
-    return { servers, presets }
+    const templates = getMcpServerTemplates()
+    return { servers, presets, templates }
   }
 
   if (method === 'POST') {

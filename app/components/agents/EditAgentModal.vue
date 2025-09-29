@@ -31,6 +31,13 @@ const mcpOptions = computed(() => mcpServers.value.map(server => ({
   value: server.id
 })))
 
+// Debug logging
+watchEffect(() => {
+  console.log('MCP Servers loaded:', mcpServers.value.length)
+  console.log('MCP Options:', mcpOptions.value)
+  console.log('Selected MCP Server IDs:', local.mcpServerIds)
+})
+
 function resetLocal(next?: Partial<Agent> | null) {
   // Clear existing reactive keys by reassigning to a new object
   for (const key of Object.keys(local)) {
@@ -42,6 +49,61 @@ function resetLocal(next?: Partial<Agent> | null) {
   }
   local.mcpServerIds = Array.isArray(next?.mcpServerIds) ? [...next.mcpServerIds] : []
 }
+
+function toggleMcpServer(serverId: string, checked: boolean) {
+  if (!local.mcpServerIds) {
+    local.mcpServerIds = []
+  }
+
+  if (checked) {
+    if (!local.mcpServerIds.includes(serverId)) {
+      local.mcpServerIds.push(serverId)
+    }
+  } else {
+    local.mcpServerIds = local.mcpServerIds.filter(id => id !== serverId)
+  }
+}
+
+// Logs side pane data
+type AgentLogEntry = {
+  timestamp?: string
+  type?: string
+  messageId?: string
+  to?: string
+  from?: string
+  subject?: string
+  agentId?: string
+  mcpServerIds?: string[]
+  mcpContextCount?: number
+  mailgunSent?: boolean
+  domainFiltered?: boolean
+}
+
+const { data: logsData, pending: logsPending, refresh: refreshLogs } = await useAsyncData(
+  'agent-logs',
+  async () => {
+    const id = (local.id as string) || (props.agent && (props.agent as Partial<Agent>).id)
+    const res = await $fetch<{ ok: boolean; items: AgentLogEntry[] }>(`/api/agents/logs`, {
+      query: { agentId: id, limit: 100 }
+    })
+    return res.items || []
+  },
+  { server: false, lazy: true }
+)
+
+const logs = computed<AgentLogEntry[]>(() => logsData.value || [])
+
+function formatTs(value?: string) {
+  if (!value) return ''
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString()
+}
+
+watch(() => props.open, async (isOpen) => {
+  if (isOpen) {
+    await refreshLogs()
+  }
+})
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
@@ -82,7 +144,8 @@ async function refreshAvatar() {
       <UCard>
         <h3 class="font-medium text-highlighted mb-2">Edit Koompl</h3>
         <UForm :state="local" @submit="save">
-          <div class="space-y-3">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-2 space-y-3">
             <UFormField label="Name">
               <UInput v-model="local.name" />
             </UFormField>
@@ -96,30 +159,61 @@ async function refreshAvatar() {
               <UTextarea v-model="local.prompt" :rows="4" autoresize />
             </UFormField>
             <UFormField label="MCP Server" description="Kalender- und Aufgabenquellen, die der Agent nutzen darf.">
-              <USelectMenu
-                v-model="(local.mcpServerIds as string[] | undefined)"
-                multiple
-                :options="mcpOptions"
-                :loading="mcpPending"
-                value-attribute="value"
-                option-attribute="label"
-                placeholder="Server auswählen"
-              >
-                <template #empty>
-                  <div class="px-2 py-3 text-sm text-muted space-y-1">
-                    <p>Keine MCP Server vorhanden.</p>
-                    <NuxtLink to="/mcp" class="underline">MCP Server verwalten</NuxtLink>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm text-muted">{{ mcpServers.length }} Server verfügbar</span>
+                <UButton
+                  icon="i-lucide-refresh-cw"
+                  size="xs"
+                  variant="ghost"
+                  :loading="mcpPending"
+                  @click="refreshMcp"
+                >
+                  Aktualisieren
+                </UButton>
+              </div>
+              <div v-if="mcpPending" class="flex items-center gap-2 p-3">
+                <USkeleton class="h-4 w-4 rounded" />
+                <span class="text-sm text-muted">Lade MCP Server...</span>
+              </div>
+              <div v-else-if="mcpServers.length === 0" class="px-2 py-3 text-sm text-muted space-y-1">
+                <p>Keine MCP Server vorhanden.</p>
+                <NuxtLink to="/mcp" class="underline">MCP Server verwalten</NuxtLink>
+              </div>
+              <div v-else class="space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
+                <div
+                  v-for="server in mcpServers"
+                  :key="server.id"
+                  class="flex items-center gap-3 p-2 hover:bg-muted/50 rounded-md transition-colors"
+                >
+                  <UCheckbox
+                    :model-value="local.mcpServerIds?.includes(server.id) || false"
+                    @update:model-value="toggleMcpServer(server.id, $event)"
+                  />
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm">{{ server.name }}</div>
+                    <div class="text-xs text-muted">{{ server.provider }} • {{ server.category }}</div>
+                    <div v-if="server.description" class="text-xs text-muted mt-1 truncate">
+                      {{ server.description }}
+                    </div>
                   </div>
-                </template>
-              </USelectMenu>
-            </UFormField>
-            <div class="flex items-center gap-2">
-              <UAvatar v-bind="local.avatar" />
-              <UButton icon="i-lucide-refresh-ccw" label="Refresh avatar" color="neutral" variant="outline" @click="refreshAvatar" />
-            </div>
-            <div class="flex items-center gap-2 justify-end">
-              <UButton label="Cancel" color="neutral" variant="ghost" @click="emit('update:open', false)" />
-              <UButton type="submit" label="Save" />
+                  <UBadge
+                    :color="server.lastStatus === 'ok' ? 'green' : server.lastStatus === 'error' ? 'red' : 'gray'"
+                    variant="subtle"
+                    size="xs"
+                  >
+                    {{ server.lastStatus === 'ok' ? 'Online' : server.lastStatus === 'error' ? 'Fehler' : 'Unbekannt' }}
+                  </UBadge>
+                </div>
+              </div>
+              </UFormField>
+              <div class="flex items-center gap-2">
+                <UAvatar v-bind="local.avatar" />
+                <UButton icon="i-lucide-refresh-ccw" label="Refresh avatar" color="neutral" variant="outline" @click="refreshAvatar" />
+              </div>
+              <div class="flex items-center gap-2 justify-end">
+                <UButton label="Cancel" color="neutral" variant="ghost" @click="emit('update:open', false)" />
+                <UButton type="submit" label="Save" />
+              </div>
             </div>
           </div>
         </UForm>
