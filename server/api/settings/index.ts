@@ -3,18 +3,18 @@ export default defineEventHandler(async (event) => {
   const method = getMethod(event)
 
   if (method === 'GET') {
-    const data = await storage.getItem<{ 
-      allowedDomains?: string 
+    const data = await storage.getItem<{
+      allowedDomains?: string
     }>('settings.json')
     return data || {}
   }
 
   if (method === 'PATCH' || method === 'PUT' || method === 'POST') {
-    const body = await readBody<{ 
-      allowedDomains?: string 
+    const body = await readBody<{
+      allowedDomains?: string
     }>(event)
-    const current = (await storage.getItem<{ 
-      allowedDomains?: string 
+    const current = (await storage.getItem<{
+      allowedDomains?: string
     }>('settings.json')) || {}
     const next = { ...current, ...body }
     await storage.setItem('settings.json', next)

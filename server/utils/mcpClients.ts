@@ -107,9 +107,9 @@ async function fetchMicrosoftCalendarContext(server: StoredMcpServer, limit: num
       Prefer: 'outlook.timezone="UTC"'
     },
     query: {
-      '$select': 'subject,start,end,organizer,webLink',
-      '$orderby': 'start/dateTime ASC',
-      '$top': limit
+      $select: 'subject,start,end,organizer,webLink',
+      $orderby: 'start/dateTime ASC',
+      $top: limit
     }
   })
 
@@ -169,7 +169,7 @@ async function fetchTodoistContext(server: StoredMcpServer, limit: number): Prom
   }
 
   const summary = tasks
-    .map(task => {
+    .map((task) => {
       const content = task.content || 'Aufgabe ohne Beschreibung'
       const due = task.due?.date || task.due?.datetime || 'kein Fälligkeitsdatum'
       return `• ${content} (fällig: ${due})`
@@ -215,9 +215,9 @@ async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promi
 
   const upcoming = Array.isArray(cards)
     ? cards
-      .filter(card => card.due)
-      .sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime())
-      .slice(0, limit)
+        .filter(card => card.due)
+        .sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime())
+        .slice(0, limit)
     : []
 
   if (!upcoming.length) {
@@ -247,12 +247,12 @@ async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promi
 
 async function fetchNuxtUIContext(server: StoredMcpServer, email: McpEmailContext, limit: number): Promise<McpContextResult | null> {
   const baseUrl = server.url || 'https://ui.nuxt.com'
-  
+
   // For Nuxt UI, we'll simulate a context by providing documentation links
   // In a real implementation, this would connect to the actual Nuxt UI MCP server
   const searchTerms = extractSearchTerms(email.text)
-  
-  const summary = searchTerms.length > 0 
+
+  const summary = searchTerms.length > 0
     ? `Nuxt UI Documentation für: ${searchTerms.join(', ')}. Verfügbare Komponenten und Beispiele unter ${baseUrl}`
     : `Nuxt UI Documentation verfügbar unter ${baseUrl}. Bietet Komponenten, Beispiele und Anleitungen für Vue.js und Nuxt.`
 
@@ -288,7 +288,7 @@ async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContex
     headers.Authorization = `Basic ${credentials}`
   }
 
-  const response = await $fetch<{ summary?: string; details?: unknown }>(server.url, {
+  const response = await $fetch<{ summary?: string, details?: unknown }>(server.url, {
     method: 'POST',
     headers,
     body: {
@@ -352,7 +352,7 @@ export async function fetchMcpContext(
   }
 }
 
-export async function testMcpConnection(server: StoredMcpServer): Promise<{ ok: boolean; summary?: string; error?: string }> {
+export async function testMcpConnection(server: StoredMcpServer): Promise<{ ok: boolean, summary?: string, error?: string }> {
   try {
     const context = await fetchMcpContext(server, {
       subject: 'Konfigurationstest',

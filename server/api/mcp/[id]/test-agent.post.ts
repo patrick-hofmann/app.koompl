@@ -1,6 +1,5 @@
-import { KoomplMcpAgent, createGeneralAgent } from '../../../utils/mcpAgent'
+import { createGeneralAgent } from '../../../utils/mcpAgent'
 import { listMcpServers } from '../../../utils/mcpStorage'
-import type { StoredMcpServer } from '../../../utils/mcpStorage'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -19,14 +18,14 @@ export default defineEventHandler(async (event) => {
     // Get the specific server
     const allServers = await listMcpServers()
     const server = allServers.find(s => s.id === serverId)
-    
+
     if (!server) {
       throw createError({ statusCode: 404, statusMessage: 'MCP server not found' })
     }
 
     // Create MCP agent
     const mcpAgent = createGeneralAgent()
-    
+
     // Process test message
     const emailContext = {
       subject: 'MCP Agent Test',

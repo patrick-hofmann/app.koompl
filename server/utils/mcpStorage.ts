@@ -73,7 +73,7 @@ function useMcpStorage() {
 
 export async function listMcpServers(): Promise<StoredMcpServer[]> {
   // Primary: read from dedicated 'mcp' storage
-  let servers = await useMcpStorage().getItem<StoredMcpServer[]>(STORAGE_KEY)
+  const servers = await useMcpStorage().getItem<StoredMcpServer[]>(STORAGE_KEY)
   if (Array.isArray(servers) && servers.length > 0) return servers
 
   // Fallback/migration: if empty, try reading legacy location in 'settings'

@@ -3,7 +3,7 @@ import type { McpServer } from '~/types'
 
 export default defineEventHandler(async (event) => {
   try {
-    const body = await readBody<{ templateId: string; customizations?: Partial<McpServer> }>(event)
+    const body = await readBody<{ templateId: string, customizations?: Partial<McpServer> }>(event)
     const { templateId, customizations = {} } = body
 
     if (!templateId) {
@@ -25,10 +25,9 @@ export default defineEventHandler(async (event) => {
     return server
   } catch (error) {
     console.error('Template creation error:', error)
-    throw createError({ 
-      statusCode: error.statusCode || 500, 
-      statusMessage: error.statusMessage || 'Failed to create server from template' 
+    throw createError({
+      statusCode: error.statusCode || 500,
+      statusMessage: error.statusMessage || 'Failed to create server from template'
     })
   }
 })
-

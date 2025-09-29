@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing Mailgun API key' })
   }
 
-  const body = await readBody<{ name?: string; smtp_password?: string; spam_action?: string }>(event)
+  const body = await readBody<{ name?: string, smtp_password?: string, spam_action?: string }>(event)
   if (!body?.name) {
     throw createError({ statusCode: 400, statusMessage: 'Missing domain name' })
   }
@@ -19,11 +19,11 @@ export default defineEventHandler(async (event) => {
   const res: any = await $fetch('https://api.mailgun.net/v4/domains', {
     method: 'POST',
     headers: {
-      Authorization: 'Basic ' + Buffer.from(`api:${apiKey}`).toString('base64'),
+      'Authorization': 'Basic ' + Buffer.from(`api:${apiKey}`).toString('base64'),
       'Content-Type': 'application/x-www-form-urlencoded'
     },
     body: form.toString()
-  }).catch((e) => ({ message: String(e), status: 'error' }))
+  }).catch(e => ({ message: String(e), status: 'error' }))
 
   if (res?.status === 'error') {
     throw createError({ statusCode: 502, statusMessage: 'Mailgun error: ' + res.message })
@@ -31,5 +31,3 @@ export default defineEventHandler(async (event) => {
 
   return { ok: true, domain: res?.domain || res }
 })
-
-

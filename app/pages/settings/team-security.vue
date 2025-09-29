@@ -17,7 +17,7 @@ const domainValidation = ref({ isValid: true, errors: [] as string[] })
 
 onMounted(async () => {
   const settings = await $fetch<{
-    allowedDomains?: string 
+    allowedDomains?: string
   }>('/api/settings')
   state.allowedDomains = settings.allowedDomains || ''
 })

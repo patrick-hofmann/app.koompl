@@ -64,40 +64,7 @@ function toggleMcpServer(serverId: string, checked: boolean) {
   }
 }
 
-// Logs side pane data
-type AgentLogEntry = {
-  timestamp?: string
-  type?: string
-  messageId?: string
-  to?: string
-  from?: string
-  subject?: string
-  agentId?: string
-  mcpServerIds?: string[]
-  mcpContextCount?: number
-  mailgunSent?: boolean
-  domainFiltered?: boolean
-}
-
-const { data: logsData, pending: logsPending, refresh: refreshLogs } = await useAsyncData(
-  'agent-logs',
-  async () => {
-    const id = (local.id as string) || (props.agent && (props.agent as Partial<Agent>).id)
-    const res = await $fetch<{ ok: boolean; items: AgentLogEntry[] }>(`/api/agents/logs`, {
-      query: { agentId: id, limit: 100 }
-    })
-    return res.items || []
-  },
-  { server: false, lazy: true }
-)
-
-const logs = computed<AgentLogEntry[]>(() => logsData.value || [])
-
-function formatTs(value?: string) {
-  if (!value) return ''
-  const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString()
-}
+// (Logs side pane removed: was unused)
 
 watch(() => props.open, async (isOpen) => {
   if (isOpen) {

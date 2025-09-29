@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SelectItem } from '@nuxt/ui'
+// import type { SelectItem } from '@nuxt/ui'
 
 interface Props {
   open: boolean
@@ -11,11 +11,11 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void, (e: 'saved'): v
 
 const local = reactive<{ name?: string, smtp_password?: string, spam_action?: string }>({})
 
-const spamActionItems: SelectItem[] = [
-  { label: 'Disabled', value: '' },
-  { label: 'Tag', value: 'tag' },
-  { label: 'Disabled (block)', value: 'disabled' }
-]
+// const spamActionItems: SelectItem[] = [
+//   { label: 'Disabled', value: '' },
+//   { label: 'Tag', value: 'tag' },
+//   { label: 'Disabled (block)', value: 'disabled' }
+// ]
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {

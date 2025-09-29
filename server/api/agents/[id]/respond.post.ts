@@ -36,14 +36,14 @@ export default defineEventHandler(async (event) => {
     const temperature = Number(body?.temperature || 0.4)
     const mcpContexts = Array.isArray(body?.mcpContexts)
       ? body?.mcpContexts
-        .map(entry => ({
-          serverId: String(entry?.serverId || '').trim(),
-          serverName: String(entry?.serverName || '').trim(),
-          provider: String(entry?.provider || '').trim(),
-          category: String(entry?.category || '').trim(),
-          summary: String(entry?.summary || '').trim()
-        }))
-        .filter(entry => entry.summary.length > 0)
+          .map(entry => ({
+            serverId: String(entry?.serverId || '').trim(),
+            serverName: String(entry?.serverName || '').trim(),
+            provider: String(entry?.provider || '').trim(),
+            category: String(entry?.category || '').trim(),
+            summary: String(entry?.summary || '').trim()
+          }))
+          .filter(entry => entry.summary.length > 0)
       : []
 
     if (!text.trim()) {
@@ -112,13 +112,13 @@ export default defineEventHandler(async (event) => {
           from,
           receivedAt: new Date().toISOString()
         }
-        const results = await Promise.allSettled(selectedServers.map((server) => fetchMcpContext(server, emailContext, { limit: 5 })))
+        const results = await Promise.allSettled(selectedServers.map(server => fetchMcpContext(server, emailContext, { limit: 5 })))
         fetchedMcpContexts = results
           .filter((r): r is PromiseFulfilledResult<McpContextResult | null> => r.status === 'fulfilled')
           .map(r => r.value)
           .filter((v): v is McpContextResult => Boolean(v))
       }
-    } catch (err) {
+    } catch {
       // keep going without MCP if it fails
       fetchedMcpContexts = []
     }
@@ -151,7 +151,7 @@ export default defineEventHandler(async (event) => {
       currentLog.push({
         timestamp: new Date().toISOString(),
         type: 'agent_respond',
-        messageId: (globalThis as any)?.crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
+        messageId: (globalThis as unknown as { crypto?: { randomUUID?: () => string } })?.crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
         to: '',
         from,
         subject,

@@ -38,21 +38,21 @@ export class KoomplMcpAgent {
     }
 
     // Initialize LLM based on provider
-    const llm = this.config.llmProvider === 'anthropic' 
-      ? new ChatAnthropic({ 
-          model: this.config.model || 'claude-3-5-sonnet-20241022',
-          temperature: this.config.temperature,
-          maxTokens: this.config.maxTokens
-        })
-      : new ChatOpenAI({ 
-          model: this.config.model || 'gpt-4o',
-          temperature: this.config.temperature,
-          maxTokens: this.config.maxTokens
-        })
+    const llm = this.config.llmProvider === 'anthropic'
+      ? new ChatAnthropic({
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        temperature: this.config.temperature,
+        maxTokens: this.config.maxTokens
+      })
+      : new ChatOpenAI({
+        model: this.config.model || 'gpt-4o',
+        temperature: this.config.temperature,
+        maxTokens: this.config.maxTokens
+      })
 
     // Initialize MCP client with empty config (will be populated with servers)
     this.client = new MCPClient({ mcpServers: {} })
-    
+
     // Initialize MCP agent
     this.agent = new MCPAgent({
       llm,
@@ -66,8 +66,8 @@ export class KoomplMcpAgent {
    * Add MCP servers to the agent
    */
   async addServers(servers: StoredMcpServer[]): Promise<void> {
-    const serverConfigs: Record<string, any> = {}
-    
+    const serverConfigs: Record<string, unknown> = {}
+
     for (const server of servers) {
       if (server.provider === 'custom' && server.url) {
         // Custom MCP server via HTTP
@@ -108,7 +108,7 @@ export class KoomplMcpAgent {
         }
       } else {
         // Standard MCP server configurations
-        const serverConfig: any = {
+        const serverConfig: Record<string, unknown> = {
           command: 'npx',
           args: ['-y', this.getMcpServerPackage(server.provider)]
         }
@@ -190,7 +190,7 @@ export class KoomplMcpAgent {
   /**
    * Stream email processing for real-time responses
    */
-  async *streamEmailProcessing(
+  async* streamEmailProcessing(
     email: McpEmailContext,
     agentPrompt: string,
     servers: StoredMcpServer[]
@@ -204,7 +204,6 @@ export class KoomplMcpAgent {
 
       // Stream the agent response
       const stream = this.agent.stream(`${systemPrompt}\n\n${userPrompt}`)
-      
       let fullResponse = ''
       for await (const chunk of stream) {
         if (typeof chunk === 'string') {
@@ -234,7 +233,7 @@ export class KoomplMcpAgent {
    * Create system prompt for the agent
    */
   private createSystemPrompt(agentPrompt: string, servers: StoredMcpServer[]): string {
-    const serverDescriptions = servers.map(server => {
+    const serverDescriptions = servers.map((server) => {
       const capabilities = this.getServerCapabilities(server)
       return `- ${server.name} (${server.provider}): ${server.description || 'No description'} - Capabilities: ${capabilities.join(', ')}`
     }).join('\n')

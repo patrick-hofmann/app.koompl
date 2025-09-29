@@ -63,8 +63,7 @@ export interface Range {
 
 export type McpCategory = 'calendar' | 'todo' | 'project' | 'documentation' | 'custom'
 
-export type McpProvider =
-  | 'google-calendar'
+export type McpProvider = 'google-calendar'
   | 'microsoft-outlook'
   | 'todoist'
   | 'trello'
@@ -99,7 +98,7 @@ export interface Agent {
   email: string
   role: string
   prompt: string
-  avatar?: AvatarProps | { src?: string; text?: string; alt?: string }
+  avatar?: AvatarProps | { src?: string, text?: string, alt?: string }
   mcpServerIds?: string[]
 }
 

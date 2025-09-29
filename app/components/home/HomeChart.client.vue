@@ -23,7 +23,7 @@ const isLoading = ref(true)
 // Function to format number without currency
 const formatNumber = (value: number): string => new Intl.NumberFormat('en').format(value)
 
-// Helper function to format dates based on period for grouping 
+// Helper function to format dates based on period for grouping
 const formatDateForPeriod = (date: Date, period: Period): string => {
   if (period === 'daily') {
     return format(date, 'yyyy-MM-dd')
@@ -38,17 +38,17 @@ const formatDateForPeriod = (date: Date, period: Period): string => {
 // Fetch emails data based on current props period/range on-demand
 watch([() => props.period, () => props.range], async () => {
   isLoading.value = true
-  
+
   // Get emails data from API
   try {
     const emailsData = await $fetch<{
-      emails: { received: number, responded: number },
+      emails: { received: number, responded: number }
       emailData: Array<{
         timestamp: string
         usedOpenAI: boolean
         mailgunSent: boolean
         domainFiltered: boolean
-      }>,
+      }>
       timestamp: number
     }>('/api/stats/chart', {
       query: {
@@ -57,7 +57,7 @@ watch([() => props.period, () => props.range], async () => {
         rangeEnd: props.range.end.toISOString()
       }
     })
-    
+
     const dates = ({
       daily: eachDayOfInterval,
       weekly: eachWeekOfInterval,
@@ -67,22 +67,22 @@ watch([() => props.period, () => props.range], async () => {
     // Use real email activity data to build chart
     if (emailsData?.emailData && emailsData.emailData.length > 0) {
       const emailActivity = emailsData.emailData
-      
+
       // Group emails by date based on the period
       const emailByDate = new Map<string, number>()
-      
-      emailActivity.forEach(email => {
+
+      emailActivity.forEach((email) => {
         const emailDate = new Date(email.timestamp)
         const keyDate = formatDateForPeriod(emailDate, props.period)
-        
+
         emailByDate.set(keyDate, (emailByDate.get(keyDate) || 0) + 1)
       })
-      
+
       // Build chart data based on dates
-      data.value = dates.map(date => {
+      data.value = dates.map((date) => {
         const keyDate = formatDateForPeriod(date, props.period)
         const emailsOnThisDate = emailByDate.get(keyDate) || 0
-        
+
         return {
           date,
           emails: emailsOnThisDate
@@ -97,20 +97,20 @@ watch([() => props.period, () => props.range], async () => {
     }
   } catch (error) {
     console.error('Failed to fetch email chart data:', error)
-    
+
     // Fallback to empty dataset
     const dates = ({
       daily: eachDayOfInterval,
       weekly: eachWeekOfInterval,
       monthly: eachMonthOfInterval
     } as Record<Period, typeof eachDayOfInterval>)[props.period](props.range)
-    
+
     data.value = dates.map(date => ({
       date,
       emails: 0
     }))
   }
-  
+
   isLoading.value = false
 }, { immediate: true })
 

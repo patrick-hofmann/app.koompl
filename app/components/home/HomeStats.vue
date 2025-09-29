@@ -30,7 +30,7 @@ function getStatColor(variation: number, title?: string): string {
   if (title === 'Success Rate') {
     return variation < 0 ? 'error' : 'success'
   }
-  
+
   // For other metrics, positive variation is good
   if (variation > 0) return 'success'
   if (variation < 0) return 'error'
@@ -41,9 +41,9 @@ const { data: stats } = await useAsyncData<Stat[]>('dashboard-stats', async () =
   try {
     // Fetch real dashboard data
     const statsData = await $fetch<{
-      agents: { count: number, variation: number },
-      emails: { received: number, responded: number, variation: number },
-      domains: { active: number, total: number, variation: number },
+      agents: { count: number, variation: number }
+      emails: { received: number, responded: number, variation: number }
+      domains: { active: number, total: number, variation: number }
       successRate: { percentage: number, variation: number }
     }>('/api/stats/overview', {
       query: {
@@ -140,10 +140,10 @@ const { data: stats } = await useAsyncData<Stat[]>('dashboard-stats', async () =
         </span>
 
         <UBadge
+          v-if="stat.variation !== 0"
           :color="getStatColor(stat.variation, stat.title)"
           variant="subtle"
           class="text-xs"
-          v-if="stat.variation !== 0"
         >
           {{ stat.variation > 0 ? '+' : '' }}{{ stat.variation }}%
         </UBadge>

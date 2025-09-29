@@ -65,11 +65,11 @@ const columns: TableColumn<EmailActivity>[] = [
     cell: ({ row }) => {
       const status = row.getValue('status') as string
       const color = {
-        responded: 'success' as const,
-        failed: 'error' as const,
-        blocked: 'warning' as const,
+        'responded': 'success' as const,
+        'failed': 'error' as const,
+        'blocked': 'warning' as const,
         'no-agent': 'neutral' as const,
-        received: 'info' as const
+        'received': 'info' as const
       }[status] || 'neutral'
 
       return h(UBadge, { class: 'capitalize', variant: 'subtle', color }, () =>
@@ -101,16 +101,16 @@ const columns: TableColumn<EmailActivity>[] = [
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h3 class="text-lg font-semibold text-highlighted">Recent Email Activity</h3>
-      <UButton 
-        link 
-        icon="i-lucide-refresh-cw" 
+      <UButton
+        link
+        icon="i-lucide-refresh-cw"
         size="sm"
         @click="refresh()"
       >
         Refresh
       </UButton>
     </div>
-    
+
     <UTable
       :data="data"
       :columns="columns"

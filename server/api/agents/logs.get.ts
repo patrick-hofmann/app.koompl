@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   // newest first (we push at end in inbound handler)
   const sorted = [...all].reverse()
   const filtered = agentId
-    ? sorted.filter(entry => String((entry as any)?.agentId || '') === agentId)
+    ? sorted.filter(entry => String((entry as Record<string, unknown>)?.agentId || '') === agentId)
     : sorted
 
   const items = filtered.slice(0, limit)

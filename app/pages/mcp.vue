@@ -29,8 +29,8 @@ type ProviderField = {
 const toast = useToast()
 
 const { data, pending, error, refresh } = await useAsyncData('mcp-servers', () =>
-  $fetch<{ servers: StoredMcpServer[]; presets: McpProviderPreset[]; templates: Array<{ id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }> }>('/api/mcp'),
-  { server: false, lazy: true }
+  $fetch<{ servers: StoredMcpServer[], presets: McpProviderPreset[], templates: Array<{ id: string, name: string, description: string, provider: string, category: string, icon: string, color: string }> }>('/api/mcp'),
+{ server: false, lazy: true }
 )
 
 const servers = computed(() => data.value?.servers ?? [])
@@ -293,16 +293,16 @@ async function saveServer() {
 
 async function testServer(server: StoredMcpServer) {
   try {
-    const result = await $fetch<{ ok: boolean; summary?: string; error?: string }>(`/api/mcp/${server.id}/test`, { method: 'POST' })
+    const result = await $fetch<{ ok: boolean, summary?: string, error?: string }>(`/api/mcp/${server.id}/test`, { method: 'POST' })
     if (result.ok) {
       toast.add({
-      title: 'Verbindung erfolgreich',
-      description: result.summary || 'Test erfolgreich.',
-      color: 'success',
-      icon: 'i-lucide-check'
-    })
+        title: 'Verbindung erfolgreich',
+        description: result.summary || 'Test erfolgreich.',
+        color: 'success',
+        icon: 'i-lucide-check'
+      })
     } else {
-        toast.add({
+      toast.add({
         title: 'Test fehlgeschlagen',
         description: result.error || 'Keine Daten erhalten.',
         color: 'warning',
@@ -355,7 +355,7 @@ async function openTemplateModal() {
   showTemplateModal.value = true
 }
 
-async function createFromTemplate(template: { id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }) {
+async function createFromTemplate(template: { id: string, name: string, description: string, provider: string, category: string, icon: string, color: string }) {
   if (isCreatingFromTemplate.value) return
 
   isCreatingFromTemplate.value = true

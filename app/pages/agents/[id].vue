@@ -5,7 +5,7 @@ const route = useRoute()
 const agentId = computed(() => String(route.params.id))
 
 // Client-only lazy fetch to avoid SSR blocking on storage
-const { data: agent, refresh, pending } = await useAsyncData(() => `agent-${agentId.value}`,
+const { data: agent, refresh, pending: _unusedPending } = await useAsyncData(() => `agent-${agentId.value}`,
   () => $fetch<Agent>(`/api/agents/${agentId.value}`),
   { server: false, lazy: true }
 )
@@ -51,7 +51,7 @@ type AgentLogEntry = {
 const { data: logsData, pending: logsPending, refresh: refreshLogs } = await useAsyncData(
   () => `agent-logs-${agentId.value}`,
   async () => {
-    const res = await $fetch<{ ok: boolean; items: AgentLogEntry[] }>(`/api/agents/logs`, {
+    const res = await $fetch<{ ok: boolean, items: AgentLogEntry[] }>(`/api/agents/logs`, {
       query: { agentId: agentId.value, limit: 200 }
     })
     return res.items || []
