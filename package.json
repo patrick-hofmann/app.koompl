@@ -23,6 +23,7 @@
     "aws4fetch": "^1.0.20",
     "date-fns": "^4.1.0",
     "mcp-use": "^0.1.18",
+    "nanoid": "^5.1.6",
     "nuxt": "^4.0.3",
     "nuxt-auth-utils": "^0.5.25",
     "nuxt-security": "2.4.0",

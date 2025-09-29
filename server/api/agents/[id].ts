@@ -1,27 +1,8 @@
-import { createHash } from 'node:crypto'
 import type { Agent } from '~/types'
+import { generateAvatar, normalizeMcpServerIds, createAgentStorage } from '../../utils/shared'
 
-function generateAvatar(name: string, email: string | undefined, id: string) {
-  const basis = email || name || id
-  const hash = createHash('sha256').update(basis).digest('hex').slice(0, 16)
-  const seed = encodeURIComponent(hash)
-  const src = `https://i.pravatar.cc/256?u=${seed}`
-  const text = (name.split(' ').filter(w => w).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'AG').padEnd(2, (name[0] || 'A').toUpperCase())
-  return { src, alt: name, text }
-}
-
-function normalizeMcpServerIds(value: unknown, fallback: string[] = []): string[] {
-  if (value === undefined) return fallback
-  if (!Array.isArray(value)) return []
-  const ids = value
-    .map(item => typeof item === 'string' ? item.trim() : '')
-    .filter(Boolean)
-  return Array.from(new Set(ids))
-}
 export default defineEventHandler(async (event) => {
-  const storage = useStorage('agents')
-  const prefix = 'agents'
-  const collectionKey = `${prefix}.json`
+  const agentStorage = createAgentStorage()
   const id = getRouterParam(event, 'id') as string
   const method = getMethod(event)
 
@@ -29,18 +10,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing id' })
   }
 
-  async function readAgents(): Promise<Agent[]> {
-    const list = await storage.getItem<Agent[]>(collectionKey)
-    return Array.isArray(list) ? list : []
-  }
-
-  async function writeAgents(agents: Agent[]): Promise<void> {
-    await storage.setItem(collectionKey, agents)
-  }
-
   if (method === 'GET') {
-    const agents = await readAgents()
-    const agent = agents.find(a => a?.id === id)
+    const agent = await agentStorage.findById(id)
     if (!agent) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
@@ -49,12 +20,11 @@ export default defineEventHandler(async (event) => {
 
   if (method === 'PUT' || method === 'PATCH') {
     const body = await readBody<Partial<Agent>>(event)
-    const agents = await readAgents()
-    const idx = agents.findIndex(a => a?.id === id)
-    if (idx === -1) {
+    const existing = await agentStorage.findById(id)
+    if (!existing) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
-    const existing = agents[idx]
+
     const name = body.name || existing.name
     const updated = {
       ...existing,
@@ -63,15 +33,15 @@ export default defineEventHandler(async (event) => {
       avatar: body.avatar || generateAvatar(name, body.email, id),
       mcpServerIds: normalizeMcpServerIds(body.mcpServerIds, existing.mcpServerIds || [])
     }
-    agents.splice(idx, 1, updated as Agent)
-    await writeAgents(agents)
-    return updated
+
+    return await agentStorage.update(id, updated)
   }
 
   if (method === 'DELETE') {
-    const agents = await readAgents()
-    const next = agents.filter(a => a?.id !== id)
-    await writeAgents(next)
+    const success = await agentStorage.delete(id)
+    if (!success) {
+      throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
+    }
     return { ok: true }
   }
 

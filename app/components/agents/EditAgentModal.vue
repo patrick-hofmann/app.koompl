@@ -58,14 +58,6 @@ function toggleMcpServer(serverId: string, checked: boolean) {
   }
 }
 
-// (Logs side pane removed: was unused)
-
-watch(() => props.open, async (isOpen) => {
-  if (isOpen) {
-    await refreshLogs()
-  }
-})
-
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
     resetLocal(props.agent)
