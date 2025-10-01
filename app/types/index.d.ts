@@ -92,6 +92,15 @@ export interface McpServer {
   lastCheckedAt?: string | null
 }
 
+export interface MultiRoundConfig {
+  enabled: boolean
+  maxRounds: number
+  timeoutMinutes: number
+  canCommunicateWithAgents: boolean
+  allowedAgentEmails?: string[]
+  autoResumeOnResponse: boolean
+}
+
 export interface Agent {
   id: string
   name: string
@@ -100,6 +109,7 @@ export interface Agent {
   prompt: string
   avatar?: AvatarProps | { src?: string, text?: string, alt?: string }
   mcpServerIds?: string[]
+  multiRoundConfig?: MultiRoundConfig
 }
 
 export interface Team {

@@ -31,7 +31,8 @@ export default defineEventHandler(async (event) => {
       role: body.role || 'Agent',
       prompt: body.prompt || '',
       avatar: body.avatar || generateAvatar(name, body.email, id),
-      mcpServerIds: normalizeMcpServerIds(body.mcpServerIds)
+      mcpServerIds: normalizeMcpServerIds(body.mcpServerIds),
+      multiRoundConfig: body.multiRoundConfig
     }
     return await agentStorage.create(agent)
   }

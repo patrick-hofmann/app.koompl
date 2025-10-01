@@ -1,8 +1,9 @@
-// MCP fetching and AI generation are handled in /api/agents/[id]/respond
+// Multi-round flow support
 import { mailStorage } from '../../utils/mailStorage'
 import { agentLogger } from '../../utils/agentLogging'
+import { agentFlowEngine } from '../../utils/agentFlowEngine'
+import { MessageRouter } from '../../utils/messageRouter'
 import type { Agent } from '~/types'
-// import type { StoredMcpServer } from '../../utils/mcpStorage'
 
 export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens.
@@ -110,32 +111,116 @@ export default defineEventHandler(async (event) => {
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
     const agent = toEmail ? agents.find(a => String(a?.email || '').toLowerCase() === toEmail) : undefined
 
-    // Do not fetch MCP contexts here
+    if (!agent) {
+      console.log('[Inbound] No agent found for email:', toEmail)
+      return { ok: true, error: 'Agent not found' }
+    }
 
     // Log inbound email activity EARLY (before any outbound processing)
     try {
-      if (agent && agent.id && agent.email) {
-        await agentLogger.logEmailActivity({
-          agentId: agent.id,
-          agentEmail: agent.email,
-          direction: 'inbound',
-          email: {
-            messageId: String(messageId || ''),
-            from: String(from || ''),
-            to: String(to || ''),
-            subject: String(subject || ''),
-            body: String(text || '')
-          },
-          metadata: {
-            mailgunSent: false,
-            isAutomatic: false,
-            mcpContextCount: 0
-          }
-        })
-      }
+      await agentLogger.logEmailActivity({
+        agentId: agent.id,
+        agentEmail: agent.email,
+        direction: 'inbound',
+        email: {
+          messageId: String(messageId || ''),
+          from: String(from || ''),
+          to: String(to || ''),
+          subject: String(subject || ''),
+          body: String(text || '')
+        },
+        metadata: {
+          mailgunSent: false,
+          isAutomatic: false,
+          mcpContextCount: 0
+        }
+      })
     } catch (logErr) {
       console.error('Failed to log inbound email activity:', logErr)
     }
+
+    // Check if this is a response to THIS AGENT's existing flow
+    console.log(`\n[Inbound] ════════════════════════════════════════════`)
+    console.log(`[Inbound] 📨 PROCESSING INBOUND EMAIL`)
+    console.log(`[Inbound] Agent: ${agent.name} (${agent.email})`)
+    console.log(`[Inbound] From: ${fromEmail || from}`)
+    console.log(`[Inbound] Subject: ${subject}`)
+    console.log(`[Inbound] Multi-round enabled: ${agent.multiRoundConfig?.enabled ? 'YES' : 'NO'}`)
+    console.log(`[Inbound] ════════════════════════════════════════════`)
+
+    const messageRouter = new MessageRouter()
+    const routingResult = await messageRouter.routeInboundEmail({
+      messageId: String(messageId || ''),
+      from: String(fromEmail || from || ''),
+      to: String(toEmail || to || ''),
+      subject: String(subject || ''),
+      body: String(text || ''),
+      receivedAt: new Date().toISOString()
+    }, agent.id)
+
+    console.log(`[Inbound] Routing result: isFlowResponse=${routingResult.isFlowResponse}, flowId=${routingResult.flow?.id}`)
+
+    if (routingResult.isFlowResponse && routingResult.flow) {
+      // This is a response to one of this agent's flows - resume it
+      console.log(`[Inbound] ✓ This is a RESPONSE to existing flow ${routingResult.flow.id}`)
+      console.log(`[Inbound] → Resuming flow...`)
+
+      await agentFlowEngine.resumeFlow(routingResult.flow.id, {
+        type: 'email_response',
+        email: {
+          messageId: String(messageId || ''),
+          from: String(fromEmail || from || ''),
+          subject: String(subject || ''),
+          body: String(text || '')
+        }
+      }, agent.id)
+
+      console.log(`[Inbound] ✓ Flow resumed successfully`)
+      return { ok: true, flowId: routingResult.flow.id, resumed: true }
+    }
+
+    // This is a NEW request for this agent
+    console.log(`[Inbound] ✓ This is a NEW REQUEST for agent ${agent.name}`)
+    
+    // Check if agent has multi-round enabled
+    if (agent.multiRoundConfig?.enabled) {
+      // Start a new multi-round flow FOR THIS AGENT
+      console.log(`[Inbound] → Starting new multi-round flow...`)
+      console.log(`[Inbound]   Max rounds: ${agent.multiRoundConfig.maxRounds}`)
+      console.log(`[Inbound]   Timeout: ${agent.multiRoundConfig.timeoutMinutes} minutes`)
+
+      const flow = await agentFlowEngine.startFlow({
+        agentId: agent.id,
+        trigger: {
+          type: 'email',
+          messageId: String(messageId || ''),
+          from: String(fromEmail || from || ''),
+          to: String(toEmail || to || ''),
+          subject: String(subject || ''),
+          body: String(text || ''),
+          receivedAt: new Date().toISOString()
+        },
+        maxRounds: agent.multiRoundConfig.maxRounds,
+        timeoutMinutes: agent.multiRoundConfig.timeoutMinutes
+      })
+
+      console.log(`[Inbound] ✓ Flow created: ${flow.id}`)
+      console.log(`[Inbound] → Executing first round...`)
+
+      // Execute first round
+      await agentFlowEngine.executeRound(flow.id, agent.id)
+
+      console.log(`[Inbound] ✓ First round executed`)
+      console.log(`[Inbound] ════════════════════════════════════════════\n`)
+
+      return { ok: true, flowId: flow.id, newFlow: true }
+    }
+
+    console.log(`[Inbound] ⚠ Multi-round NOT enabled, falling back to single-round processing`)
+    console.log(`[Inbound] ════════════════════════════════════════════\n`)
+
+    // Fall back to legacy single-round processing
+    console.log(`[Inbound] Processing as single-round for agent ${agent.id}`)
 
     // Prepare settings for mailgun
     const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}

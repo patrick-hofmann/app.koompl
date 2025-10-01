@@ -12,18 +12,30 @@ const UCheckbox = resolveComponent('UCheckbox')
 // Client-only lazy fetch to avoid SSR blocking on storage
 const { data: agents, refresh } = await useAsyncData('agents', () => $fetch<Agent[]>('/api/agents'), { server: false, lazy: true })
 
-const showAdd = ref(false)
-const newAgent = reactive<Partial<Agent>>({ name: '', email: '', role: 'Agent', prompt: '' })
+// Add modal state
+const addOpen = ref(false)
+const addAgent = reactive<Partial<Agent>>({})
 
-async function createAgent() {
-  await $fetch('/api/agents', { method: 'POST', body: newAgent })
-  showAdd.value = false
-  Object.assign(newAgent, { name: '', email: '', role: 'Agent', prompt: '' })
-  await refresh()
+function openAdd() {
+  Object.assign(addAgent, {
+    name: '',
+    email: '',
+    role: 'Agent',
+    prompt: '',
+    multiRoundConfig: {
+      enabled: false,
+      maxRounds: 10,
+      timeoutMinutes: 60,
+      canCommunicateWithAgents: false,
+      allowedAgentEmails: [],
+      autoResumeOnResponse: true
+    }
+  })
+  addOpen.value = true
 }
 
 const actions: NavigationMenuItem[] = [
-  { label: 'Add Koompl', icon: 'i-lucide-plus', onSelect: () => { showAdd.value = true } }
+  { label: 'Add Koompl', icon: 'i-lucide-plus', onSelect: () => { openAdd() } }
 ]
 
 // Edit modal state
@@ -193,7 +205,7 @@ const roundTripAgentId = ref<string | null>(null)
         />
 
         <div class="flex items-center gap-1.5">
-          <UButton label="Add Koompl" icon="i-lucide-plus" @click="showAdd = true" />
+          <UButton label="Add Koompl" icon="i-lucide-plus" @click="openAdd" />
         </div>
       </div>
 
@@ -210,37 +222,11 @@ const roundTripAgentId = ref<string | null>(null)
         :ui="{ base: 'table-fixed border-separate border-spacing-0', thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none', tbody: '[&>tr]:last:[&>td]:border-b-0', th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r', td: 'border-b border-default' }"
       />
 
-      <UModal v-model:open="showAdd" title="Add Koompl" description="Add a new Koompl">
-        <template #content>
-          <UCard>
-            <h3 class="font-medium text-highlighted mb-2">
-              Add Koompl
-            </h3>
-            <UForm :state="newAgent" @submit="createAgent">
-              <div class="space-y-3">
-                <UFormField label="Name">
-                  <UInput v-model="newAgent.name" />
-                </UFormField>
-                <UFormField label="Email">
-                  <UInput v-model="newAgent.email" />
-                </UFormField>
-                <UFormField label="Role">
-                  <UInput v-model="newAgent.role" />
-                </UFormField>
-                <UFormField label="System Prompt">
-                  <UTextarea v-model="newAgent.prompt" :rows="4" autoresize />
-                </UFormField>
-                <div class="flex items-center gap-2 justify-end">
-                  <UButton label="Cancel" color="neutral" variant="ghost" @click="showAdd = false" />
-                  <UButton type="submit" label="Create" />
-                </div>
-              </div>
-            </UForm>
-          </UCard>
-        </template>
-      </UModal>
     </template>
   </UDashboardPanel>
+
+  <!-- Add Modal -->
+  <AgentsEditAgentModal :open="addOpen" :agent="addAgent" @update:open="(v:boolean) => addOpen = v" @saved="refresh" />
 
   <!-- Edit Modal -->
   <AgentsEditAgentModal :open="editOpen" :agent="editAgent" @update:open="(v:boolean) => editOpen = v" @saved="refresh" />
