@@ -1,6 +1,6 @@
 // import type { Team, AuthUser, TeamMembership } from '~/types'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     const body = await readBody(event)
     const { email, password } = body
@@ -81,7 +81,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Get available teams for this user
-    const availableTeams = userMemberships.map((membership) => {
+    const availableTeams = userMemberships.map(membership => {
       const team = authData.teams.find(t => t.id === membership.teamId)
       if (!team) {
         return null
@@ -122,7 +122,7 @@ export default defineEventHandler(async (event) => {
 
     return { success: true, availableTeams: uniqueTeams }
   } catch (error: unknown) {
-    const err = error as { statusCode?: number, statusMessage?: string }
+    const err = error as { statusCode?: number; statusMessage?: string }
     throw createError({
       statusCode: err.statusCode || 500,
       statusMessage: err.statusMessage || 'Authentication failed'

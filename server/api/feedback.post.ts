@@ -1,4 +1,4 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     const config = useRuntimeConfig()
     const apiKey = config?.mailgun?.key
@@ -69,7 +69,7 @@ Submitted at: ${new Date().toISOString()}
     // Send via Mailgun using shared helper
     try {
       const { sendMailgunMessage } = await import('../utils/mailgunHelpers')
-      const res: { id?: string, message?: string } = await sendMailgunMessage({
+      const res: { id?: string; message?: string } = await sendMailgunMessage({
         endpointDomain: domain,
         apiKey,
         from: `Koompl Feedback <${fromAddress}>`,
@@ -88,7 +88,7 @@ Submitted at: ${new Date().toISOString()}
       }
     } catch (error: unknown) {
       console.error('Mailgun API error:', error)
-      const err = error as { status?: number, statusText?: string, message?: string }
+      const err = error as { status?: number; statusText?: string; message?: string }
 
       if (err.status === 401) {
         throw createError({
@@ -104,7 +104,7 @@ Submitted at: ${new Date().toISOString()}
     }
   } catch (error: unknown) {
     console.error('Feedback API error:', error)
-    const err = error as { statusCode?: number, statusMessage?: string }
+    const err = error as { statusCode?: number; statusMessage?: string }
     throw createError({
       statusCode: err.statusCode || 500,
       statusMessage: err.statusMessage || 'Failed to send feedback'

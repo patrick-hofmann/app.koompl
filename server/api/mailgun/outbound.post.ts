@@ -7,7 +7,7 @@ import { mailStorage } from '../../utils/mailStorage'
 import { agentLogger } from '../../utils/agentLogging'
 import { determineMailgunDomain, sendMailgunMessage } from '../../utils/mailgunHelpers'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     const config = useRuntimeConfig()
     const mailgunKey = config?.mailgun?.key
@@ -18,15 +18,15 @@ export default defineEventHandler(async (event) => {
     }
 
     const body = await readBody<{
-      from: string
-      to: string
-      subject: string
-      text: string
-      html?: string
-      agentId: string
-      agentEmail: string
-      mcpServerIds?: string[]
-      mcpContextCount?: number
+      from: string;
+      to: string;
+      subject: string;
+      text: string;
+      html?: string;
+      agentId: string;
+      agentEmail: string;
+      mcpServerIds?: string[];
+      mcpContextCount?: number;
       isAutomatic?: boolean
     }>(event)
 
@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Unable to determine Mailgun domain from config or from address' })
     }
 
-    type MailgunSendResponse = { id?: string, message?: string }
+    type MailgunSendResponse = { id?: string; message?: string }
     let mailgunResponse: MailgunSendResponse | undefined
     try {
       mailgunResponse = await sendMailgunMessage({
@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
         tracking: false
       })
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number, statusText?: string, _data?: unknown }, status?: number, statusText?: string, data?: unknown }
+      const e = err as { response?: { status?: number; statusText?: string; _data?: unknown }; status?: number; statusText?: string; data?: unknown }
       const status = e?.response?.status || e?.status || (e as { data?: { status?: number } })?.data?.status || 'unknown'
       const statusText = e?.response?.statusText || e?.statusText || 'unknown'
       const data = e?.response?._data || (e as { data?: unknown })?.data || null

@@ -1,4 +1,4 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const config = useRuntimeConfig()
   const apiKey = config?.mailgun?.key
 
@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing domain name' })
   }
 
-  const { to, subject, text, from } = await readBody<{ to?: string, subject?: string, text?: string, from?: string }>(event)
+  const { to, subject, text, from } = await readBody<{ to?: string; subject?: string; text?: string; from?: string }>(event)
   if (!to || !subject || !text) {
     throw createError({ statusCode: 400, statusMessage: 'Missing to/subject/text' })
   }
@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
 
   // Mailgun messages API (v3)
   const url = `https://api.mailgun.net/v3/${encodeURIComponent(String(name))}/messages`
-  const res: { id?: string, message?: string, status?: string } = await $fetch(url, {
+  const res: { id?: string; message?: string; status?: string } = await $fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': 'Basic ' + Buffer.from(`api:${apiKey}`).toString('base64'),

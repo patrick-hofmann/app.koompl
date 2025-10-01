@@ -54,7 +54,7 @@ function generateAvatar(name: string, email?: string) {
   return { src, alt: name, text: name.charAt(0).toUpperCase() }
 }
 
-export default eventHandler(async (event) => {
+export default eventHandler(async event => {
   try {
     const session = await getUserSession(event)
     if (!session?.user || !session?.team) {
@@ -72,7 +72,7 @@ export default eventHandler(async (event) => {
     )
 
     // Get all team member data by fetching users and their roles
-    const members: Member[] = teamMemberships.map((membership) => {
+    const members: Member[] = teamMemberships.map(membership => {
       const user = authData.users.find(u => u.id === membership.userId)
       if (!user) {
         return null
@@ -87,7 +87,7 @@ export default eventHandler(async (event) => {
 
     return members
   } catch (error: unknown) {
-    const err = error as { statusCode?: number, statusMessage?: string }
+    const err = error as { statusCode?: number; statusMessage?: string }
     throw createError({
       statusCode: err.statusCode || 500,
       statusMessage: err.statusMessage || 'Failed to fetch members'

@@ -45,7 +45,7 @@ async function handleLogin() {
     </div>
     <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
       <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-        <form @submit.prevent="handleLogin" class="space-y-6">
+        <form class="space-y-6" @submit.prevent="handleLogin">
           <UAlert
             v-if="error"
             icon="i-lucide-alert-circle"

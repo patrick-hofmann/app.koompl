@@ -4,32 +4,32 @@ import type { H3Event } from 'h3'
  */
 
 type SessionUser = {
-  id: string
-  name: string
-  email: string
+  id: string;
+  name: string;
+  email: string;
   role?: string
 }
 
 type SessionTeam = {
-  id: string
-  name: string
-  description?: string
+  id: string;
+  name: string;
+  description?: string;
   role?: string
 }
 
 type AvailableTeam = {
-  id: string
-  name: string
-  description?: string
+  id: string;
+  name: string;
+  description?: string;
   role?: string
 }
 
 export async function setCustomUserSession(
   event: H3Event,
   params: {
-    user: SessionUser
-    team: SessionTeam
-    availableTeams: AvailableTeam[]
+    user: SessionUser;
+    team: SessionTeam;
+    availableTeams: AvailableTeam[];
     loggedInAt?: string
   }
 ): Promise<void> {

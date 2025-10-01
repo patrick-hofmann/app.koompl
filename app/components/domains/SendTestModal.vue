@@ -1,14 +1,14 @@
 <script setup lang="ts">
 interface Props {
-  open: boolean
+  open: boolean;
   domain: string | null
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ (e: 'update:open', v: boolean): void, (e: 'sent'): void }>()
+const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'sent'): void }>()
 
-const form = reactive<{ to: string, subject: string, text: string, from?: string }>({ to: '', subject: 'Test from Koompl', text: 'This is a test email.' })
+const form = reactive<{ to: string; subject: string; text: string; from?: string }>({ to: '', subject: 'Test from Koompl', text: 'This is a test email.' })
 
-watch(() => props.open, (isOpen) => {
+watch(() => props.open, isOpen => {
   if (isOpen) {
     form.to = ''
     form.subject = 'Test from Koompl'

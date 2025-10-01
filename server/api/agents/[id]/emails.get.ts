@@ -1,6 +1,6 @@
 import { mailStorage } from '../../../utils/mailStorage'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const agentId = getRouterParam(event, 'id') as string
   if (!agentId) {
     throw createError({ statusCode: 400, statusMessage: 'Missing agent id' })
@@ -13,10 +13,10 @@ export default defineEventHandler(async (event) => {
   try {
     // Use unified mail storage to get agent emails
     const emails = await mailStorage.getAgentEmails(agentId)
-    
+
     // Apply limit and type filtering
-    let incoming = emails.incoming.slice(0, limit)
-    let outgoing = emails.outgoing.slice(0, limit)
+    const incoming = emails.incoming.slice(0, limit)
+    const outgoing = emails.outgoing.slice(0, limit)
 
     if (type === 'incoming') {
       return { incoming, outgoing: [] }
@@ -25,7 +25,6 @@ export default defineEventHandler(async (event) => {
     } else {
       return { incoming, outgoing }
     }
-
   } catch (error) {
     console.error('Error fetching agent emails:', error)
     return { incoming: [], outgoing: [] }

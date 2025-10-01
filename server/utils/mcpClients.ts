@@ -1,5 +1,4 @@
 import { createError } from 'h3'
-import type { McpProvider, McpCategory } from '~/types'
 import type { StoredMcpServer } from '../types/mcp-storage'
 import { getMcpProviderPreset, setMcpServerStatus } from './mcpStorage'
 import { agentLogger } from './agentLogging'
@@ -64,7 +63,7 @@ async function fetchGoogleCalendarContext(server: StoredMcpServer, limit: number
   }
 
   const summary = events
-    .map((event) => {
+    .map(event => {
       const title = event.summary || event?.title || 'Ohne Titel'
       const start = event.start?.dateTime || event.start?.date || event.start
       const end = event.end?.dateTime || event.end?.date || event.end
@@ -113,7 +112,7 @@ async function fetchMicrosoftCalendarContext(server: StoredMcpServer, limit: num
   }
 
   const summary = events
-    .map((event) => {
+    .map(event => {
       const subject = event.subject || 'Ohne Betreff'
       const start = event.start?.dateTime || event.start
       const end = event.end?.dateTime || event.end
@@ -156,7 +155,7 @@ async function fetchTodoistContext(server: StoredMcpServer, limit: number): Prom
   }
 
   const summary = tasks
-    .map((task) => {
+    .map(task => {
       const content = task.content || 'Aufgabe ohne Beschreibung'
       const due = task.due?.date || task.due?.datetime || 'kein Fälligkeitsdatum'
       return `• ${content} (fällig: ${due})`
@@ -232,7 +231,7 @@ async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promi
   }
 }
 
-async function fetchNuxtUIContext(server: StoredMcpServer, email: McpEmailContext, limit: number): Promise<McpContextResult | null> {
+async function fetchNuxtUIContext(server: StoredMcpServer, email: McpEmailContext, _limit: number): Promise<McpContextResult | null> {
   const baseUrl = server.url || 'https://ui.nuxt.com'
 
   // For Nuxt UI, we'll simulate a context by providing documentation links
@@ -275,14 +274,14 @@ async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContex
     headers.Authorization = `Basic ${credentials}`
   }
 
-  const response = await $fetch<{ summary?: string, details?: unknown }>(server.url, {
+  const response = await $fetch<{ summary?: string; details?: unknown }>(server.url, {
     method: 'POST',
     headers,
     body: {
       email,
       limit
     }
-  }).catch((error) => {
+  }).catch(error => {
     throw createError({ statusCode: 400, statusMessage: `Custom MCP Fehler: ${String(error)}` })
   })
 
@@ -305,15 +304,15 @@ function extractSearchTerms(text: string): string[] {
 export async function fetchMcpContext(
   server: StoredMcpServer,
   email: McpEmailContext,
-  options: { 
-    limit?: number
-    agentId?: string
+  options: {
+    limit?: number;
+    agentId?: string;
     agentEmail?: string
   } = {}
 ): Promise<McpContextResult | null> {
   const limit = normalizeLimit(options.limit)
   const startTime = Date.now()
-  
+
   try {
     let result: McpContextResult | null = null
     switch (server.provider) {
@@ -337,7 +336,7 @@ export async function fetchMcpContext(
     }
 
     await setMcpServerStatus(server.id, 'ok')
-    
+
     // Log MCP usage if agent information is provided
     if (options.agentId && options.agentEmail) {
       try {
@@ -370,12 +369,12 @@ export async function fetchMcpContext(
         console.error('Failed to log MCP usage:', logError)
       }
     }
-    
+
     return result
   } catch (error) {
     await setMcpServerStatus(server.id, 'error')
     console.error('MCP server error', server.id, error)
-    
+
     // Log failed MCP usage if agent information is provided
     if (options.agentId && options.agentEmail) {
       try {
@@ -409,12 +408,12 @@ export async function fetchMcpContext(
         console.error('Failed to log MCP usage error:', logError)
       }
     }
-    
+
     return null
   }
 }
 
-export async function testMcpConnection(server: StoredMcpServer): Promise<{ ok: boolean, summary?: string, error?: string }> {
+export async function testMcpConnection(server: StoredMcpServer): Promise<{ ok: boolean; summary?: string; error?: string }> {
   try {
     const context = await fetchMcpContext(server, {
       subject: 'Konfigurationstest',

@@ -15,9 +15,12 @@ export default withNuxt({
     'semi': ['error', 'never'],
     'comma-dangle': ['error', 'never'],
     'operator-linebreak': ['error', 'after', { overrides: { '?': 'before', ':': 'before' } }],
-    '@typescript-eslint/member-delimiter-style': ['error', {
+    '@stylistic/member-delimiter-style': ['error', {
       multiline: { delimiter: 'semi', requireLast: false },
       singleline: { delimiter: 'semi', requireLast: false }
-    }]
+    }],
+    '@typescript-eslint/no-explicit-any': 'off',
+    'arrow-parens': ['error', 'as-needed', { requireForBlockBody: false }],
+    '@stylistic/arrow-parens': ['error', 'as-needed', { requireForBlockBody: false }]
   }
 })

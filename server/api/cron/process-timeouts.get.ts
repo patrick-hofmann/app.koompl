@@ -10,7 +10,7 @@
 
 import { timeoutManager } from '../../utils/timeoutManager'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   // Optional: Add authentication/secret token to prevent unauthorized access
   const authHeader = getHeader(event, 'authorization')
   const cronSecret = process.env.CRON_SECRET
@@ -31,4 +31,3 @@ export default defineEventHandler(async (event) => {
     timestamp: new Date().toISOString()
   }
 })
-

@@ -1,14 +1,14 @@
 <script setup lang="ts">
-const props = defineProps<{ open: boolean, agentId: string | null }>()
+const props = defineProps<{ open: boolean; agentId: string | null }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
-const form = reactive<{ from: string, to: string, subject: string, text: string }>(
+const form = reactive<{ from: string; to: string; subject: string; text: string }>(
   { from: 'Tester <tester@example.com>', to: '', subject: 'Round-trip test', text: 'This is a round-trip test.' }
 )
 const loading = ref(false)
 const result = ref<Record<string, unknown> | null>(null)
 
-watch(() => props.agentId, (id) => {
+watch(() => props.agentId, id => {
   if (!id) return
   // Leave "to" empty to default to agent email on server; user can override
 }, { immediate: true })
@@ -18,7 +18,7 @@ async function runRoundTrip() {
   loading.value = true
   result.value = null
   try {
-    const res = await $fetch<{ ok: boolean, inboundSavedId?: string, outbound?: Record<string, unknown>, error?: string }>(`/api/agents/${props.agentId}/roundtrip`, {
+    const res = await $fetch<{ ok: boolean; inboundSavedId?: string; outbound?: Record<string, unknown>; error?: string }>(`/api/agents/${props.agentId}/roundtrip`, {
       method: 'POST',
       body: { from: form.from, to: form.to || undefined, subject: form.subject, text: form.text }
     })

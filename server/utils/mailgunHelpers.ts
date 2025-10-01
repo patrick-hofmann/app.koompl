@@ -27,17 +27,17 @@ export function determineMailgunDomain(configuredDomain: string | undefined, fro
 }
 
 type MailgunSendParams = {
-  endpointDomain: string
-  apiKey: string
-  from: string
-  to: string
-  subject: string
-  text: string
-  html?: string
+  endpointDomain: string;
+  apiKey: string;
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
   tracking?: boolean
 }
 
-type MailgunSendResponse = { id?: string, message?: string }
+type MailgunSendResponse = { id?: string; message?: string }
 
 /**
  * Send an email via Mailgun messages API
@@ -70,5 +70,3 @@ export async function sendMailgunMessage(params: MailgunSendParams): Promise<Mai
     body
   })
 }
-
-

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-const props = defineProps<{ open: boolean, agentId: string | null }>()
+const props = defineProps<{ open: boolean; agentId: string | null }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
-const form = reactive<{ subject: string, text: string }>({ subject: 'Test Email', text: 'Hello, this is a test.' })
+const form = reactive<{ subject: string; text: string }>({ subject: 'Test Email', text: 'Hello, this is a test.' })
 const loading = ref(false)
 const result = ref<string | null>(null)
 
@@ -11,7 +11,7 @@ async function runTest() {
   loading.value = true
   result.value = null
   try {
-    const res = await $fetch<{ ok: boolean, result?: string, error?: string }>(`/api/agents/${props.agentId}/test`, {
+    const res = await $fetch<{ ok: boolean; result?: string; error?: string }>(`/api/agents/${props.agentId}/test`, {
       method: 'POST',
       body: { subject: form.subject, text: form.text }
     })

@@ -1,7 +1,7 @@
 import type { Agent } from '~/types'
 import { createAgentStorage, updateAgentObject } from '../../utils/shared'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const agentStorage = createAgentStorage()
   const id = getRouterParam(event, 'id') as string
   const method = getMethod(event)

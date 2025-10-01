@@ -69,7 +69,7 @@ const items = computed<DropdownMenuItem[][]>(() => [[{
       slot: 'chip',
       checked: appConfig.ui.colors.primary === color,
       type: 'checkbox',
-      onSelect: (e) => {
+      onSelect: e => {
         e.preventDefault()
 
         appConfig.ui.colors.primary = color
@@ -89,7 +89,7 @@ const items = computed<DropdownMenuItem[][]>(() => [[{
       slot: 'chip',
       type: 'checkbox',
       checked: appConfig.ui.colors.neutral === color,
-      onSelect: (e) => {
+      onSelect: e => {
         e.preventDefault()
 
         appConfig.ui.colors.neutral = color

@@ -1,4 +1,4 @@
-export default defineEventHandler(async (_event) => {
+export default defineEventHandler(async _event => {
   const config = useRuntimeConfig()
   const apiKey = config.mailgun?.key
   if (!apiKey) {
@@ -20,7 +20,7 @@ export default defineEventHandler(async (_event) => {
       }
     })
   } catch (e: unknown) {
-    const err = e as { status?: number, response?: { status?: number } }
+    const err = e as { status?: number; response?: { status?: number } }
     const status = err?.status || err?.response?.status
     if (status === 401) {
       console.error('[domains.get] Unauthorized from Mailgun API (401). Likely invalid API key.')

@@ -4,20 +4,20 @@ import type { TableColumn } from '@nuxt/ui'
 import type { Period, Range } from '~/types'
 
 const props = defineProps<{
-  period: Period
-  range: Range
+  period: Period;
+  range: Range;
   direction?: 'received' | 'sent' | 'both'
 }>()
 
 const UBadge = resolveComponent('UBadge')
 
 type EmailActivity = {
-  id: string
-  date: string
-  status: string
-  direction: 'inbound' | 'outbound'
-  from: string
-  to: string
+  id: string;
+  date: string;
+  status: string;
+  direction: 'inbound' | 'outbound';
+  from: string;
+  to: string;
   subject: string
 }
 

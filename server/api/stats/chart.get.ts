@@ -1,6 +1,6 @@
 import { mailStorage } from '../../utils/mailStorage'
 
-export default defineEventHandler(async (_event) => {
+export default defineEventHandler(async _event => {
   const query = getQuery(_event)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const period = (query.period as string) || 'daily'
@@ -19,7 +19,7 @@ export default defineEventHandler(async (_event) => {
     const logs = await mailStorage.getRecentEmails(1000) // large buffer, we'll filter by date
     const seen = new Set<string>()
     const filtered = logs
-      .map((log) => {
+      .map(log => {
         const direction = log.type === 'outgoing' ? 'outbound' : 'inbound'
         const logDate = new Date(log.timestamp)
         if (!(logDate >= startDate && logDate <= endDate)) return null

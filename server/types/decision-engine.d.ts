@@ -1,16 +1,16 @@
 import type { AgentFlow, FlowDecision } from './agent-flows'
 
 export interface DecisionContext {
-  flow: AgentFlow
+  flow: AgentFlow;
   agent: {
-    id: string
-    name: string
-    email: string
-    prompt?: string
+    id: string;
+    name: string;
+    email: string;
+    prompt?: string;
     multiRoundConfig?: {
-      canCommunicateWithAgents?: boolean
+      canCommunicateWithAgents?: boolean;
       // legacy support; migration handled at runtime
-      allowedAgentIds?: string[]
+      allowedAgentIds?: string[];
       // preferred new field
       allowedAgentEmails?: string[]
     }
@@ -18,5 +18,3 @@ export interface DecisionContext {
 }
 
 export type DecisionResult = FlowDecision
-
-

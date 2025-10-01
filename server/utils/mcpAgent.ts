@@ -217,7 +217,7 @@ export class KoomplMcpAgent {
    * Create system prompt for the agent
    */
   private createSystemPrompt(agentPrompt: string, servers: StoredMcpServer[]): string {
-    const serverDescriptions = servers.map((server) => {
+    const serverDescriptions = servers.map(server => {
       const capabilities = this.getServerCapabilities(server)
       return `- ${server.name} (${server.provider}): ${server.description || 'No description'} - Capabilities: ${capabilities.join(', ')}`
     }).join('\n')

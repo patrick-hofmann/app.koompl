@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import type { FormSubmitEvent } from '@nuxt/ui'
 import { validateDomainPatterns } from '~/utils/domainMatcher'
 
 const schema = z.object({
@@ -23,7 +22,7 @@ onMounted(async () => {
 })
 
 // Validate domain patterns when they change
-watch(() => state.allowedDomains, (newValue) => {
+watch(() => state.allowedDomains, newValue => {
   if (newValue) {
     domainValidation.value = validateDomainPatterns(newValue)
   } else {

@@ -5,7 +5,7 @@
 
 import { agentFlowEngine } from '../../utils/agentFlowEngine'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const flowId = getRouterParam(event, 'id')
   const query = getQuery(event)
 

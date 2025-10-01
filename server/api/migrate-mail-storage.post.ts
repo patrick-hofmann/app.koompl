@@ -4,22 +4,22 @@
  */
 import { mailStorage } from '../utils/mailStorage'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async _event => {
   try {
     console.log('Starting mail storage migration...')
-    
+
     // Run the migration
     await mailStorage.migrateExistingData()
-    
+
     console.log('Mail storage migration completed successfully')
-    
+
     return {
       ok: true,
       message: 'Mail storage migration completed successfully'
     }
   } catch (error) {
     console.error('Mail storage migration failed:', error)
-    
+
     return {
       ok: false,
       error: String(error)

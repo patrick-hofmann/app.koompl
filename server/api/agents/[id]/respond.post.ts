@@ -1,10 +1,9 @@
 import type { Agent } from '~/types'
 import { listMcpServers } from '../../../utils/mcpStorage'
 import { fetchMcpContext, type McpContextResult } from '../../../utils/mcpClients'
-import { mailStorage } from '../../../utils/mailStorage'
 import { agentLogger } from '../../../utils/agentLogging'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     const id = getRouterParam(event, 'id') as string
     if (!id) {
@@ -15,17 +14,17 @@ export default defineEventHandler(async (event) => {
     const settingsStorage = useStorage('settings')
 
     const body = await readBody<{
-      subject?: string
-      text?: string
-      from?: string
-      includeQuote?: boolean
-      maxTokens?: number
-      temperature?: number
+      subject?: string;
+      text?: string;
+      from?: string;
+      includeQuote?: boolean;
+      maxTokens?: number;
+      temperature?: number;
       mcpContexts?: Array<{
-        serverId?: string
-        serverName?: string
-        provider?: string
-        category?: string
+        serverId?: string;
+        serverName?: string;
+        provider?: string;
+        category?: string;
         summary?: string
       }>
     }>(event)
@@ -101,7 +100,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Retrieve MCP context for this agent (fetched server-side)
-    let fetchedMcpContexts: McpContextResult[] = []
+    // const fetchedMcpContexts: McpContextResult[] = []
     try {
       const allServers = await listMcpServers()
       const selectedServers = Array.isArray(agent.mcpServerIds)
@@ -114,35 +113,36 @@ export default defineEventHandler(async (event) => {
           from,
           receivedAt: new Date().toISOString()
         }
-        const results = await Promise.allSettled(selectedServers.map(server => fetchMcpContext(server, emailContext, { 
+        const results = await Promise.allSettled(selectedServers.map(server => fetchMcpContext(server, emailContext, {
           limit: 5,
           agentId: agent.id,
           agentEmail: agent.email
         })))
-        fetchedMcpContexts = results
+        // fetchedMcpContexts =
+        results
           .filter((r): r is PromiseFulfilledResult<McpContextResult | null> => r.status === 'fulfilled')
           .map(r => r.value)
           .filter((v): v is McpContextResult => Boolean(v))
       }
     } catch {
       // keep going without MCP if it fails
-      fetchedMcpContexts = []
+      // fetchedMcpContexts = []
     }
 
     const messages = [
       agent.prompt ? { role: 'system', content: String(agent.prompt) } : null,
       { role: 'user', content: userContent }
-    ].filter(Boolean) as Array<{ role: string, content: string }>
+    ].filter(Boolean) as Array<{ role: string; content: string }>
 
     const aiStartTime = Date.now()
     let aiResult: string = ''
-    let aiTokens: { prompt?: number, completion?: number, total?: number } | undefined
+    let aiTokens: { prompt?: number; completion?: number; total?: number } | undefined
     let aiError: string | undefined
 
     try {
-      const res: { 
-        choices?: Array<{ message?: { content?: string } }>
-        usage?: { prompt_tokens?: number, completion_tokens?: number, total_tokens?: number }
+      const res: {
+        choices?: Array<{ message?: { content?: string } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
       } = await $fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -158,11 +158,13 @@ export default defineEventHandler(async (event) => {
       })
 
       aiResult = String(res?.choices?.[0]?.message?.content || '').trim()
-      aiTokens = res?.usage ? {
-        prompt: res.usage.prompt_tokens,
-        completion: res.usage.completion_tokens,
-        total: res.usage.total_tokens
-      } : undefined
+      aiTokens = res?.usage
+        ? {
+            prompt: res.usage.prompt_tokens,
+            completion: res.usage.completion_tokens,
+            total: res.usage.total_tokens
+          }
+        : undefined
     } catch (error) {
       aiError = error instanceof Error ? error.message : String(error)
       throw error

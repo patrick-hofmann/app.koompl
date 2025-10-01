@@ -1,6 +1,6 @@
 // import type { Team } from '~/types'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     const body = await readBody(event)
     const { teamId } = body
@@ -48,7 +48,7 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error: unknown) {
-    const err = error as { statusCode?: number, statusMessage?: string }
+    const err = error as { statusCode?: number; statusMessage?: string }
     throw createError({
       statusCode: err.statusCode || 500,
       statusMessage: err.statusMessage || 'Team switch failed'

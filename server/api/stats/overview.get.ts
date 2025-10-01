@@ -1,6 +1,6 @@
 import { mailStorage } from '../../utils/mailStorage'
 
-export default defineEventHandler(async (_event) => {
+export default defineEventHandler(async _event => {
   try {
     // Get agents count
     const agentsStorage = useStorage('agents')
@@ -35,7 +35,7 @@ export default defineEventHandler(async (_event) => {
       const logs = await mailStorage.getRecentEmails(1000)
       const seen = new Set<string>()
       const filtered = logs
-        .map((log) => {
+        .map(log => {
           const direction = log.type === 'outgoing' ? 'outbound' : 'inbound'
           const key = `${direction}:${log.messageId || log.storageKey || log.timestamp}`
           if (seen.has(key)) return null

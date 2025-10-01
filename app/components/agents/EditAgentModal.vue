@@ -2,12 +2,12 @@
 import type { Agent, McpServer } from '~/types'
 
 interface Props {
-  open: boolean
+  open: boolean;
   agent: Partial<Agent> | null
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  (e: 'update:open', value: boolean): void
+  (e: 'update:open', value: boolean): void;
   (e: 'saved'): void
 }>()
 
@@ -24,7 +24,7 @@ const local = reactive<Partial<Agent>>({
 })
 
 type StoredMcpServer = McpServer & {
-  createdAt: string
+  createdAt: string;
   updatedAt: string
 }
 
@@ -73,7 +73,7 @@ function resetLocal(next?: Partial<Agent> | null) {
       const oldIds = (local.multiRoundConfig as Record<string, unknown>).allowedAgentIds as string[]
       const allAgentsList = allAgents.value || []
       allowedEmails = oldIds
-        .map((id) => {
+        .map(id => {
           const agent = allAgentsList.find(a => a.id === id)
           return agent?.email
         })
@@ -122,7 +122,7 @@ function toggleAllowedAgent(agentEmail: string, checked: boolean) {
   }
 }
 
-watch(() => props.open, (isOpen) => {
+watch(() => props.open, isOpen => {
   if (isOpen) {
     resetLocal(props.agent)
     refreshMcp()

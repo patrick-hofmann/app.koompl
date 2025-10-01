@@ -5,7 +5,7 @@
 
 import { agentLogger } from '../../utils/agentLogging'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const query = getQuery(event)
   const type = String(query.type || 'all') as 'all' | 'mcp_usage' | 'ai_usage' | 'email_activity'
   const limit = Math.min(Math.max(parseInt(String(query.limit || '100'), 10) || 100, 1), 500)

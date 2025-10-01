@@ -1,6 +1,6 @@
 import { mailStorage } from '../../utils/mailStorage'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async _event => {
   try {
     // Get all logs from unified storage
     const allLogs = await mailStorage.getAllLogs()
@@ -23,11 +23,10 @@ export default defineEventHandler(async (event) => {
 
     // Get agents from storage
     const agentsStorage = useStorage('agents')
-    const agents =
-      (await agentsStorage.getItem<Array<{ id?: string; name?: string; email?: string }>>(
-        'agents.json'
-      )) || []
-    const existingAgentIds = agents.map((a) => a.id).filter(Boolean)
+    const agents = (await agentsStorage.getItem<Array<{ id?: string; name?: string; email?: string }>>(
+      'agents.json'
+    )) || []
+    const existingAgentIds = agents.map(a => a.id).filter(Boolean)
 
     return {
       totalLogs: allLogs.length,
@@ -38,8 +37,8 @@ export default defineEventHandler(async (event) => {
           agentId,
           {
             count: logs.length,
-            types: [...new Set(logs.map((l) => l.type))],
-            sample: logs.slice(0, 3).map((l) => ({
+            types: [...new Set(logs.map(l => l.type))],
+            sample: logs.slice(0, 3).map(l => ({
               id: l.id,
               type: l.type,
               timestamp: l.timestamp,

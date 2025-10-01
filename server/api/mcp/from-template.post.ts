@@ -1,9 +1,9 @@
 import { createMcpServer, getMcpServerTemplate } from '../../utils/mcpStorage'
 import type { McpServer } from '~/types'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
-    const body = await readBody<{ templateId: string, customizations?: Partial<McpServer> }>(event)
+    const body = await readBody<{ templateId: string; customizations?: Partial<McpServer> }>(event)
     const { templateId, customizations = {} } = body
 
     if (!templateId) {

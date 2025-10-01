@@ -3,33 +3,33 @@ import { nextTick, watch } from 'vue'
 import type { McpServer, McpProvider, McpCategory } from '~/types'
 
 type StoredMcpServer = McpServer & {
-  createdAt: string
-  updatedAt: string
-  lastStatus?: 'ok' | 'error' | 'unknown'
+  createdAt: string;
+  updatedAt: string;
+  lastStatus?: 'ok' | 'error' | 'unknown';
   lastCheckedAt?: string | null
 }
 
 type McpProviderPreset = {
-  id: McpProvider
-  category: McpCategory
-  defaultName: string
-  defaultDescription: string
-  defaultUrl?: string
+  id: McpProvider;
+  category: McpCategory;
+  defaultName: string;
+  defaultDescription: string;
+  defaultUrl?: string;
   defaultAuthType: McpServer['auth']['type']
 }
 
 type ProviderField = {
-  key: string
-  label: string
-  placeholder?: string
-  type?: 'text' | 'password'
+  key: string;
+  label: string;
+  placeholder?: string;
+  type?: 'text' | 'password';
   description?: string
 }
 
 const toast = useToast()
 
 const { data, pending, error, refresh } = await useAsyncData('mcp-servers', () =>
-  $fetch<{ servers: StoredMcpServer[], presets: McpProviderPreset[], templates: Array<{ id: string, name: string, description: string, provider: string, category: string, icon: string, color: string }> }>('/api/mcp'),
+  $fetch<{ servers: StoredMcpServer[]; presets: McpProviderPreset[]; templates: Array<{ id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }> }>('/api/mcp'),
 { server: false, lazy: true }
 )
 
@@ -192,7 +192,7 @@ function openEdit(server: StoredMcpServer) {
   })
 }
 
-watch(() => form.provider, (provider) => {
+watch(() => form.provider, provider => {
   if (skipPresetSync.value) return
   const preset = presetFor(provider)
   form.category = preset.category
@@ -293,7 +293,7 @@ async function saveServer() {
 
 async function testServer(server: StoredMcpServer) {
   try {
-    const result = await $fetch<{ ok: boolean, summary?: string, error?: string }>(`/api/mcp/${server.id}/test`, { method: 'POST' })
+    const result = await $fetch<{ ok: boolean; summary?: string; error?: string }>(`/api/mcp/${server.id}/test`, { method: 'POST' })
     if (result.ok) {
       toast.add({
         title: 'Verbindung erfolgreich',
@@ -355,7 +355,7 @@ async function openTemplateModal() {
   showTemplateModal.value = true
 }
 
-async function createFromTemplate(template: { id: string, name: string, description: string, provider: string, category: string, icon: string, color: string }) {
+async function createFromTemplate(template: { id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }) {
   if (isCreatingFromTemplate.value) return
 
   isCreatingFromTemplate.value = true

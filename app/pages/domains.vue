@@ -7,10 +7,10 @@ const errorMessage = ref<string | null>(null)
 const { data: domains, refresh } = await useAsyncData('mailgun-domains', async () => {
   errorMessage.value = null
   try {
-    const res = await $fetch<{ ok: boolean, error?: string, domains: { name: string, state: string, created_at: string }[] }>('/api/mailgun/domains')
+    const res = await $fetch<{ ok: boolean; error?: string; domains: { name: string; state: string; created_at: string }[] }>('/api/mailgun/domains')
     return res
   } catch (e: unknown) {
-    const err = e as { statusCode?: number, statusMessage?: string, data?: { error?: string } }
+    const err = e as { statusCode?: number; statusMessage?: string; data?: { error?: string } }
     const msg = err?.statusMessage || 'Failed to fetch Mailgun domains.'
     errorMessage.value = msg
     // Show toast for immediate visibility
@@ -24,7 +24,7 @@ const { data: domains, refresh } = await useAsyncData('mailgun-domains', async (
 const UButton = resolveComponent('UButton') as Component
 const UBadge = resolveComponent('UBadge') as Component
 
-const columns: TableColumn<{ name: string, state: string, created_at: string }>[] = [
+const columns: TableColumn<{ name: string; state: string; created_at: string }>[] = [
   {
     accessorKey: 'name',
     header: 'Domain',
@@ -67,8 +67,8 @@ const editOpen = ref(false)
 const deleteOpen = ref(false)
 const sendOpen = ref(false)
 const selectedDomain = ref<{
-  name?: string
-  smtp_password?: string
+  name?: string;
+  smtp_password?: string;
   spam_action?: string
 } | null>(null)
 

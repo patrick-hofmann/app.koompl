@@ -2,8 +2,8 @@
 import type { Period, Range, Stat } from '~/types'
 
 const props = defineProps<{
-  period: Period
-  range: Range
+  period: Period;
+  range: Range;
   direction?: 'received' | 'sent' | 'both'
 }>()
 
@@ -42,10 +42,10 @@ const { data: stats } = await useAsyncData<Stat[]>('dashboard-stats', async () =
   try {
     // Fetch real dashboard data
     const statsData = await $fetch<{
-      agents: { count: number, variation: number }
-      emails: { received: number, responded: number, variation: number }
-      domains: { active: number, total: number, variation: number }
-      successRate: { percentage: number, variation: number }
+      agents: { count: number; variation: number };
+      emails: { received: number; responded: number; variation: number };
+      domains: { active: number; total: number; variation: number };
+      successRate: { percentage: number; variation: number }
     }>('/api/stats/overview', {
       query: {
         period: props.period,

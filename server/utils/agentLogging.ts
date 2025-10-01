@@ -1,6 +1,6 @@
 /**
  * Comprehensive Agent Activity Logging
- * 
+ *
  * This module provides detailed logging for agent activities including:
  * - MCP server usage (input/output)
  * - AI API usage (input/output)
@@ -8,7 +8,6 @@
  * - General agent actions
  */
 
-import type { Agent } from '~/types'
 import type { AgentLogEntry, McpUsageLog, AiUsageLog, EmailActivityLog } from '../types/agent-logging'
 
 export class AgentLogger {
@@ -18,24 +17,24 @@ export class AgentLogger {
    * Log MCP server usage
    */
   async logMcpUsage(data: {
-    agentId: string
-    agentEmail: string
-    serverId: string
-    serverName: string
-    provider: string
-    category: string
+    agentId: string;
+    agentEmail: string;
+    serverId: string;
+    serverName: string;
+    provider: string;
+    category: string;
     input: {
-      query: string
-      context?: Record<string, unknown>
+      query: string;
+      context?: Record<string, unknown>;
       parameters?: Record<string, unknown>
-    }
+    };
     output: {
-      result: unknown
-      success: boolean
+      result: unknown;
+      success: boolean;
       error?: string
-    }
+    };
     metadata?: {
-      responseTime?: number
+      responseTime?: number;
       contextCount?: number
     }
   }): Promise<McpUsageLog> {
@@ -65,28 +64,28 @@ export class AgentLogger {
    * Log AI API usage
    */
   async logAiUsage(data: {
-    agentId: string
-    agentEmail: string
-    provider: 'openai'
-    model: string
+    agentId: string;
+    agentEmail: string;
+    provider: 'openai';
+    model: string;
     input: {
-      messages: Array<{ role: string, content: string }>
-      temperature?: number
+      messages: Array<{ role: string; content: string }>;
+      temperature?: number;
       maxTokens?: number
-    }
+    };
     output: {
-      result: string
-      success: boolean
-      error?: string
+      result: string;
+      success: boolean;
+      error?: string;
       tokens?: {
-        prompt?: number
-        completion?: number
+        prompt?: number;
+        completion?: number;
         total?: number
       }
-    }
+    };
     metadata?: {
-      responseTime?: number
-      promptLength?: number
+      responseTime?: number;
+      promptLength?: number;
       responseLength?: number
     }
   }): Promise<AiUsageLog> {
@@ -114,19 +113,19 @@ export class AgentLogger {
    * Log email activity
    */
   async logEmailActivity(data: {
-    agentId: string
-    agentEmail: string
-    direction: 'inbound' | 'outbound'
+    agentId: string;
+    agentEmail: string;
+    direction: 'inbound' | 'outbound';
     email: {
-      messageId: string
-      from: string
-      to: string
-      subject: string
+      messageId: string;
+      from: string;
+      to: string;
+      subject: string;
       body: string
-    }
+    };
     metadata?: {
-      mailgunSent?: boolean
-      isAutomatic?: boolean
+      mailgunSent?: boolean;
+      isAutomatic?: boolean;
       mcpContextCount?: number
     }
   }): Promise<EmailActivityLog> {
@@ -186,12 +185,12 @@ export class AgentLogger {
   private async addLogEntry(entry: AgentLogEntry): Promise<void> {
     const allLogs = await this.getAllLogs()
     allLogs.push(entry)
-    
+
     // Keep only the most recent 5000 entries to prevent storage bloat
     const sortedLogs = allLogs
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 5000)
-    
+
     await this.storage.setItem('agent-activity-logs.json', sortedLogs)
   }
 

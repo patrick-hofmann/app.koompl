@@ -2,14 +2,14 @@
 // import type { SelectItem } from '@nuxt/ui'
 
 interface Props {
-  open: boolean
-  domain: { name?: string, smtp_password?: string, spam_action?: string } | null
+  open: boolean;
+  domain: { name?: string; smtp_password?: string; spam_action?: string } | null;
   mode?: 'add' | 'edit'
 }
 const props = withDefaults(defineProps<Props>(), { mode: 'add' })
-const emit = defineEmits<{ (e: 'update:open', v: boolean): void, (e: 'saved'): void }>()
+const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'saved'): void }>()
 
-const local = reactive<{ name?: string, smtp_password?: string, spam_action?: string }>({})
+const local = reactive<{ name?: string; smtp_password?: string; spam_action?: string }>({})
 
 // const spamActionItems: SelectItem[] = [
 //   { label: 'Disabled', value: '' },
@@ -17,7 +17,7 @@ const local = reactive<{ name?: string, smtp_password?: string, spam_action?: st
 //   { label: 'Disabled (block)', value: 'disabled' }
 // ]
 
-watch(() => props.open, (isOpen) => {
+watch(() => props.open, isOpen => {
   if (isOpen) {
     Object.assign(local, props.domain || {})
     if (local.spam_action === undefined || local.spam_action === null) {

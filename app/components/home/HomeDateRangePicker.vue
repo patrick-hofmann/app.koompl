@@ -30,7 +30,7 @@ const calendarRange = computed({
     start: selected.value.start ? toCalendarDate(selected.value.start) : undefined,
     end: selected.value.end ? toCalendarDate(selected.value.end) : undefined
   }),
-  set: (newValue: { start: CalendarDate | null, end: CalendarDate | null }) => {
+  set: (newValue: { start: CalendarDate | null; end: CalendarDate | null }) => {
     selected.value = {
       start: newValue.start ? newValue.start.toDate(getLocalTimeZone()) : new Date(),
       end: newValue.end ? newValue.end.toDate(getLocalTimeZone()) : new Date()
@@ -38,7 +38,7 @@ const calendarRange = computed({
   }
 })
 
-const isRangeSelected = (range: { days?: number, months?: number, years?: number }) => {
+const isRangeSelected = (range: { days?: number; months?: number; years?: number }) => {
   if (!selected.value.start || !selected.value.end) return false
 
   const currentDate = today(getLocalTimeZone())
@@ -58,7 +58,7 @@ const isRangeSelected = (range: { days?: number, months?: number, years?: number
   return selectedStart.compare(startDate) === 0 && selectedEnd.compare(currentDate) === 0
 }
 
-const selectRange = (range: { days?: number, months?: number, years?: number }) => {
+const selectRange = (range: { days?: number; months?: number; years?: number }) => {
   const endDate = today(getLocalTimeZone())
   let startDate = endDate.copy()
 

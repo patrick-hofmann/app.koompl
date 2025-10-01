@@ -14,7 +14,7 @@ const { data: agent, refresh } = await useAsyncData(() => `agent-${agentId.value
 const { data: emailData, pending: emailsPending, refresh: refreshEmails } = await useAsyncData(
   () => `agent-emails-${agentId.value}`,
   async () => {
-    const res = await $fetch<{ incoming: Mail[], outgoing: Mail[] }>(`/api/agents/${agentId.value}/emails`)
+    const res = await $fetch<{ incoming: Mail[]; outgoing: Mail[] }>(`/api/agents/${agentId.value}/emails`)
     return res
   },
   { server: false, lazy: true }
@@ -49,44 +49,44 @@ const combinedMails = computed<Mail[]>(() => {
 
 // Comprehensive agent activity logs (MCP, AI, Email)
 type AgentLogEntry = {
-  id: string
-  timestamp: string
-  agentId: string
-  agentEmail: string
-  type: 'mcp_usage' | 'ai_usage' | 'email_activity'
+  id: string;
+  timestamp: string;
+  agentId: string;
+  agentEmail: string;
+  type: 'mcp_usage' | 'ai_usage' | 'email_activity';
   // MCP usage fields
-  serverId?: string
-  serverName?: string
-  provider?: string
-  category?: string
+  serverId?: string;
+  serverName?: string;
+  provider?: string;
+  category?: string;
   input?: {
-    query: string
-    context?: Record<string, unknown>
+    query: string;
+    context?: Record<string, unknown>;
     parameters?: Record<string, unknown>
-  }
+  };
   output?: {
-    result: unknown
-    success: boolean
+    result: unknown;
+    success: boolean;
     error?: string
-  }
+  };
   metadata?: {
-    responseTime?: number
+    responseTime?: number;
     contextCount?: number
-  }
+  };
   // AI usage fields
-  model?: string
+  model?: string;
   tokens?: {
-    prompt?: number
-    completion?: number
+    prompt?: number;
+    completion?: number;
     total?: number
-  }
+  };
   // Email activity fields
-  direction?: 'inbound' | 'outbound'
+  direction?: 'inbound' | 'outbound';
   email?: {
-    messageId: string
-    from: string
-    to: string
-    subject: string
+    messageId: string;
+    from: string;
+    to: string;
+    subject: string;
     body: string
   }
 }
@@ -94,7 +94,7 @@ type AgentLogEntry = {
 const { data: logsData, pending: logsPending, refresh: refreshLogs } = await useAsyncData(
   () => `agent-activity-logs-${agentId.value}`,
   async () => {
-    const res = await $fetch<{ ok: boolean, count: number, logs: AgentLogEntry[] }>(`/api/agents/${agentId.value}/logs`, {
+    const res = await $fetch<{ ok: boolean; count: number; logs: AgentLogEntry[] }>(`/api/agents/${agentId.value}/logs`, {
       query: { type: 'all', limit: 200 }
     })
     return res.logs || []
@@ -137,15 +137,15 @@ async function clearEmails() {
   if (!confirm('Are you sure you want to clear all emails for this agent? This action cannot be undone.')) {
     return
   }
-  
+
   clearingEmails.value = true
   try {
     const result = await $fetch(`/api/agents/${agentId.value}/clear-emails`, { method: 'POST' })
     console.log('Emails cleared:', result)
-    
+
     // Refresh the email data
     await refreshEmails()
-    
+
     // Show success message
     const toast = useToast()
     toast.add({
@@ -170,15 +170,15 @@ async function clearLogs() {
   if (!confirm('Are you sure you want to clear all logs for this agent? This action cannot be undone.')) {
     return
   }
-  
+
   clearingLogs.value = true
   try {
     const result = await $fetch(`/api/agents/${agentId.value}/clear-logs`, { method: 'POST' })
     console.log('Logs cleared:', result)
-    
+
     // Refresh the logs data
     await refreshLogs()
-    
+
     // Show success message
     const toast = useToast()
     toast.add({
@@ -203,16 +203,16 @@ async function clearAll() {
   if (!confirm('Are you sure you want to clear ALL emails and logs for this agent? This action cannot be undone.')) {
     return
   }
-  
+
   clearingAll.value = true
   try {
     const result = await $fetch(`/api/agents/${agentId.value}/clear-all`, { method: 'POST' })
     console.log('All data cleared:', result)
-    
+
     // Refresh both email and logs data
     await refreshEmails()
     await refreshLogs()
-    
+
     // Show success message
     const toast = useToast()
     toast.add({
@@ -244,10 +244,10 @@ async function clearAll() {
         <div class="flex items-center gap-2">
           <UAvatar v-bind="agent?.avatar" size="sm" />
           <UBadge variant="subtle">{{ agent?.role }}</UBadge>
-          <UButton 
-            icon="i-lucide-trash-2" 
-            color="red" 
-            variant="outline" 
+          <UButton
+            icon="i-lucide-trash-2"
+            color="red"
+            variant="outline"
             :loading="clearingAll"
             @click="clearAll"
           >

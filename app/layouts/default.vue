@@ -125,7 +125,7 @@ const groups = computed(() => [{
 }])
 
 // Show cookie consent only for logged in users
-watch(loggedIn, async (isLoggedIn) => {
+watch(loggedIn, async isLoggedIn => {
   if (!isLoggedIn) {
     return
   }

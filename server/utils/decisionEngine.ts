@@ -30,7 +30,7 @@ export class DecisionEngine {
       console.log(`[DecisionEngine] ✓ Decision made: ${decision.type.toUpperCase()}`)
       console.log(`[DecisionEngine]   Reasoning: ${decision.reasoning}`)
       console.log(`[DecisionEngine]   Confidence: ${(decision.confidence * 100).toFixed(0)}%`)
-      
+
       if (decision.type === 'wait_for_agent' && decision.targetAgent) {
         console.log(`[DecisionEngine]   → Will contact agent: ${decision.targetAgent.agentEmail || decision.targetAgent.agentId}`)
         console.log(`[DecisionEngine]   → Subject: ${decision.targetAgent.messageSubject}`)
@@ -40,7 +40,7 @@ export class DecisionEngine {
       } else if (decision.type === 'wait_for_mcp' && decision.mcpCall) {
         console.log(`[DecisionEngine]   → Will call MCP: ${decision.mcpCall.serverId}`)
       } else if (decision.type === 'fail') {
-        console.log(`[DecisionEngine]   ✗ Flow will fail`)
+        console.log('[DecisionEngine]   ✗ Flow will fail')
       }
 
       return decision
@@ -302,7 +302,7 @@ Notes:
           .replace(/^(Hallo|Hello|Hi|Liebe|Dear)\s+\w+,?\s*/i, '')
           .replace(/^(Viele Grüße|Best regards|Thanks|Thank you),?\s*$/i, '')
           .trim()
-        
+
         information.push(`Agent ${msg.from} provided: ${cleanBody.substring(0, 300)}${cleanBody.length > 300 ? '...' : ''}`)
       }
 
@@ -336,13 +336,13 @@ Notes:
     if (allowedEmails.length === 0 && (multiRoundConfig as Record<string, unknown>).allowedAgentIds) {
       const agentsStorage = useStorage('agents')
       const allAgents = await agentsStorage.getItem<Array<{
-        id?: string
+        id?: string;
         email?: string
       }>>('agents.json') || []
 
       const oldIds = (multiRoundConfig as Record<string, unknown>).allowedAgentIds as string[]
       allowedEmails = oldIds
-        .map((id) => {
+        .map(id => {
           const foundAgent = allAgents.find(a => a?.id === id)
           return foundAgent?.email
         })
@@ -355,22 +355,21 @@ Notes:
       // If no specific agents configured, load all agents except current one
       const agentsStorage = useStorage('agents')
       const allAgents = await agentsStorage.getItem<Array<{
-        id?: string
-        name?: string
-        email?: string
+        id?: string;
+        name?: string;
+        email?: string;
         role?: string
       }>>('agents.json') || []
-      
-      const otherAgents = allAgents.filter(a => 
-        a?.email && 
-        a.email.toLowerCase() !== agent.email.toLowerCase()
+
+      const otherAgents = allAgents.filter(a =>
+        a?.email && a.email.toLowerCase() !== agent.email.toLowerCase()
       )
-      
+
       if (otherAgents.length === 0) {
         return 'You can communicate with other agents, but no other agents are available.'
       }
-      
-      return otherAgents.map(a => 
+
+      return otherAgents.map(a =>
         `- ${a.email} (${a.name} - ${a.role || 'Agent'})`
       ).join('\n')
     }
@@ -378,21 +377,21 @@ Notes:
     // Load details for allowed agents
     const agentsStorage = useStorage('agents')
     const allAgents = await agentsStorage.getItem<Array<{
-      id?: string
-      name?: string
-      email?: string
+      id?: string;
+      name?: string;
+      email?: string;
       role?: string
     }>>('agents.json') || []
-    
-    const allowedAgents = allAgents.filter(a => 
+
+    const allowedAgents = allAgents.filter(a =>
       a?.email && allowedEmails.includes(a.email.toLowerCase())
     )
-    
+
     if (allowedAgents.length === 0) {
       return 'Configured agents not found.'
     }
-    
-    return allowedAgents.map(a => 
+
+    return allowedAgents.map(a =>
       `- ${a.email} (${a.name} - ${a.role || 'Agent'})`
     ).join('\n')
   }

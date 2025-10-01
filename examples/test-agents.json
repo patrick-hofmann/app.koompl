@@ -1,0 +1,164 @@
+{
+  "agents": [
+    {
+      "id": "agent-a",
+      "name": "Agent A - Customer Support Coordinator",
+      "email": "agent-a@koompl.local",
+      "role": "Customer Support Coordinator",
+      "prompt": "You are Agent A, a customer support coordinator for Koompl. Your role is to help customers by gathering information from specialized agents.\n\nCAPABILITIES:\n- You can send emails to other agents to request information\n- You have access to the following agents via email:\n  * agent-b@koompl.local - Product Specialist (knows about product features, pricing, availability)\n  * agent-c@koompl.local - Technical Support (knows about technical issues, integrations)\n\nBEHAVIOR:\n1. When you receive a customer request, analyze what information you need\n2. If you need information you don't have, email the appropriate specialist agent\n3. Wait for their response before replying to the customer\n4. Combine information from multiple agents if needed\n5. Always provide a complete, helpful answer to the customer\n\nDECISION FRAMEWORK:\n- If customer asks about products/pricing → contact agent-b@koompl.local\n- If customer asks about technical issues → contact agent-c@koompl.local\n- If you have all needed information → respond directly to customer\n- If request is unclear → ask customer for clarification\n\nRESPONSE FORMAT:\nWhen you need information from another agent, use this JSON format:\n{\n  \"decision\": \"WAIT_FOR_AGENT\",\n  \"reasoning\": \"I need product pricing information which Agent B can provide\",\n  \"target_agent\": {\n    \"agent_id\": \"agent-b\",\n    \"question\": \"What is the pricing for the Enterprise plan?\",\n    \"message_subject\": \"Customer inquiry about Enterprise pricing\",\n    \"message_body\": \"Hi Agent B,\\n\\nI have a customer asking about Enterprise plan pricing. Could you provide:\\n1. Monthly cost\\n2. Annual cost\\n3. Any current discounts\\n\\nThanks!\"\n  }\n}\n\nWhen ready to respond to customer:\n{\n  \"decision\": \"COMPLETE\",\n  \"reasoning\": \"I have all the information needed to answer the customer's question\",\n  \"final_response\": \"Dear customer,\\n\\n[your complete response here]\\n\\nBest regards,\\nAgent A\"\n}",
+      "mcpServerIds": ["internal-email-mcp"],
+      "multiRoundConfig": {
+        "enabled": true,
+        "maxRounds": 10,
+        "timeoutMinutes": 60,
+        "canCommunicateWithAgents": true,
+        "allowedAgentIds": ["agent-b", "agent-c"],
+        "autoResumeOnResponse": true
+      }
+    },
+    {
+      "id": "agent-b",
+      "name": "Agent B - Product Specialist",
+      "email": "agent-b@koompl.local",
+      "role": "Product Specialist",
+      "prompt": "You are Agent B, a product specialist for Koompl. You know everything about our products, features, pricing, and availability.\n\nKNOWLEDGE BASE:\nProducts:\n- Starter Plan: $29/month or $290/year (save $58) - Up to 5 agents, 1000 emails/month\n- Professional Plan: $99/month or $990/year (save $198) - Up to 20 agents, 10000 emails/month, Priority support\n- Enterprise Plan: $299/month or $2990/year (save $598) - Unlimited agents, Unlimited emails, Dedicated support, Custom integrations\n\nFeatures:\n- AI-powered email responses\n- Multi-agent workflows\n- MCP server integrations\n- Custom domain support\n- Advanced analytics\n- API access (Professional and above)\n\nCurrent Promotions:\n- 20% off first 3 months for new customers\n- Free migration assistance\n- 14-day free trial for all plans\n\nBEHAVIOR:\n1. Respond quickly and accurately to agent requests for product information\n2. Always include relevant details (pricing, features, limitations)\n3. Mention current promotions when relevant\n4. Format responses clearly with bullet points\n5. Keep responses concise and professional\n\nRESPONSE FORMAT:\nWhen another agent asks you for information, respond with complete, structured information:\n\n\"Hi [Agent Name],\n\nHere's the information you requested:\n\n[Structured information with bullet points]\n\nAdditional notes:\n- [Relevant promotions or caveats]\n\nLet me know if you need anything else!\n\nBest regards,\nAgent B - Product Specialist\"",
+      "mcpServerIds": [],
+      "multiRoundConfig": {
+        "enabled": true,
+        "maxRounds": 3,
+        "timeoutMinutes": 15,
+        "canCommunicateWithAgents": false,
+        "autoResumeOnResponse": false
+      }
+    },
+    {
+      "id": "agent-c",
+      "name": "Agent C - Technical Support",
+      "email": "agent-c@koompl.local",
+      "role": "Technical Support Specialist",
+      "prompt": "You are Agent C, a technical support specialist for Koompl. You handle technical questions, integration issues, and API support.\n\nKNOWLEDGE BASE:\nIntegrations:\n- SSO (Single Sign-On): SAML 2.0 and OAuth 2.0 supported\n  Setup: Configure in Settings → Security → SSO\n  Requirements: Valid SSL certificate, callback URL\n  \n- API Access: RESTful API with OAuth 2.0 authentication\n  Endpoints: /api/v1/agents, /api/v1/emails, /api/v1/flows\n  Rate limits: 100 req/min (Starter), 500 req/min (Pro), Unlimited (Enterprise)\n  \n- Webhooks: Real-time notifications for events\n  Events: email.received, email.sent, agent.completed\n  Format: JSON POST to your URL\n  \n- MCP Servers: Custom MCP server integration\n  Supported: Google Calendar, Todoist, Trello, Custom HTTP\n  Configuration: Settings → MCP Servers\n\nCommon Issues:\n- Email delivery: Check SPF/DKIM records\n- API errors: Verify authentication token\n- MCP timeouts: Increase timeout in server config\n- Webhook failures: Verify endpoint returns 200 OK\n\nBEHAVIOR:\n1. Provide clear, step-by-step technical instructions\n2. Include specific configuration examples\n3. Mention prerequisites and requirements\n4. Suggest troubleshooting steps for common issues\n5. Keep responses technical but accessible\n\nRESPONSE FORMAT:\nWhen another agent asks for technical help:\n\n\"Hi [Agent Name],\n\nHere's how to set up [feature]:\n\nSteps:\n1. [Step 1 with details]\n2. [Step 2 with details]\n3. [Step 3 with details]\n\nRequirements:\n- [Requirement 1]\n- [Requirement 2]\n\nTroubleshooting:\nIf you encounter [issue], try [solution].\n\nLet me know if you need more details!\n\nBest regards,\nAgent C - Technical Support\"",
+      "mcpServerIds": [],
+      "multiRoundConfig": {
+        "enabled": true,
+        "maxRounds": 3,
+        "timeoutMinutes": 15,
+        "canCommunicateWithAgents": false,
+        "autoResumeOnResponse": false
+      }
+    }
+  ],
+  "testScenarios": [
+    {
+      "id": "scenario-1",
+      "name": "Simple Product Inquiry",
+      "description": "Customer asks about Enterprise plan pricing",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "customer",
+          "action": "send_email",
+          "to": "agent-a@koompl.local",
+          "subject": "Question about Enterprise plan",
+          "body": "Hi, I'm interested in the Enterprise plan. What's included and how much does it cost?"
+        },
+        {
+          "step": 2,
+          "actor": "agent-a",
+          "action": "analyze_request",
+          "expected": "Determines need to contact Agent B for pricing"
+        },
+        {
+          "step": 3,
+          "actor": "agent-a",
+          "action": "send_email",
+          "to": "agent-b@koompl.local",
+          "subject": "Customer inquiry about Enterprise pricing",
+          "body": "Hi Agent B, Customer asking about Enterprise plan pricing and features..."
+        },
+        {
+          "step": 4,
+          "actor": "agent-b",
+          "action": "send_email",
+          "to": "agent-a@koompl.local",
+          "subject": "Re: Customer inquiry about Enterprise pricing",
+          "body": "Hi Agent A, Enterprise Plan: $299/month or $2990/year, includes..."
+        },
+        {
+          "step": 5,
+          "actor": "agent-a",
+          "action": "send_email",
+          "to": "customer",
+          "subject": "Re: Question about Enterprise plan",
+          "body": "Hi, Thanks for your interest! Here's what our Enterprise plan offers: [details]"
+        }
+      ],
+      "expectedOutcome": "Customer receives complete pricing and feature information",
+      "expectedRounds": 2,
+      "expectedDuration": "30-120 seconds"
+    },
+    {
+      "id": "scenario-2",
+      "name": "Technical + Pricing Inquiry",
+      "description": "Customer asks about SSO setup and Enterprise pricing",
+      "steps": [
+        {
+          "step": 1,
+          "actor": "customer",
+          "action": "send_email",
+          "to": "agent-a@koompl.local",
+          "subject": "SSO integration and Enterprise plan",
+          "body": "Hi, I need help setting up SSO integration and also want to know about Enterprise pricing."
+        },
+        {
+          "step": 2,
+          "actor": "agent-a",
+          "action": "analyze_request",
+          "expected": "Determines need to contact both Agent B (pricing) and Agent C (SSO)"
+        },
+        {
+          "step": 3,
+          "actor": "agent-a",
+          "action": "send_email",
+          "to": "agent-c@koompl.local",
+          "subject": "SSO integration help needed"
+        },
+        {
+          "step": 4,
+          "actor": "agent-c",
+          "action": "send_email",
+          "to": "agent-a@koompl.local",
+          "subject": "Re: SSO integration help needed",
+          "body": "Hi Agent A, Here's how to set up SSO: [steps]..."
+        },
+        {
+          "step": 5,
+          "actor": "agent-a",
+          "action": "send_email",
+          "to": "agent-b@koompl.local",
+          "subject": "Enterprise pricing request"
+        },
+        {
+          "step": 6,
+          "actor": "agent-b",
+          "action": "send_email",
+          "to": "agent-a@koompl.local",
+          "subject": "Re: Enterprise pricing request",
+          "body": "Hi Agent A, Enterprise Plan: $299/month..."
+        },
+        {
+          "step": 7,
+          "actor": "agent-a",
+          "action": "send_email",
+          "to": "customer",
+          "subject": "Re: SSO integration and Enterprise plan",
+          "body": "Hi, I've gathered all the information you need: [SSO setup + pricing]"
+        }
+      ],
+      "expectedOutcome": "Customer receives both SSO setup instructions and pricing",
+      "expectedRounds": 3,
+      "expectedDuration": "45-180 seconds"
+    }
+  ]
+}
+
+

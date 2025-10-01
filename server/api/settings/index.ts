@@ -1,4 +1,4 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const storage = useStorage('settings')
   const method = getMethod(event)
 

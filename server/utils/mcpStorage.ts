@@ -10,10 +10,10 @@ const VALID_PROVIDERS: McpProvider[] = ['google-calendar', 'microsoft-outlook', 
 const VALID_CATEGORIES: McpCategory[] = ['calendar', 'todo', 'project', 'documentation', 'custom']
 
 const PROVIDER_PRESETS: Record<McpProvider, {
-  category: McpCategory
-  defaultName: string
-  defaultDescription: string
-  defaultUrl?: string
+  category: McpCategory;
+  defaultName: string;
+  defaultDescription: string;
+  defaultUrl?: string;
   defaultAuthType: McpServer['auth']['type']
 }> = {
   'google-calendar': {

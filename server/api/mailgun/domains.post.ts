@@ -1,11 +1,11 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const config = useRuntimeConfig()
   const apiKey = config.mailgun?.key
   if (!apiKey) {
     throw createError({ statusCode: 400, statusMessage: 'Missing Mailgun API key' })
   }
 
-  const body = await readBody<{ name?: string, smtp_password?: string, spam_action?: string }>(event)
+  const body = await readBody<{ name?: string; smtp_password?: string; spam_action?: string }>(event)
   if (!body?.name) {
     throw createError({ statusCode: 400, statusMessage: 'Missing domain name' })
   }

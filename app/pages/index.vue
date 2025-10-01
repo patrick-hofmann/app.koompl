@@ -57,7 +57,8 @@ const direction = ref<'received' | 'sent' | 'both'>('both')
           <HomeDateRangePicker v-model="range" class="-ms-1" />
 
           <HomePeriodSelect v-model="period" :range="range" />
-          <USelect v-model="direction" :items="[
+          <USelect
+v-model="direction" :items="[
             { label: 'Both', value: 'both' },
             { label: 'Received', value: 'received' },
             { label: 'Sent', value: 'sent' }

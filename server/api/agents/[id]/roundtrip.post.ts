@@ -1,4 +1,4 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     const id = getRouterParam(event, 'id') as string
     if (!id) {
@@ -8,10 +8,10 @@ export default defineEventHandler(async (event) => {
     const agentsStorage = useStorage('agents')
 
     const body = await readBody<{
-      from?: string
-      to?: string
-      subject?: string
-      text?: string
+      from?: string;
+      to?: string;
+      subject?: string;
+      text?: string;
       html?: string
     }>(event)
 
@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
     const base = getRequestURL(event)
     const origin = `${base.protocol}//${base.host}`
 
-    const res = await $fetch<{ ok: boolean, id?: string }>(`${origin}/api/mailgun/inbound`, {
+    const res = await $fetch<{ ok: boolean; id?: string }>(`${origin}/api/mailgun/inbound`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

@@ -6,13 +6,13 @@ import type { Period, Range } from '~/types'
 const cardRef = useTemplateRef<HTMLElement | null>('cardRef')
 
 const props = defineProps<{
-  period: Period
-  range: Range
+  period: Period;
+  range: Range;
   direction?: 'received' | 'sent' | 'both'
 }>()
 
 type DataRecord = {
-  date: Date
+  date: Date;
   emails: number
 }
 
@@ -44,13 +44,13 @@ watch([() => props.period, () => props.range, () => props.direction], async () =
   // Get emails data from API
   try {
     const emailsData = await $fetch<{
-      emails: { received: number, responded: number }
+      emails: { received: number; responded: number };
       emailData: Array<{
-        timestamp: string
-        usedOpenAI: boolean
-        mailgunSent: boolean
+        timestamp: string;
+        usedOpenAI: boolean;
+        mailgunSent: boolean;
         domainFiltered: boolean
-      }>
+      }>;
       timestamp: number
     }>('/api/stats/chart', {
       query: {
@@ -76,7 +76,7 @@ watch([() => props.period, () => props.range, () => props.direction], async () =
       // Group emails by date based on the period
       const emailByDate = new Map<string, number>()
 
-      emailActivity.forEach((email) => {
+      emailActivity.forEach(email => {
         const emailDate = new Date(email.timestamp)
         const keyDate = formatDateForPeriod(emailDate, props.period)
 
@@ -84,7 +84,7 @@ watch([() => props.period, () => props.range, () => props.direction], async () =
       })
 
       // Build chart data based on dates
-      data.value = dates.map((date) => {
+      data.value = dates.map(date => {
         const keyDate = formatDateForPeriod(date, props.period)
         const emailsOnThisDate = emailByDate.get(keyDate) || 0
 

@@ -15,15 +15,15 @@ export class UnifiedMailStorage {
    * Store an inbound email (from Mailgun webhook)
    */
   async storeInboundEmail(data: {
-    messageId: string
-    from: string
-    to: string
-    subject: string
-    body: string
-    html?: string
-    agentId?: string
-    agentEmail?: string
-    mcpContexts?: unknown[]
+    messageId: string;
+    from: string;
+    to: string;
+    subject: string;
+    body: string;
+    html?: string;
+    agentId?: string;
+    agentEmail?: string;
+    mcpContexts?: unknown[];
     rawPayload?: Record<string, unknown>
   }): Promise<InboundEmail> {
     const id = `inbound-${data.messageId}`
@@ -71,9 +71,9 @@ export class UnifiedMailStorage {
    * Update inbound email after agent resolution without creating a duplicate log entry
    */
   async updateInboundEmailContext(data: {
-    messageId: string
-    agentId?: string
-    agentEmail?: string
+    messageId: string;
+    agentId?: string;
+    agentEmail?: string;
     mcpContexts?: unknown[]
   }): Promise<void> {
     const id = `inbound-${data.messageId}`
@@ -113,17 +113,17 @@ export class UnifiedMailStorage {
    * Store an outbound email (agent response)
    */
   async storeOutboundEmail(data: {
-    messageId: string
-    from: string
-    to: string
-    subject: string
-    body: string
-    agentId: string
-    agentEmail: string
-    usedOpenAI: boolean
-    mailgunSent: boolean
-    mcpServerIds?: string[]
-    mcpContextCount?: number
+    messageId: string;
+    from: string;
+    to: string;
+    subject: string;
+    body: string;
+    agentId: string;
+    agentEmail: string;
+    usedOpenAI: boolean;
+    mailgunSent: boolean;
+    mcpServerIds?: string[];
+    mcpContextCount?: number;
     isAutomatic?: boolean // true for automatic responses, false for manual responses
   }): Promise<OutboundEmail> {
     const id = `outbound-${data.messageId}`
@@ -174,7 +174,7 @@ export class UnifiedMailStorage {
   /**
    * Get all emails for a specific agent
    */
-  async getAgentEmails(agentId: string): Promise<{ incoming: Mail[], outgoing: Mail[] }> {
+  async getAgentEmails(agentId: string): Promise<{ incoming: Mail[]; outgoing: Mail[] }> {
     const logs = await this.getLogsForAgent(agentId)
     const agent = await this.getAgent(agentId)
 
@@ -285,7 +285,7 @@ export class UnifiedMailStorage {
     }
   }
 
-  private parseEmailHeader(header: string): { name: string, email: string } {
+  private parseEmailHeader(header: string): { name: string; email: string } {
     // Handle "Name <email@domain.com>" format
     const match = header.match(/^([^<]+)<([^>]+)>$/)
     if (match) {

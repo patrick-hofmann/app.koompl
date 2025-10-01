@@ -5,7 +5,7 @@ import { agentFlowEngine } from '../../utils/agentFlowEngine'
 import { MessageRouter } from '../../utils/messageRouter'
 import type { Agent } from '~/types'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   // Always return ok to Mailgun no matter what happens.
   try {
     const agentsStorage = useStorage('agents')
@@ -131,13 +131,13 @@ export default defineEventHandler(async (event) => {
     }
 
     // Check if this is a response to THIS AGENT's existing flow
-    console.log(`\n[Inbound] ════════════════════════════════════════════`)
-    console.log(`[Inbound] 📨 PROCESSING INBOUND EMAIL`)
+    console.log('\n[Inbound] ════════════════════════════════════════════')
+    console.log('[Inbound] 📨 PROCESSING INBOUND EMAIL')
     console.log(`[Inbound] Agent: ${agent.name} (${agent.email})`)
     console.log(`[Inbound] From: ${fromEmail || from}`)
     console.log(`[Inbound] Subject: ${subject}`)
     console.log(`[Inbound] Multi-round enabled: ${agent.multiRoundConfig?.enabled ? 'YES' : 'NO'}`)
-    console.log(`[Inbound] ════════════════════════════════════════════`)
+    console.log('[Inbound] ════════════════════════════════════════════')
 
     const messageRouter = new MessageRouter()
     const routingResult = await messageRouter.routeInboundEmail({
@@ -154,7 +154,7 @@ export default defineEventHandler(async (event) => {
     if (routingResult.isFlowResponse && routingResult.flow) {
       // This is a response to one of this agent's flows - resume it
       console.log(`[Inbound] ✓ This is a RESPONSE to existing flow ${routingResult.flow.id}`)
-      console.log(`[Inbound] → Resuming flow...`)
+      console.log('[Inbound] → Resuming flow...')
 
       await agentFlowEngine.resumeFlow(routingResult.flow.id, {
         type: 'email_response',
@@ -165,7 +165,7 @@ export default defineEventHandler(async (event) => {
           body: String(text || '')
         }
       }, agent.id)
-      console.log(`[Inbound] ✓ Flow resumed successfully`)
+      console.log('[Inbound] ✓ Flow resumed successfully')
       return { ok: true, flowId: routingResult.flow.id, resumed: true }
     }
 
@@ -175,7 +175,7 @@ export default defineEventHandler(async (event) => {
     // Check if agent has multi-round enabled
     if (agent.multiRoundConfig?.enabled) {
       // Start a new multi-round flow FOR THIS AGENT
-      console.log(`[Inbound] → Starting new multi-round flow...`)
+      console.log('[Inbound] → Starting new multi-round flow...')
       console.log(`[Inbound]   Max rounds: ${agent.multiRoundConfig.maxRounds}`)
       console.log(`[Inbound]   Timeout: ${agent.multiRoundConfig.timeoutMinutes} minutes`)
 
@@ -195,19 +195,19 @@ export default defineEventHandler(async (event) => {
       })
 
       console.log(`[Inbound] ✓ Flow created: ${flow.id}`)
-      console.log(`[Inbound] → Executing first round...`)
+      console.log('[Inbound] → Executing first round...')
 
       // Execute first round
       await agentFlowEngine.executeRound(flow.id, agent.id)
 
-      console.log(`[Inbound] ✓ First round executed`)
-      console.log(`[Inbound] ════════════════════════════════════════════\n`)
+      console.log('[Inbound] ✓ First round executed')
+      console.log('[Inbound] ════════════════════════════════════════════\n')
 
       return { ok: true, flowId: flow.id, newFlow: true }
     }
 
-    console.log(`[Inbound] ⚠ Multi-round NOT enabled, falling back to single-round processing`)
-    console.log(`[Inbound] ════════════════════════════════════════════\n`)
+    console.log('[Inbound] ⚠ Multi-round NOT enabled, falling back to single-round processing')
+    console.log('[Inbound] ════════════════════════════════════════════\n')
 
     // Fall back to legacy single-round processing
     console.log(`[Inbound] Processing as single-round for agent ${agent.id}`)
@@ -230,7 +230,7 @@ export default defineEventHandler(async (event) => {
       try {
         const base = getRequestURL(event)
         const origin = `${base.protocol}//${base.host}`
-        const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`${origin}/api/agents/${agent.id}/respond`, {
+        const response = await $fetch<{ ok: boolean; result?: string; error?: string }>(`${origin}/api/agents/${agent.id}/respond`, {
           method: 'POST',
           body: {
             subject: String(subject || ''),
@@ -270,7 +270,7 @@ export default defineEventHandler(async (event) => {
     const cleanBody = String(tofuBody || '').trim()
 
     // Send reply via dedicated outbound route if we have agent and email addresses
-    let _outboundResult: { ok: boolean, id?: string, message?: string, error?: string } = { ok: false }
+    let _outboundResult: { ok: boolean; id?: string; message?: string; error?: string } = { ok: false }
     if (agent && fromEmail && toEmail && aiAnswer) {
       try {
         const base = getRequestURL(event)

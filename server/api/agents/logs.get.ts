@@ -1,6 +1,6 @@
 import { mailStorage } from '../../utils/mailStorage'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   const query = getQuery(event)
   const agentId = typeof query.agentId === 'string' && query.agentId.trim().length > 0
     ? query.agentId.trim()

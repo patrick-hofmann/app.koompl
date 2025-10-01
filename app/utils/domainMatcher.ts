@@ -41,7 +41,7 @@ export function isEmailAllowed(email: string, allowedPatterns: string | string[]
 
   const normalizedEmail = email.toLowerCase().trim()
 
-  return patterns.some((pattern) => {
+  return patterns.some(pattern => {
     try {
       const regex = domainPatternToRegex(pattern.trim())
       return regex.test(normalizedEmail)
@@ -57,7 +57,7 @@ export function isEmailAllowed(email: string, allowedPatterns: string | string[]
  * @param patterns - Comma-separated string of patterns
  * @returns validation result with isValid and errors
  */
-export function validateDomainPatterns(patterns: string): { isValid: boolean, errors: string[] } {
+export function validateDomainPatterns(patterns: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
 
   if (!patterns || patterns.trim().length === 0) {

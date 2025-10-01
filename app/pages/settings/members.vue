@@ -12,7 +12,7 @@ const q = ref('')
 
 const filteredMembers = computed(() => {
   const membersList = Array.isArray(members.value) ? members.value : []
-  return membersList.filter((member) => {
+  return membersList.filter(member => {
     return member.name.search(new RegExp(q.value, 'i')) !== -1 || member.username.search(new RegExp(q.value, 'i')) !== -1
   })
 })

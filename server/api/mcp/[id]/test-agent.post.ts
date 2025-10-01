@@ -1,7 +1,7 @@
 import { createGeneralAgent } from '../../../utils/mcpAgent'
 import { listMcpServers } from '../../../utils/mcpStorage'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async event => {
   try {
     const serverId = getRouterParam(event, 'id')
     if (!serverId) {
