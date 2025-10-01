@@ -22,17 +22,18 @@ export class KoomplMcpAgent {
     }
 
     // Initialize LLM based on provider
-    const llm = this.config.llmProvider === 'anthropic'
-      ? new ChatAnthropic({
-        model: this.config.model || 'claude-3-5-sonnet-20241022',
-        temperature: this.config.temperature,
-        maxTokens: this.config.maxTokens
-      })
-      : new ChatOpenAI({
-        model: this.config.model || 'gpt-4o',
-        temperature: this.config.temperature,
-        maxTokens: this.config.maxTokens
-      })
+    const llm =
+      this.config.llmProvider === 'anthropic'
+        ? new ChatAnthropic({
+            model: this.config.model || 'claude-3-5-sonnet-20241022',
+            temperature: this.config.temperature,
+            maxTokens: this.config.maxTokens
+          })
+        : new ChatOpenAI({
+            model: this.config.model || 'gpt-4o',
+            temperature: this.config.temperature,
+            maxTokens: this.config.maxTokens
+          })
 
     // Initialize MCP client with empty config (will be populated with servers)
     this.client = new MCPClient({ mcpServers: {} })
@@ -57,7 +58,9 @@ export class KoomplMcpAgent {
         // Custom MCP server via HTTP
         serverConfigs[server.id] = {
           command: 'node',
-          args: ['-e', `
+          args: [
+            '-e',
+            `
             const { spawn } = require('child_process');
             const http = require('http');
             
@@ -88,7 +91,8 @@ export class KoomplMcpAgent {
             server.listen(0, () => {
               console.log('Custom MCP server running on port', server.address().port);
             });
-          `]
+          `
+          ]
         }
       } else {
         // Standard MCP server configurations
@@ -132,9 +136,9 @@ export class KoomplMcpAgent {
     const packages: Record<string, string> = {
       'google-calendar': '@modelcontextprotocol/server-google-calendar',
       'microsoft-outlook': '@modelcontextprotocol/server-microsoft-outlook',
-      'todoist': '@modelcontextprotocol/server-todoist',
-      'trello': '@modelcontextprotocol/server-trello',
-      'everything': '@modelcontextprotocol/server-everything'
+      todoist: '@modelcontextprotocol/server-todoist',
+      trello: '@modelcontextprotocol/server-trello',
+      everything: '@modelcontextprotocol/server-everything'
     }
     return packages[provider] || '@modelcontextprotocol/server-everything'
   }
@@ -174,7 +178,7 @@ export class KoomplMcpAgent {
   /**
    * Stream email processing for real-time responses
    */
-  async* streamEmailProcessing(
+  async *streamEmailProcessing(
     email: McpEmailContext,
     agentPrompt: string,
     servers: StoredMcpServer[]
@@ -217,10 +221,12 @@ export class KoomplMcpAgent {
    * Create system prompt for the agent
    */
   private createSystemPrompt(agentPrompt: string, servers: StoredMcpServer[]): string {
-    const serverDescriptions = servers.map(server => {
-      const capabilities = this.getServerCapabilities(server)
-      return `- ${server.name} (${server.provider}): ${server.description || 'No description'} - Capabilities: ${capabilities.join(', ')}`
-    }).join('\n')
+    const serverDescriptions = servers
+      .map((server) => {
+        const capabilities = this.getServerCapabilities(server)
+        return `- ${server.name} (${server.provider}): ${server.description || 'No description'} - Capabilities: ${capabilities.join(', ')}`
+      })
+      .join('\n')
 
     return `You are an AI agent for Koompl, an intelligent email assistant platform. 
 
@@ -265,10 +271,10 @@ Please provide a helpful response using the available MCP servers to gather rele
     const capabilities: Record<string, string[]> = {
       'google-calendar': ['calendar events', 'scheduling', 'availability'],
       'microsoft-outlook': ['outlook calendar', 'email integration', 'microsoft 365'],
-      'todoist': ['task management', 'todo lists', 'project tracking'],
-      'trello': ['project boards', 'card management', 'team collaboration'],
+      todoist: ['task management', 'todo lists', 'project tracking'],
+      trello: ['project boards', 'card management', 'team collaboration'],
       'nuxt-ui': ['documentation', 'component examples', 'guidance'],
-      'custom': ['custom integrations', 'api access', 'specialized data']
+      custom: ['custom integrations', 'api access', 'specialized data']
     }
     return capabilities[server.provider] || ['general data access']
   }
@@ -295,20 +301,6 @@ export function createGeneralAgent(config: Partial<McpAgentConfig> = {}): Koompl
     maxSteps: 5,
     temperature: 0.4,
     maxTokens: 1000,
-    ...config
-  })
-}
-
-/**
- * Create a specialized agent with custom configuration
- */
-export function createSpecializedAgent(config: Partial<McpAgentConfig> = {}): KoomplMcpAgent {
-  return new KoomplMcpAgent({
-    llmProvider: 'anthropic',
-    model: 'claude-3-5-sonnet-20241022',
-    maxSteps: 8,
-    temperature: 0.3,
-    maxTokens: 1500,
     ...config
   })
 }
