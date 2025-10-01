@@ -277,6 +277,29 @@ export class AgentLogger {
     const logs = await this.storage.getItem<AgentLogEntry[]>('agent-activity-logs.json')
     return Array.isArray(logs) ? logs : []
   }
+
+  /**
+   * Clear all activity logs for a specific agent
+   */
+  async clearAgentLogs(agentId: string): Promise<{ deletedCount: number }> {
+    console.log(`[AgentLogger] Clearing all activity logs for agent ${agentId}`)
+
+    try {
+      const allLogs = await this.getAllLogs()
+      const agentLogs = allLogs.filter(log => log.agentId === agentId)
+
+      // Remove logs from activity log file
+      const updatedLogs = allLogs.filter(log => log.agentId !== agentId)
+      await this.storage.setItem('agent-activity-logs.json', updatedLogs)
+
+      console.log(`[AgentLogger] ✓ Cleared ${agentLogs.length} activity logs for agent ${agentId}`)
+
+      return { deletedCount: agentLogs.length }
+    } catch (error) {
+      console.error(`[AgentLogger] ✗ Failed to clear activity logs for agent ${agentId}:`, error)
+      throw error
+    }
+  }
 }
 
 // Export singleton instance

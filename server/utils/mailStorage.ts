@@ -406,6 +406,71 @@ export class UnifiedMailStorage {
       default: return 'inbound'
     }
   }
+
+  /**
+   * Clear all emails for a specific agent
+   */
+  async clearAgentEmails(agentId: string): Promise<{ deletedCount: number }> {
+    console.log(`[MailStorage] Clearing all emails for agent ${agentId}`)
+
+    let deletedCount = 0
+
+    try {
+      // Get all logs to find emails for this agent
+      const allLogs = await this.getAllLogs()
+      const agentLogs = allLogs.filter(log => log.agentId === agentId)
+
+      console.log(`[MailStorage] Found ${agentLogs.length} email logs for agent ${agentId}`)
+
+      // Delete individual email files
+      for (const log of agentLogs) {
+        try {
+          if (log.type === 'inbound') {
+            await this.storage.removeItem(`emails/inbound/${log.id}.json`)
+          } else if (log.type === 'outgoing') {
+            await this.storage.removeItem(`emails/outbound/${log.id}.json`)
+          }
+          deletedCount++
+        } catch (error) {
+          console.warn(`[MailStorage] Failed to delete email file for log ${log.id}:`, error)
+        }
+      }
+
+      // Remove logs from unified log file
+      const updatedLogs = allLogs.filter(log => log.agentId !== agentId)
+      await this.storage.setItem('logs/unified.json', updatedLogs)
+
+      console.log(`[MailStorage] ✓ Cleared ${deletedCount} emails for agent ${agentId}`)
+
+      return { deletedCount }
+    } catch (error) {
+      console.error(`[MailStorage] ✗ Failed to clear emails for agent ${agentId}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Clear all logs for a specific agent (email logs only)
+   */
+  async clearAgentLogs(agentId: string): Promise<{ deletedCount: number }> {
+    console.log(`[MailStorage] Clearing all logs for agent ${agentId}`)
+
+    try {
+      const allLogs = await this.getAllLogs()
+      const agentLogs = allLogs.filter(log => log.agentId === agentId)
+
+      // Remove logs from unified log file
+      const updatedLogs = allLogs.filter(log => log.agentId !== agentId)
+      await this.storage.setItem('logs/unified.json', updatedLogs)
+
+      console.log(`[MailStorage] ✓ Cleared ${agentLogs.length} logs for agent ${agentId}`)
+
+      return { deletedCount: agentLogs.length }
+    } catch (error) {
+      console.error(`[MailStorage] ✗ Failed to clear logs for agent ${agentId}:`, error)
+      throw error
+    }
+  }
 }
 
 // Export singleton instance

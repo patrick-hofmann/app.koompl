@@ -168,7 +168,7 @@ export class MessageRouter {
           isAutomatic: true,
           mcpContextCount: 0,
           requestId: params.requestId,
-          targetAgent: params.toAgentId,
+          targetAgent: params.toAgentEmail,
           flowId: params.flowId
         }
       })
@@ -183,41 +183,8 @@ export class MessageRouter {
     try {
       console.log(`[MessageRouter] ✓ Target agent: ${toAgent.name}`)
 
-      // Store as inbound email
-      await mailStorage.storeInboundEmail({
-        messageId,
-        from,
-        to: toAgent.email,
-        subject,
-        body,
-        html: '',
-        agentId: toAgent.id,
-        agentEmail: toAgent.email,
-        mcpContexts: [],
-        rawPayload: {}
-      })
-
-      // Log inbound activity
-      await agentLogger.logEmailActivity({
-        agentId: toAgent.id,
-        agentEmail: toAgent.email,
-        direction: 'inbound',
-        email: {
-          messageId,
-          from,
-          to: toAgent.email,
-          subject,
-          body
-        },
-        metadata: {
-          mailgunSent: false,
-          isAutomatic: true,
-          mcpContextCount: 0
-        }
-      })
-
-      console.log(`[MessageRouter] ✓ Stored as inbound email for ${toAgent.name}`)
-      console.log(`[MessageRouter] → Processing inbound email...`)
+      // Note: Email already stored by inbound.post.ts - we just need to route it
+      console.log(`[MessageRouter] → Processing inbound email (already stored by inbound handler)...`)
 
       // Route the email to determine if it's a flow response or new request
       const routingResult = await this.routeInboundEmail({
@@ -252,8 +219,10 @@ export class MessageRouter {
         console.log(`[MessageRouter] ✓ This is a NEW REQUEST for agent ${toAgent.name}`)
 
         // Check if agent has multi-round enabled
+        console.log(`[MessageRouter] 🔍 DECISION POINT: Checking multi-round config for ${toAgent.name}`)
+        console.log(`[MessageRouter]   Multi-round enabled: ${toAgent.multiRoundConfig?.enabled ? 'YES' : 'NO'}`)
         if (toAgent.multiRoundConfig?.enabled) {
-          console.log(`[MessageRouter] → Starting new multi-round flow...`)
+          console.log(`[MessageRouter] → PATH: Starting new multi-round flow...`)
 
           const flow = await agentFlowEngine.startFlow({
             agentId: toAgent.id,
@@ -280,7 +249,7 @@ export class MessageRouter {
         } else {
           // Agent doesn't have multi-round - use single-round processing
           console.log(`[MessageRouter] ⚠ Agent ${toAgent.name} does not have multi-round enabled`)
-          console.log(`[MessageRouter] → Using single-round processing...`)
+          console.log(`[MessageRouter] → PATH: Using single-round processing...`)
 
           try {
             // Call the agent's respond endpoint
@@ -352,40 +321,9 @@ export class MessageRouter {
                   if (recipientAgent) {
                     console.log(`[MessageRouter:Async] ✓ Recipient agent found: ${recipientAgent.name}`)
 
-                    // Store as inbound email for the recipient
-                    await mailStorage.storeInboundEmail({
-                      messageId: replyMessageId,
-                      from: `${toAgent.name} <${toAgent.email}>`,
-                      to: from,
-                      subject: replySubject,
-                      body: responseBody,
-                      html: '',
-                      agentId: recipientAgent.id,
-                      agentEmail: recipientAgent.email,
-                      mcpContexts: [],
-                      rawPayload: {}
-                    })
-
-                    // Log inbound activity
-                    await agentLogger.logEmailActivity({
-                      agentId: recipientAgent.id,
-                      agentEmail: recipientAgent.email,
-                      direction: 'inbound',
-                      email: {
-                        messageId: replyMessageId,
-                        from: `${toAgent.name} <${toAgent.email}>`,
-                        to: from,
-                        subject: replySubject,
-                        body: responseBody
-                      },
-                      metadata: {
-                        mailgunSent: false,
-                        isAutomatic: true,
-                        mcpContextCount: 0
-                      }
-                    })
-
-                    console.log(`[MessageRouter:Async] ✓ Stored reply as inbound for ${recipientAgent.name}`)
+                    // Note: Email will be stored by inbound.post.ts when it arrives
+                    // We just need to route it to determine if it's a flow response
+                    console.log(`[MessageRouter:Async] → Routing reply email (will be stored by inbound handler)...`)
 
                     // Route to see if this is a flow response
                     const replyRoutingResult = await this.routeInboundEmail({
@@ -509,41 +447,8 @@ export class MessageRouter {
       try {
         console.log(`[MessageRouter] ✓ Target agent found: ${toAgent.name}`)
 
-        // Store as inbound email
-        await mailStorage.storeInboundEmail({
-          messageId,
-          from,
-          to: params.toEmail,
-          subject,
-          body,
-          html: '',
-          agentId: toAgent.id,
-          agentEmail: toAgent.email,
-          mcpContexts: [],
-          rawPayload: {}
-        })
-
-        // Log inbound activity
-        await agentLogger.logEmailActivity({
-          agentId: toAgent.id,
-          agentEmail: toAgent.email,
-          direction: 'inbound',
-          email: {
-            messageId,
-            from,
-            to: params.toEmail,
-            subject,
-            body
-          },
-          metadata: {
-            mailgunSent: false,
-            isAutomatic: true,
-            mcpContextCount: 0
-          }
-        })
-
-        console.log(`[MessageRouter] ✓ Stored as inbound email for ${toAgent.name}`)
-        console.log(`[MessageRouter] → Processing inbound email...`)
+        // Note: Email already stored by inbound.post.ts - we just need to route it
+        console.log(`[MessageRouter] → Processing inbound email (already stored by inbound handler)...`)
 
         // Route the email to determine if it's a flow response or new request
         const routingResult = await this.routeInboundEmail({
@@ -578,8 +483,10 @@ export class MessageRouter {
           console.log(`[MessageRouter] ✓ This is a NEW REQUEST for agent ${toAgent.name}`)
 
           // Check if agent has multi-round enabled
+          console.log(`[MessageRouter] 🔍 DECISION POINT #2: Checking multi-round config for ${toAgent.name}`)
+          console.log(`[MessageRouter]   Multi-round enabled: ${toAgent.multiRoundConfig?.enabled ? 'YES' : 'NO'}`)
           if (toAgent.multiRoundConfig?.enabled) {
-            console.log(`[MessageRouter] → Starting new multi-round flow...`)
+            console.log(`[MessageRouter] → PATH #2: Starting new multi-round flow...`)
 
             const flow = await agentFlowEngine.startFlow({
               agentId: toAgent.id,
@@ -606,7 +513,7 @@ export class MessageRouter {
           } else {
             // Agent doesn't have multi-round - use single-round processing
             console.log(`[MessageRouter] ⚠ Agent ${toAgent.name} does not have multi-round enabled`)
-            console.log(`[MessageRouter] → Using single-round processing...`)
+            console.log(`[MessageRouter] → PATH #2: Using single-round processing...`)
 
             try {
               // Call the agent's respond endpoint
@@ -702,40 +609,9 @@ export class MessageRouter {
                     if (recipientAgent) {
                       console.log(`[MessageRouter:Async] ✓ Recipient agent found: ${recipientAgent.name}`)
 
-                      // Store as inbound email for the recipient
-                      await mailStorage.storeInboundEmail({
-                        messageId: replyMessageId,
-                        from: `${toAgent.name} <${toAgent.email}>`,
-                        to: from,
-                        subject: replySubject,
-                        body: responseBody,
-                        html: '',
-                        agentId: recipientAgent.id,
-                        agentEmail: recipientAgent.email,
-                        mcpContexts: [],
-                        rawPayload: {}
-                      })
-
-                      // Log inbound activity
-                      await agentLogger.logEmailActivity({
-                        agentId: recipientAgent.id,
-                        agentEmail: recipientAgent.email,
-                        direction: 'inbound',
-                        email: {
-                          messageId: replyMessageId,
-                          from: `${toAgent.name} <${toAgent.email}>`,
-                          to: from,
-                          subject: replySubject,
-                          body: responseBody
-                        },
-                        metadata: {
-                          mailgunSent: false,
-                          isAutomatic: true,
-                          mcpContextCount: 0
-                        }
-                      })
-
-                      console.log(`[MessageRouter:Async] ✓ Stored reply as inbound for ${recipientAgent.name}`)
+                      // Note: Email will be stored by inbound.post.ts when it arrives
+                      // We just need to route it to determine if it's a flow response
+                      console.log(`[MessageRouter:Async] → Routing reply email (will be stored by inbound handler)...`)
 
                       // Route to see if this is a flow response
                       const replyRoutingResult = await this.routeInboundEmail({

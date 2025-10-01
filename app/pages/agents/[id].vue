@@ -127,6 +127,111 @@ async function deleteAgent() {
   await $fetch(`/api/agents/${agentId.value}`, { method: 'DELETE' })
   await navigateTo('/agents')
 }
+
+// Clear functions
+const clearingEmails = ref(false)
+const clearingLogs = ref(false)
+const clearingAll = ref(false)
+
+async function clearEmails() {
+  if (!confirm('Are you sure you want to clear all emails for this agent? This action cannot be undone.')) {
+    return
+  }
+  
+  clearingEmails.value = true
+  try {
+    const result = await $fetch(`/api/agents/${agentId.value}/clear-emails`, { method: 'POST' })
+    console.log('Emails cleared:', result)
+    
+    // Refresh the email data
+    await refreshEmails()
+    
+    // Show success message
+    const toast = useToast()
+    toast.add({
+      title: 'Emails Cleared',
+      description: `Cleared ${result.deletedCount} emails`,
+      color: 'green'
+    })
+  } catch (error) {
+    console.error('Failed to clear emails:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Error',
+      description: 'Failed to clear emails',
+      color: 'red'
+    })
+  } finally {
+    clearingEmails.value = false
+  }
+}
+
+async function clearLogs() {
+  if (!confirm('Are you sure you want to clear all logs for this agent? This action cannot be undone.')) {
+    return
+  }
+  
+  clearingLogs.value = true
+  try {
+    const result = await $fetch(`/api/agents/${agentId.value}/clear-logs`, { method: 'POST' })
+    console.log('Logs cleared:', result)
+    
+    // Refresh the logs data
+    await refreshLogs()
+    
+    // Show success message
+    const toast = useToast()
+    toast.add({
+      title: 'Logs Cleared',
+      description: `Cleared ${result.deletedCount} logs`,
+      color: 'green'
+    })
+  } catch (error) {
+    console.error('Failed to clear logs:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Error',
+      description: 'Failed to clear logs',
+      color: 'red'
+    })
+  } finally {
+    clearingLogs.value = false
+  }
+}
+
+async function clearAll() {
+  if (!confirm('Are you sure you want to clear ALL emails and logs for this agent? This action cannot be undone.')) {
+    return
+  }
+  
+  clearingAll.value = true
+  try {
+    const result = await $fetch(`/api/agents/${agentId.value}/clear-all`, { method: 'POST' })
+    console.log('All data cleared:', result)
+    
+    // Refresh both email and logs data
+    await refreshEmails()
+    await refreshLogs()
+    
+    // Show success message
+    const toast = useToast()
+    toast.add({
+      title: 'All Data Cleared',
+      description: `Cleared ${result.deletedCount} items (${result.emails} emails, ${result.mailLogs} mail logs, ${result.activityLogs} activity logs)`,
+      color: 'green'
+    })
+  } catch (error) {
+    console.error('Failed to clear all data:', error)
+    const toast = useToast()
+    toast.add({
+      title: 'Error',
+      description: 'Failed to clear all data',
+      color: 'red'
+    })
+  } finally {
+    clearingAll.value = false
+  }
+}
 </script>
 
 <template>
@@ -139,6 +244,15 @@ async function deleteAgent() {
         <div class="flex items-center gap-2">
           <UAvatar v-bind="agent?.avatar" size="sm" />
           <UBadge variant="subtle">{{ agent?.role }}</UBadge>
+          <UButton 
+            icon="i-lucide-trash-2" 
+            color="red" 
+            variant="outline" 
+            :loading="clearingAll"
+            @click="clearAll"
+          >
+            Clear All
+          </UButton>
           <UButton icon="i-lucide-pencil" color="neutral" variant="outline" @click="openEdit" />
           <UButton icon="i-lucide-trash" color="error" variant="outline" @click="deleteAgent" />
         </div>
@@ -157,14 +271,24 @@ async function deleteAgent() {
               <h3 class="font-medium text-highlighted">Mailbox</h3>
               <p class="text-sm text-muted truncate">{{ agent?.email }}</p>
             </div>
-            <UButton
-              icon="i-lucide-refresh-ccw"
-              label="Refresh"
-              color="neutral"
-              variant="outline"
-              :loading="emailsPending"
-              @click="refreshEmails"
-            />
+            <div class="flex items-center gap-2">
+              <UButton
+                icon="i-lucide-refresh-ccw"
+                label="Refresh"
+                color="neutral"
+                variant="outline"
+                :loading="emailsPending"
+                @click="refreshEmails"
+              />
+              <UButton
+                icon="i-lucide-trash-2"
+                label="Clear Emails"
+                color="red"
+                variant="outline"
+                :loading="clearingEmails"
+                @click="clearEmails"
+              />
+            </div>
           </div>
           <div class="mt-4">
             <div v-if="emailsPending" class="space-y-2">
@@ -197,6 +321,7 @@ async function deleteAgent() {
             <div class="flex items-center gap-2">
               <UBadge variant="subtle">{{ logs.length }} Activities</UBadge>
               <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" :loading="logsPending" @click="refreshLogs">Refresh</UButton>
+              <UButton icon="i-lucide-trash-2" size="xs" color="red" variant="outline" :loading="clearingLogs" @click="clearLogs">Clear Logs</UButton>
             </div>
           </div>
           <div v-if="logsPending" class="mt-4 space-y-2">
