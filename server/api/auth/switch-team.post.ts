@@ -30,21 +30,13 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Replace entire session with fresh data to avoid accumulation issues
-    await replaceUserSession(event, {
-      user: {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
-        role: targetTeam.role
-      },
-      team: {
-        id: targetTeam.id,
-        name: targetTeam.name,
-        description: targetTeam.description
-      },
-      availableTeams: session.availableTeams || [], // direct reference preserve integrity
-      loggedInAt: session.loggedInAt || new Date().toISOString()
+    // Replace entire session via helper to avoid accumulation issues
+    const { setUserSession } = await import('../../utils/authSession')
+    await setUserSession(event, {
+      user: { id: session.user.id, name: session.user.name, email: session.user.email, role: targetTeam.role },
+      team: { id: targetTeam.id, name: targetTeam.name, description: targetTeam.description, role: targetTeam.role },
+      availableTeams: session.availableTeams || [],
+      loggedInAt: session.loggedInAt
     })
 
     return {

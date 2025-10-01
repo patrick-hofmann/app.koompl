@@ -1,6 +1,5 @@
-import { nanoid } from 'nanoid'
 import type { Agent } from '~/types'
-import { generateAvatar, normalizeMcpServerIds, createAgentStorage } from '../../utils/shared'
+import { createAgentStorage, createAgentObject, updateAgentObject } from '../../utils/shared'
 
 export default defineEventHandler(async (event) => {
   const agentStorage = createAgentStorage()
@@ -12,29 +11,9 @@ export default defineEventHandler(async (event) => {
 
   if (method === 'POST') {
     const body = await readBody<Partial<Agent>>(event)
-    // Generate a human-readable id (slug) from name when possible, fallback to nanoid
-    const baseSlug = (body.name || 'agent')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '') || 'agent'
-    let id = body.id || baseSlug
-    // Ensure uniqueness against existing collection
     const existingAgents = await agentStorage.read()
-    if (existingAgents.some(a => a?.id === id)) {
-      id = `${baseSlug}-${nanoid(4)}`
-    }
-    const name = body.name || 'Unnamed'
-    const agent: Agent = {
-      id,
-      name,
-      email: body.email || `${id}@agents.local`,
-      role: body.role || 'Agent',
-      prompt: body.prompt || '',
-      avatar: body.avatar || generateAvatar(name, body.email, id),
-      mcpServerIds: normalizeMcpServerIds(body.mcpServerIds),
-      multiRoundConfig: body.multiRoundConfig
-    }
-    return await agentStorage.create(agent)
+    const agent = createAgentObject(body, existingAgents.map(a => a.id))
+    return await agentStorage.create({ ...agent, multiRoundConfig: body.multiRoundConfig })
   }
 
   if (method === 'PUT' || method === 'PATCH') {
@@ -46,11 +25,8 @@ export default defineEventHandler(async (event) => {
     if (!existing) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
-    const mcpServerIds = body.mcpServerIds !== undefined
-      ? normalizeMcpServerIds(body.mcpServerIds)
-      : existing.mcpServerIds || []
-    const updated = { ...existing, ...body, mcpServerIds }
-    return await agentStorage.update(body.id, updated)
+    const updated = updateAgentObject(existing, body)
+    return await agentStorage.update(body.id, { ...updated, multiRoundConfig: body.multiRoundConfig ?? existing.multiRoundConfig })
   }
 
   if (method === 'DELETE') {

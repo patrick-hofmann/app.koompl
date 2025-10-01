@@ -5,6 +5,7 @@
 
 import { mailStorage } from '../../utils/mailStorage'
 import { agentLogger } from '../../utils/agentLogging'
+import { determineMailgunDomain, sendMailgunMessage } from '../../utils/mailgunHelpers'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -39,64 +40,31 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Missing agent information: agentId, agentEmail' })
     }
 
-    // Send email via Mailgun
-    // Extract bare email from potentially formatted header value
-    const extractEmail = (value: string | undefined | null): string | null => {
-      if (!value) return null
-      const v = String(value)
-      const angle = v.match(/<([^>]+)>/)
-      const email = (angle ? angle[1] : v).trim()
-      const first = email.split(',')[0].trim()
-      return first.toLowerCase()
-    }
-
-    const fromEmail = extractEmail(from) || from
-    const fallbackDomain = fromEmail && fromEmail.includes('@') ? fromEmail.split('@')[1] : undefined
-    const domain = configuredDomain || fallbackDomain
+    // Determine domain for Mailgun endpoint
+    const domain = determineMailgunDomain(configuredDomain, from)
     if (!domain) {
       throw createError({ statusCode: 400, statusMessage: 'Unable to determine Mailgun domain from config or from address' })
     }
 
-    const encodedDomain = encodeURIComponent(domain.trim().replace(/^\s+|\s+$/g, ''))
-    const endpoint = `https://api.mailgun.net/v3/${encodedDomain}/messages`
     type MailgunSendResponse = { id?: string, message?: string }
     let mailgunResponse: MailgunSendResponse | undefined
     try {
-      mailgunResponse = await $fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${Buffer.from(`api:${mailgunKey}`).toString('base64')}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-          'o:tracking': 'no',
-          'o:tracking-clicks': 'no',
-          'o:tracking-opens': 'no',
-          'h:Content-Type': 'text/plain; charset=utf-8',
-          'h:MIME-Version': '1.0',
-          'h:Content-Transfer-Encoding': '8bit',
-          from,
-          to,
-          subject,
-          text,
-          ...(html && { html })
-        })
+      mailgunResponse = await sendMailgunMessage({
+        endpointDomain: domain,
+        apiKey: mailgunKey,
+        from,
+        to,
+        subject,
+        text,
+        html,
+        tracking: false
       })
     } catch (err: unknown) {
       const e = err as { response?: { status?: number, statusText?: string, _data?: unknown }, status?: number, statusText?: string, data?: unknown }
       const status = e?.response?.status || e?.status || (e as { data?: { status?: number } })?.data?.status || 'unknown'
       const statusText = e?.response?.statusText || e?.statusText || 'unknown'
       const data = e?.response?._data || (e as { data?: unknown })?.data || null
-      console.error('Outbound email error: Mailgun request failed', {
-        endpoint,
-        domain,
-        to,
-        from,
-        subject,
-        status,
-        statusText,
-        data
-      })
+      console.error('Outbound email error: Mailgun request failed', { domain, to, from, subject, status, statusText, data })
       throw err
     }
 

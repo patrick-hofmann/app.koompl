@@ -1,5 +1,5 @@
 import type { Agent } from '~/types'
-import { generateAvatar, normalizeMcpServerIds, createAgentStorage } from '../../utils/shared'
+import { createAgentStorage, updateAgentObject } from '../../utils/shared'
 
 export default defineEventHandler(async (event) => {
   const agentStorage = createAgentStorage()
@@ -25,15 +25,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
 
-    const name = body.name || existing.name
-    const updated = {
-      ...existing,
-      ...body,
-      id,
-      avatar: body.avatar || generateAvatar(name, body.email, id),
-      mcpServerIds: normalizeMcpServerIds(body.mcpServerIds, existing.mcpServerIds || [])
-    }
-
+    const updated = updateAgentObject(existing, body)
     return await agentStorage.update(id, updated)
   }
 

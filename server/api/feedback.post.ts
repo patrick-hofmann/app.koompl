@@ -66,17 +66,17 @@ Submitted at: ${new Date().toISOString()}
     form.set('h:MIME-Version', '1.0')
     form.set('h:Content-Transfer-Encoding', '8bit')
 
-    // Send via Mailgun
-    const url = `https://api.mailgun.net/v3/${encodeURIComponent(domain)}/messages`
-
+    // Send via Mailgun using shared helper
     try {
-      const res: { id?: string, message?: string, status?: string } = await $fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + Buffer.from(`api:${apiKey}`).toString('base64'),
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: form.toString()
+      const { sendMailgunMessage } = await import('../utils/mailgunHelpers')
+      const res: { id?: string, message?: string } = await sendMailgunMessage({
+        endpointDomain: domain,
+        apiKey,
+        from: `Koompl Feedback <${fromAddress}>`,
+        to: String(feedbackEmail || ''),
+        subject: emailSubject,
+        text: emailText,
+        tracking: false
       })
 
       console.log('Mailgun API response:', { id: res?.id, message: res?.message })

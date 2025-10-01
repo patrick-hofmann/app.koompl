@@ -93,17 +93,8 @@ export default defineEventHandler(async (event) => {
       rawPayload: payload
     })
 
-    // Helper: extract the bare email address from header-like strings
-    const extractEmail = (value: string | undefined | null): string | null => {
-      if (!value) return null
-      const v = String(value)
-      const angle = v.match(/<([^>]+)>/)
-      const email = (angle ? angle[1] : v).trim()
-      // If multiple recipients, take first
-      const first = email.split(',')[0].trim()
-      return first.toLowerCase()
-    }
-
+    // Use shared helper to extract bare email address from header-like strings
+    const { extractEmail } = await import('../../utils/mailgunHelpers')
     const toEmail = extractEmail(to)
     const fromEmail = extractEmail(from)
 
@@ -174,14 +165,13 @@ export default defineEventHandler(async (event) => {
           body: String(text || '')
         }
       }, agent.id)
-
       console.log(`[Inbound] ✓ Flow resumed successfully`)
       return { ok: true, flowId: routingResult.flow.id, resumed: true }
     }
 
     // This is a NEW request for this agent
     console.log(`[Inbound] ✓ This is a NEW REQUEST for agent ${agent.name}`)
-    
+
     // Check if agent has multi-round enabled
     if (agent.multiRoundConfig?.enabled) {
       // Start a new multi-round flow FOR THIS AGENT

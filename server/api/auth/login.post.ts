@@ -111,24 +111,13 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Clear any existing session before setting new one to avoid accumulation
+    // Clear any existing session and set fresh user session via helper
     await clearUserSession(event)
-    // Set fresh user session with clean team data
-    // Use replaceUserSession to ensure complete session replacement
-    await replaceUserSession(event, {
-      user: {
-        id: foundUser.id,
-        name: foundUser.name,
-        email: foundUser.email,
-        role: currentTeam.role
-      },
-      team: {
-        id: currentTeam.id,
-        name: currentTeam.name,
-        description: currentTeam.description
-      },
-      availableTeams: uniqueTeams, // Use structure without spread to prevent merge effects
-      loggedInAt: new Date().toISOString()
+    const { setUserSession } = await import('../../utils/authSession')
+    await setUserSession(event, {
+      user: { id: foundUser.id, name: foundUser.name, email: foundUser.email, role: currentTeam.role },
+      team: { id: currentTeam.id, name: currentTeam.name, description: currentTeam.description, role: currentTeam.role },
+      availableTeams: uniqueTeams
     })
 
     return { success: true, availableTeams: uniqueTeams }
