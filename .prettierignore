@@ -1,0 +1,11 @@
+node_modules
+.nuxt
+.output
+.dist
+coverage
+dist
+.build
+.next
+pnpm-lock.yaml
+package-lock.json
+yarn.lock

@@ -113,8 +113,8 @@ export default defineEventHandler(async (event) => {
 
     // Clear any existing session and set fresh user session via helper
     await clearUserSession(event)
-    const { setUserSession } = await import('../../utils/authSession')
-    await setUserSession(event, {
+    const { setCustomUserSession } = await import('../../utils/authSession')
+    await setCustomUserSession(event, {
       user: { id: foundUser.id, name: foundUser.name, email: foundUser.email, role: currentTeam.role },
       team: { id: currentTeam.id, name: currentTeam.name, description: currentTeam.description, role: currentTeam.role },
       availableTeams: uniqueTeams

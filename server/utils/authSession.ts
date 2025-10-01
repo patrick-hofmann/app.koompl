@@ -24,7 +24,7 @@ type AvailableTeam = {
   role?: string
 }
 
-export async function setUserSession(
+export async function setCustomUserSession(
   event: H3Event,
   params: {
     user: SessionUser
