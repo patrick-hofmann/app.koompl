@@ -8,6 +8,8 @@
 import type { AgentFlow } from '../types/agent-flows'
 import { agentFlowEngine } from './agentFlowEngine'
 import { agentLogger } from './agentLogging'
+// Determine development mode without relying on Node typings or external modules
+const isDevelopment = ((globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env?.NODE_ENV) !== 'production'
 
 export interface InboundEmail {
   messageId: string;
@@ -176,205 +178,208 @@ export class MessageRouter {
       console.error('[MessageRouter] Failed to log email activity:', error)
     }
 
-    // For agent-to-agent emails, simulate immediate inbound delivery
-    // since Mailgun won't webhook back for internal agent addresses
-    console.log(`[MessageRouter] → Simulating inbound delivery to ${params.toAgentEmail}...`)
+    // For agent-to-agent emails, simulate inbound delivery ONLY in development.
+    // In production, rely on Mailgun webhook hitting our inbound route.
+    if (isDevelopment) {
+      console.log(`[MessageRouter] → Simulating inbound delivery to ${params.toAgentEmail}...`)
 
-    try {
-      console.log(`[MessageRouter] ✓ Target agent: ${toAgent.name}`)
+      try {
+        console.log(`[MessageRouter] ✓ Target agent: ${toAgent.name}`)
 
-      // Note: Email already stored by inbound.post.ts - we just need to route it
-      console.log('[MessageRouter] → Processing inbound email (already stored by inbound handler)...')
+        // Note: Email already stored by inbound.post.ts - we just need to route it
+        console.log('[MessageRouter] → Processing inbound email (already stored by inbound handler)...')
 
-      // Route the email to determine if it's a flow response or new request
-      const routingResult = await this.routeInboundEmail({
-        messageId,
-        from,
-        to: toAgent.email,
-        subject,
-        body,
-        receivedAt: new Date().toISOString()
-      }, toAgent.id)
-
-      console.log(`[MessageRouter] → Routing result: isFlowResponse=${routingResult.isFlowResponse}`)
-
-      if (routingResult.isFlowResponse && routingResult.flow) {
-        // This is a response to one of this agent's flows - resume it
-        console.log(`[MessageRouter] ✓ This is a RESPONSE to existing flow ${routingResult.flow.id}`)
-        console.log('[MessageRouter] → Resuming flow...')
-
-        await agentFlowEngine.resumeFlow(routingResult.flow.id, {
-          type: 'email_response',
-          email: {
-            messageId,
-            from,
-            subject,
-            body
-          }
+        // Route the email to determine if it's a flow response or new request
+        const routingResult = await this.routeInboundEmail({
+          messageId,
+          from,
+          to: toAgent.email,
+          subject,
+          body,
+          receivedAt: new Date().toISOString()
         }, toAgent.id)
 
-        console.log('[MessageRouter] ✓ Flow resumed successfully')
-      } else {
-        // This is a NEW request for this agent
-        console.log(`[MessageRouter] ✓ This is a NEW REQUEST for agent ${toAgent.name}`)
+        console.log(`[MessageRouter] → Routing result: isFlowResponse=${routingResult.isFlowResponse}`)
 
-        // Check if agent has multi-round enabled
-        console.log(`[MessageRouter] 🔍 DECISION POINT: Checking multi-round config for ${toAgent.name}`)
-        console.log(`[MessageRouter]   Multi-round enabled: ${toAgent.multiRoundConfig?.enabled ? 'YES' : 'NO'}`)
-        if (toAgent.multiRoundConfig?.enabled) {
-          console.log('[MessageRouter] → PATH: Starting new multi-round flow...')
+        if (routingResult.isFlowResponse && routingResult.flow) {
+          // This is a response to one of this agent's flows - resume it
+          console.log(`[MessageRouter] ✓ This is a RESPONSE to existing flow ${routingResult.flow.id}`)
+          console.log('[MessageRouter] → Resuming flow...')
 
-          const flow = await agentFlowEngine.startFlow({
-            agentId: toAgent.id,
-            trigger: {
-              type: 'email',
+          await agentFlowEngine.resumeFlow(routingResult.flow.id, {
+            type: 'email_response',
+            email: {
               messageId,
               from,
-              to: toAgent.email,
               subject,
-              body,
-              receivedAt: new Date().toISOString()
-            },
-            maxRounds: (toAgent.multiRoundConfig as { maxRounds?: number }).maxRounds || 10,
-            timeoutMinutes: (toAgent.multiRoundConfig as { timeoutMinutes?: number }).timeoutMinutes || 60
-          })
+              body
+            }
+          }, toAgent.id)
 
-          console.log(`[MessageRouter] ✓ Flow created: ${flow.id}`)
-          console.log('[MessageRouter] → Executing first round...')
-
-          // Execute first round
-          await agentFlowEngine.executeRound(flow.id, toAgent.id)
-
-          console.log(`[MessageRouter] ✓ First round executed for ${toAgent.name}`)
+          console.log('[MessageRouter] ✓ Flow resumed successfully')
         } else {
-          // Agent doesn't have multi-round - use single-round processing
-          console.log(`[MessageRouter] ⚠ Agent ${toAgent.name} does not have multi-round enabled`)
-          console.log('[MessageRouter] → PATH: Using single-round processing...')
+          // This is a NEW request for this agent
+          console.log(`[MessageRouter] ✓ This is a NEW REQUEST for agent ${toAgent.name}`)
 
-          try {
-            // Call the agent's respond endpoint
-            const respondUrl = `http://localhost:${process.env.PORT || 3000}/api/agents/${toAgent.id}/respond`
-            console.log(`[MessageRouter] → Calling respond endpoint: ${respondUrl}`)
+          // Check if agent has multi-round enabled
+          console.log(`[MessageRouter] 🔍 DECISION POINT: Checking multi-round config for ${toAgent.name}`)
+          console.log(`[MessageRouter]   Multi-round enabled: ${toAgent.multiRoundConfig?.enabled ? 'YES' : 'NO'}`)
+          if (toAgent.multiRoundConfig?.enabled) {
+            console.log('[MessageRouter] → PATH: Starting new multi-round flow...')
 
-            const response = await $fetch<{ ok: boolean; result?: string; error?: string }>(respondUrl, {
-              method: 'POST',
-              body: {
-                subject,
-                text: body,
+            const flow = await agentFlowEngine.startFlow({
+              agentId: toAgent.id,
+              trigger: {
+                type: 'email',
+                messageId,
                 from,
-                includeQuote: true,
-                maxTokens: 700,
-                temperature: 0.4
-              }
+                to: toAgent.email,
+                subject,
+                body,
+                receivedAt: new Date().toISOString()
+              },
+              maxRounds: (toAgent.multiRoundConfig as { maxRounds?: number }).maxRounds || 10,
+              timeoutMinutes: (toAgent.multiRoundConfig as { timeoutMinutes?: number }).timeoutMinutes || 60
             })
 
-            if (response.ok && response.result) {
-              console.log(`[MessageRouter] ✓ Got AI response from ${toAgent.name}`)
+            console.log(`[MessageRouter] ✓ Flow created: ${flow.id}`)
+            console.log('[MessageRouter] → Executing first round...')
 
-              // Format the response with quote
-              const quoted = body
-                .split('\n')
-                .map(line => `> ${line}`)
-                .join('\n')
-              const responseBody = `${response.result}\n\nOn ${new Date().toISOString()}, ${from} wrote:\n${quoted}`
+            // Execute first round
+            await agentFlowEngine.executeRound(flow.id, toAgent.id)
 
-              // Prepare reply subject - KEEP the request ID so sender can match it to their waiting flow
-              const replySubject = `Re: ${subject.replace(/^Re:\s*/i, '')}`
+            console.log(`[MessageRouter] ✓ First round executed for ${toAgent.name}`)
+          } else {
+            // Agent doesn't have multi-round - use single-round processing
+            console.log(`[MessageRouter] ⚠ Agent ${toAgent.name} does not have multi-round enabled`)
+            console.log('[MessageRouter] → PATH: Using single-round processing...')
 
-              // Send reply back to the original sender
-              console.log(`[MessageRouter] → Sending reply back to ${from}`)
-              console.log(`[MessageRouter]   Subject: ${replySubject}`)
+            try {
+              // Call the agent's respond endpoint
+              const respondUrl = `http://localhost:${process.env.PORT || 3000}/api/agents/${toAgent.id}/respond`
+              console.log(`[MessageRouter] → Calling respond endpoint: ${respondUrl}`)
 
-              const outboundUrl = `http://localhost:${process.env.PORT || 3000}/api/mailgun/outbound`
-              const replyMessageId = await $fetch<{ messageId?: string }>(outboundUrl, {
+              const response = await $fetch<{ ok: boolean; result?: string; error?: string }>(respondUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  from: `${toAgent.name} <${toAgent.email}>`,
-                  to: from,
-                  subject: replySubject,
-                  text: responseBody,
-                  agentId: toAgent.id,
-                  agentEmail: toAgent.email,
-                  mcpServerIds: [],
-                  mcpContextCount: 0,
-                  isAutomatic: true
-                })
-              }).then(res => res.messageId || 'unknown')
-
-              console.log(`[MessageRouter] ✓ Reply sent, message ID: ${replyMessageId}`)
-
-              // Schedule async inbound delivery simulation for local dev
-              // In production, this would come via Mailgun webhook
-              // We use setImmediate to break the call stack and make it truly async
-              console.log('[MessageRouter] → Scheduling async inbound delivery simulation...')
-
-              setImmediate(async () => {
-                try {
-                  console.log('\n[MessageRouter:Async] ════════════════════════════════════════════')
-                  console.log(`[MessageRouter:Async] 📬 SIMULATING WEBHOOK: Reply delivery to ${from}`)
-                  console.log('[MessageRouter:Async] ════════════════════════════════════════════')
-
-                  const fromAgentEmail = this.extractEmail(from)
-                  const recipientAgent = await this.getAgentByEmail(fromAgentEmail)
-
-                  if (recipientAgent) {
-                    console.log(`[MessageRouter:Async] ✓ Recipient agent found: ${recipientAgent.name}`)
-
-                    // Note: Email will be stored by inbound.post.ts when it arrives
-                    // We just need to route it to determine if it's a flow response
-                    console.log('[MessageRouter:Async] → Routing reply email (will be stored by inbound handler)...')
-
-                    // Route to see if this is a flow response
-                    const replyRoutingResult = await this.routeInboundEmail({
-                      messageId: replyMessageId,
-                      from: `${toAgent.name} <${toAgent.email}>`,
-                      to: from,
-                      subject: replySubject,
-                      body: responseBody,
-                      receivedAt: new Date().toISOString()
-                    }, recipientAgent.id)
-
-                    if (replyRoutingResult.isFlowResponse && replyRoutingResult.flow) {
-                      console.log(`[MessageRouter:Async] ✓ Reply matched to flow ${replyRoutingResult.flow.id}`)
-                      console.log('[MessageRouter:Async] → Resuming recipient\'s flow...')
-
-                      await agentFlowEngine.resumeFlow(replyRoutingResult.flow.id, {
-                        type: 'email_response',
-                        email: {
-                          messageId: replyMessageId,
-                          from: `${toAgent.name} <${toAgent.email}>`,
-                          subject: replySubject,
-                          body: responseBody
-                        }
-                      }, recipientAgent.id)
-
-                      console.log('[MessageRouter:Async] ✓ Recipient\'s flow resumed successfully')
-                      console.log('[MessageRouter:Async] ════════════════════════════════════════════\n')
-                    } else {
-                      console.log('[MessageRouter:Async] ⚠ Reply did not match any waiting flow')
-                      console.log('[MessageRouter:Async] ════════════════════════════════════════════\n')
-                    }
-                  } else {
-                    console.warn(`[MessageRouter:Async] ⚠ Recipient agent not found for ${fromAgentEmail}`)
-                    console.log('[MessageRouter:Async] ════════════════════════════════════════════\n')
-                  }
-                } catch (error) {
-                  console.error('[MessageRouter:Async] ✗ Async inbound delivery failed:', error)
+                body: {
+                  subject,
+                  text: body,
+                  from,
+                  includeQuote: true,
+                  maxTokens: 700,
+                  temperature: 0.4
                 }
               })
 
-              console.log(`[MessageRouter] ✓ Single-round processing complete for ${toAgent.name}`)
-            } else {
-              console.error('[MessageRouter] ✗ Failed to get AI response:', response.error)
+              if (response.ok && response.result) {
+                console.log(`[MessageRouter] ✓ Got AI response from ${toAgent.name}`)
+
+                // Format the response with quote
+                const quoted = body
+                  .split('\n')
+                  .map(line => `> ${line}`)
+                  .join('\n')
+                const responseBody = `${response.result}\n\nOn ${new Date().toISOString()}, ${from} wrote:\n${quoted}`
+
+                // Prepare reply subject - KEEP the request ID so sender can match it to their waiting flow
+                const replySubject = `Re: ${subject.replace(/^Re:\s*/i, '')}`
+
+                // Send reply back to the original sender
+                console.log(`[MessageRouter] → Sending reply back to ${from}`)
+                console.log(`[MessageRouter]   Subject: ${replySubject}`)
+
+                const outboundUrl = `http://localhost:${process.env.PORT || 3000}/api/mailgun/outbound`
+                const replyMessageId = await $fetch<{ messageId?: string }>(outboundUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    from: `${toAgent.name} <${toAgent.email}>`,
+                    to: from,
+                    subject: replySubject,
+                    text: responseBody,
+                    agentId: toAgent.id,
+                    agentEmail: toAgent.email,
+                    mcpServerIds: [],
+                    mcpContextCount: 0,
+                    isAutomatic: true
+                  })
+                }).then(res => res.messageId || 'unknown')
+
+                console.log(`[MessageRouter] ✓ Reply sent, message ID: ${replyMessageId}`)
+
+                // Schedule async inbound delivery simulation for local dev
+                // We use setImmediate to break the call stack and make it truly async
+                console.log('[MessageRouter] → Scheduling async inbound delivery simulation...')
+
+                setImmediate(async () => {
+                  try {
+                    console.log('\n[MessageRouter:Async] ════════════════════════════════════════════')
+                    console.log(`[MessageRouter:Async] 📬 SIMULATING WEBHOOK: Reply delivery to ${from}`)
+                    console.log('[MessageRouter:Async] ════════════════════════════════════════════')
+
+                    const fromAgentEmail = this.extractEmail(from)
+                    const recipientAgent = await this.getAgentByEmail(fromAgentEmail)
+
+                    if (recipientAgent) {
+                      console.log(`[MessageRouter:Async] ✓ Recipient agent found: ${recipientAgent.name}`)
+
+                      // Note: Email will be stored by inbound.post.ts when it arrives
+                      // We just need to route it to determine if it's a flow response
+                      console.log('[MessageRouter:Async] → Routing reply email (will be stored by inbound handler)...')
+
+                      // Route to see if this is a flow response
+                      const replyRoutingResult = await this.routeInboundEmail({
+                        messageId: replyMessageId,
+                        from: `${toAgent.name} <${toAgent.email}>`,
+                        to: from,
+                        subject: replySubject,
+                        body: responseBody,
+                        receivedAt: new Date().toISOString()
+                      }, recipientAgent.id)
+
+                      if (replyRoutingResult.isFlowResponse && replyRoutingResult.flow) {
+                        console.log(`[MessageRouter:Async] ✓ Reply matched to flow ${replyRoutingResult.flow.id}`)
+                        console.log('[MessageRouter:Async] → Resuming recipient\'s flow...')
+
+                        await agentFlowEngine.resumeFlow(replyRoutingResult.flow.id, {
+                          type: 'email_response',
+                          email: {
+                            messageId: replyMessageId,
+                            from: `${toAgent.name} <${toAgent.email}>`,
+                            subject: replySubject,
+                            body: responseBody
+                          }
+                        }, recipientAgent.id)
+
+                        console.log('[MessageRouter:Async] ✓ Recipient\'s flow resumed successfully')
+                        console.log('[MessageRouter:Async] ════════════════════════════════════════════\n')
+                      } else {
+                        console.log('[MessageRouter:Async] ⚠ Reply did not match any waiting flow')
+                        console.log('[MessageRouter:Async] ════════════════════════════════════════════\n')
+                      }
+                    } else {
+                      console.warn(`[MessageRouter:Async] ⚠ Recipient agent not found for ${fromAgentEmail}`)
+                      console.log('[MessageRouter:Async] ════════════════════════════════════════════\n')
+                    }
+                  } catch (error) {
+                    console.error('[MessageRouter:Async] ✗ Async inbound delivery failed:', error)
+                  }
+                })
+
+                console.log(`[MessageRouter] ✓ Single-round processing complete for ${toAgent.name}`)
+              } else {
+                console.error('[MessageRouter] ✗ Failed to get AI response:', response.error)
+              }
+            } catch (singleRoundError) {
+              console.error('[MessageRouter] ✗ Single-round processing failed:', singleRoundError)
             }
-          } catch (singleRoundError) {
-            console.error('[MessageRouter] ✗ Single-round processing failed:', singleRoundError)
           }
         }
+      } catch (error) {
+        console.error('[MessageRouter] ✗ Failed to simulate inbound delivery:', error)
       }
-    } catch (error) {
-      console.error('[MessageRouter] ✗ Failed to simulate inbound delivery:', error)
+    } else {
+      console.log('[MessageRouter] Production mode - skipping internal inbound simulation and relying on Mailgun webhook')
     }
 
     return messageId
@@ -440,7 +445,7 @@ export class MessageRouter {
     // Only simulate inbound delivery for agent-to-agent emails
     // External users will receive emails normally via Mailgun
     const toAgent = await this.getAgentByEmail(params.toEmail)
-    if (toAgent) {
+    if (toAgent && isDevelopment) {
       // This is agent-to-agent email - simulate inbound delivery
       console.log(`[MessageRouter] → Simulating inbound delivery to ${params.toEmail}...`)
 
@@ -665,8 +670,12 @@ export class MessageRouter {
         console.error('[MessageRouter] ✗ Failed to simulate inbound delivery:', error)
       }
     } else {
-      // External user - no need to simulate inbound delivery
-      console.log(`[MessageRouter] → External user ${params.toEmail} - email sent via Mailgun`)
+      // In production or when emailing external users, do not simulate inbound delivery
+      if (toAgent) {
+        console.log('[MessageRouter] Production mode - skipping internal inbound simulation and relying on Mailgun webhook')
+      } else {
+        console.log(`[MessageRouter] → External user ${params.toEmail} - email sent via Mailgun`)
+      }
     }
 
     return messageId
