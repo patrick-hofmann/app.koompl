@@ -4,6 +4,7 @@ import type { Period, Range, Stat } from '~/types'
 const props = defineProps<{
   period: Period
   range: Range
+  direction?: 'received' | 'sent' | 'both'
 }>()
 
 function formatPercentage(value: number): string {
@@ -49,7 +50,8 @@ const { data: stats } = await useAsyncData<Stat[]>('dashboard-stats', async () =
       query: {
         period: props.period,
         rangeStart: props.range.start.toISOString(),
-        rangeEnd: props.range.end.toISOString()
+        rangeEnd: props.range.end.toISOString(),
+        direction: props.direction || 'both'
       }
     })
 
@@ -112,7 +114,7 @@ const { data: stats } = await useAsyncData<Stat[]>('dashboard-stats', async () =
     ]
   }
 }, {
-  watch: [() => props.period, () => props.range],
+  watch: [() => props.period, () => props.range, () => props.direction],
   default: () => []
 })
 </script>

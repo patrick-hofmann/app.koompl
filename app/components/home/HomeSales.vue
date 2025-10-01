@@ -6,6 +6,7 @@ import type { Period, Range } from '~/types'
 const props = defineProps<{
   period: Period
   range: Range
+  direction?: 'received' | 'sent' | 'both'
 }>()
 
 const UBadge = resolveComponent('UBadge')
@@ -14,8 +15,9 @@ type EmailActivity = {
   id: string
   date: string
   status: string
-  email: string
-  agent: string
+  direction: 'inbound' | 'outbound'
+  from: string
+  to: string
   subject: string
 }
 
@@ -24,7 +26,8 @@ const { data, refresh } = await useAsyncData('recent-emails', async () => {
     const emails = await $fetch<EmailActivity[]>('/api/stats/recent-emails', {
       query: {
         rangeStart: props.range.start.toISOString(),
-        rangeEnd: props.range.end.toISOString()
+        rangeEnd: props.range.end.toISOString(),
+        direction: props.direction || 'both'
       }
     })
     return emails || []
@@ -33,7 +36,7 @@ const { data, refresh } = await useAsyncData('recent-emails', async () => {
     return []
   }
 }, {
-  watch: [() => props.period, () => props.range],
+  watch: [() => props.period, () => props.range, () => props.direction],
   default: () => []
 })
 
@@ -78,12 +81,21 @@ const columns: TableColumn<EmailActivity>[] = [
     }
   },
   {
-    accessorKey: 'email',
-    header: 'From Email'
+    accessorKey: 'direction',
+    header: 'Dir',
+    cell: ({ row }) => {
+      const dir = row.getValue('direction') as string
+      const color = dir === 'inbound' ? 'info' : 'success'
+      return h(UBadge, { variant: 'subtle', color }, () => dir)
+    }
   },
   {
-    accessorKey: 'agent',
-    header: 'Agent'
+    accessorKey: 'from',
+    header: 'From'
+  },
+  {
+    accessorKey: 'to',
+    header: 'To'
   },
   {
     accessorKey: 'subject',

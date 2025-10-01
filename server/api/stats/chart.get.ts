@@ -1,3 +1,5 @@
+import { mailStorage } from '../../utils/mailStorage'
+
 export default defineEventHandler(async (_event) => {
   const query = getQuery(_event)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -5,89 +7,51 @@ export default defineEventHandler(async (_event) => {
   // Begin/end calculations for requested range
   const rangeStart = query.rangeStart ? new Date(query.rangeStart as string) : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
   const rangeEnd = query.rangeEnd ? new Date(query.rangeEnd as string) : new Date()
+  const direction = String(query.direction || 'both') as 'received' | 'sent' | 'both'
 
   try {
-    // Get real email data from the agent email log (same source as recent emails)
-    let totalEmailsReceived = 0
-    let totalEmailsResponded = 0
+    // Use unified mail storage, identical source to Recent Email Activity, with same dedupe
+    const startDate = new Date(rangeStart)
+    startDate.setHours(0, 0, 0, 0)
+    const endDate = new Date(rangeEnd)
+    endDate.setHours(23, 59, 59, 999)
 
-    try {
-      const agentsStorage = useStorage('agents')
-      const emailLog = await agentsStorage.getItem<Array<{
-        timestamp: string
-        type: string
-        usedOpenAI: boolean
-        mailgunSent: boolean
-        domainFiltered: boolean
-        from?: string
-        to?: string
-      }>>('email:log.json')
+    const logs = await mailStorage.getRecentEmails(1000) // large buffer, we'll filter by date
+    const seen = new Set<string>()
+    const filtered = logs
+      .map((log) => {
+        const direction = log.type === 'outgoing' ? 'outbound' : 'inbound'
+        const logDate = new Date(log.timestamp)
+        if (!(logDate >= startDate && logDate <= endDate)) return null
+        const key = `${direction}:${log.messageId || log.storageKey || log.timestamp}`
+        if (seen.has(key)) return null
+        seen.add(key)
+        return { ...log, direction }
+      })
+      .filter((v): v is (typeof logs)[number] & { direction: 'inbound' | 'outbound' } => Boolean(v))
 
-      if (Array.isArray(emailLog)) {
-        // Filter for emails within the date range with inclusive boundaries
-        const startDate = new Date(rangeStart)
-        startDate.setHours(0, 0, 0, 0) // Start of day
+    let received = filtered.filter(e => e.direction === 'inbound')
+    let responded = filtered.filter(e => e.direction === 'outbound' && e.mailgunSent)
 
-        const endDate = new Date(rangeEnd)
-        endDate.setHours(23, 59, 59, 999) // End of day
-
-        const filteredEmails = emailLog.filter((log) => {
-          if (log.type !== 'inbound_processed') return false
-
-          const logDate = new Date(log.timestamp)
-          return logDate >= startDate && logDate <= endDate
-        })
-
-        totalEmailsReceived = filteredEmails.length
-
-        // Count all emails as "received" (including blocked, failed, no-agent),
-        // only count successful AI responses as "responded"
-        totalEmailsResponded = filteredEmails.filter(
-          email => email.usedOpenAI && email.mailgunSent && !email.domainFiltered
-        ).length
-
-        // Return the actual emails filtered for date range
-        return {
-          emails: {
-            received: filteredEmails.length,
-            responded: totalEmailsResponded
-          },
-          emailData: filteredEmails.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
-          timestamp: Date.now()
-        }
-      }
-
-      // Fallback: try old inbound storage method if no agent log
-      if (totalEmailsReceived === 0) {
-        const inboundStorage = useStorage('inbound')
-        const inboundData = await inboundStorage.getItem<Record<string, unknown>>('inbound.json')
-        const recentActivity = await inboundStorage.getItem<Array<Record<string, unknown>>>('recent.json')
-
-        if (Array.isArray(recentActivity)) {
-          totalEmailsReceived = recentActivity.length
-          totalEmailsResponded = recentActivity.filter(
-            (item: Record<string, unknown>) =>
-              item.success !== false
-              && (item.answerId || item.outboundId)
-          ).length
-        } else if (inboundData) {
-          totalEmailsReceived = 1
-          if (inboundData.success !== false || inboundData.answerId || inboundData.outboundId) {
-            totalEmailsResponded = 1
-          }
-        }
-      }
-    } catch {
-      // If all storage methods fail, use zero values
+    if (direction === 'received') {
+      responded = []
+    } else if (direction === 'sent') {
+      received = []
     }
 
-    // Return exact email counts without any multiplication or fudging
     return {
       emails: {
-        received: totalEmailsReceived,
-        responded: totalEmailsResponded
+        received: received.length,
+        responded: responded.length
       },
-      emailData: [], // No email data available
+      emailData: filtered
+        .map(e => ({
+          timestamp: e.timestamp,
+          usedOpenAI: Boolean(e.usedOpenAI),
+          mailgunSent: Boolean(e.mailgunSent),
+          domainFiltered: Boolean(e.domainFiltered)
+        }))
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
       timestamp: Date.now()
     }
   } catch (exception) {

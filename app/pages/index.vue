@@ -20,6 +20,7 @@ const range = shallowRef<Range>({
   end: new Date()
 })
 const period = ref<Period>('daily')
+const direction = ref<'received' | 'sent' | 'both'>('both')
 </script>
 
 <template>
@@ -56,14 +57,19 @@ const period = ref<Period>('daily')
           <HomeDateRangePicker v-model="range" class="-ms-1" />
 
           <HomePeriodSelect v-model="period" :range="range" />
+          <USelect v-model="direction" :items="[
+            { label: 'Both', value: 'both' },
+            { label: 'Received', value: 'received' },
+            { label: 'Sent', value: 'sent' }
+          ]" size="sm" class="w-40" />
         </template>
       </UDashboardToolbar>
     </template>
 
     <template #body>
-      <HomeStats :period="period" :range="range" />
-      <HomeChart :period="period" :range="range" />
-      <HomeSales :period="period" :range="range" />
+      <HomeStats :period="period" :range="range" :direction="direction" />
+      <HomeChart :period="period" :range="range" :direction="direction" />
+      <HomeSales :period="period" :range="range" :direction="direction" />
     </template>
   </UDashboardPanel>
 </template>

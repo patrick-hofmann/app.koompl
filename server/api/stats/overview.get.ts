@@ -1,3 +1,5 @@
+import { mailStorage } from '../../utils/mailStorage'
+
 export default defineEventHandler(async (_event) => {
   try {
     // Get agents count
@@ -26,21 +28,26 @@ export default defineEventHandler(async (_event) => {
       }
     }
 
+    // Use unified mail storage with dedupe to compute counts (same as chart/list)
     let emailsReceived = 0
     let emailsResponded = 0
-
-    // Try to get email activity data from inbound storage
     try {
-      const inboundStorage = useStorage('inbound')
-      const inboundData = await inboundStorage.getItem<{ receivedAt?: string }>('inbound.json')
+      const logs = await mailStorage.getRecentEmails(1000)
+      const seen = new Set<string>()
+      const filtered = logs
+        .map((log) => {
+          const direction = log.type === 'outgoing' ? 'outbound' : 'inbound'
+          const key = `${direction}:${log.messageId || log.storageKey || log.timestamp}`
+          if (seen.has(key)) return null
+          seen.add(key)
+          return { ...log, direction }
+        })
+        .filter((v): v is (typeof logs)[number] & { direction: 'inbound' | 'outbound' } => Boolean(v))
 
-      if (inboundData) {
-        // Simple activity counting
-        emailsReceived = 1
-        emailsResponded = 1
-      }
+      emailsReceived = filtered.filter(e => e.direction === 'inbound').length
+      emailsResponded = filtered.filter(e => e.direction === 'outbound' && e.mailgunSent).length
     } catch {
-      // Inbound data error handled gracefully
+      // ignore errors and leave counts at zero
     }
 
     // Calculate success rate with minimum 100% if no data

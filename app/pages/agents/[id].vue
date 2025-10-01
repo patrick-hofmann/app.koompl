@@ -10,51 +10,94 @@ const { data: agent, refresh } = await useAsyncData(() => `agent-${agentId.value
   { server: false, lazy: true }
 )
 
-// Static mock mailbox: reuse server API route to keep UI consistent
-const { data: mails } = await useFetch<Mail[]>('/api/mails', { default: () => [] })
+// Real email data for this agent
+const { data: emailData, pending: emailsPending, refresh: refreshEmails } = await useAsyncData(
+  () => `agent-emails-${agentId.value}`,
+  async () => {
+    const res = await $fetch<{ incoming: Mail[], outgoing: Mail[] }>(`/api/agents/${agentId.value}/emails`)
+    return res
+  },
+  { server: false, lazy: true }
+)
 
-// Tabs: All / Incoming / Outgoing / Log
-const tabItems = [{ label: 'All', value: 'all' }, { label: 'Incoming', value: 'incoming' }, { label: 'Outgoing', value: 'outgoing' }, { label: 'Log', value: 'log' }]
-const selectedTab = ref('all')
+// Tabs with email counts
+const tabItems = computed(() => {
+  const incoming = emailData.value?.incoming || []
+  const outgoing = emailData.value?.outgoing || []
+  const logs = logsData.value || []
 
-// Create a few mock outgoing mails authored by the agent
-const outgoingMails = computed<Mail[]>(() => {
-  if (!agent.value) return []
-  const from = { id: 0, name: agent.value.name, email: agent.value.email, avatar: agent.value.avatar as Record<string, unknown> | undefined }
   return [
-    { id: 10001, from, subject: 'Re: Weekly priorities', body: 'Thanks, aligned on priorities. I booked a follow-up.', date: new Date().toISOString() },
-    { id: 10002, from, subject: 'Outreach draft to partner', body: 'Here is a proposed outreach draft. Thoughts?', date: new Date(Date.now() - 3600_000).toISOString() }
+    { label: `All (${incoming.length + outgoing.length})`, value: 'all' },
+    { label: `Incoming (${incoming.length})`, value: 'incoming' },
+    { label: `Outgoing (${outgoing.length})`, value: 'outgoing' },
+    { label: `Log (${logs.length})`, value: 'log' }
   ]
 })
+const selectedTab = ref('all')
 
+// Real mail handling with incoming and outgoing emails
 const combinedMails = computed<Mail[]>(() => {
-  if (selectedTab.value === 'incoming') return mails.value || []
-  if (selectedTab.value === 'outgoing') return outgoingMails.value
+  const incoming = emailData.value?.incoming || []
+  const outgoing = emailData.value?.outgoing || []
+
+  if (selectedTab.value === 'incoming') return incoming
+  if (selectedTab.value === 'outgoing') return outgoing
+  if (selectedTab.value === 'all') return [...incoming, ...outgoing].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   if (selectedTab.value === 'log') return []
-  return [...(mails.value || []), ...outgoingMails.value]
+  return []
 })
 
+// Comprehensive agent activity logs (MCP, AI, Email)
 type AgentLogEntry = {
-  timestamp?: string
-  type?: string
-  messageId?: string
-  to?: string
-  from?: string
-  subject?: string
-  agentId?: string
-  mcpServerIds?: string[]
-  mcpContextCount?: number
-  mailgunSent?: boolean
-  domainFiltered?: boolean
+  id: string
+  timestamp: string
+  agentId: string
+  agentEmail: string
+  type: 'mcp_usage' | 'ai_usage' | 'email_activity'
+  // MCP usage fields
+  serverId?: string
+  serverName?: string
+  provider?: string
+  category?: string
+  input?: {
+    query: string
+    context?: Record<string, unknown>
+    parameters?: Record<string, unknown>
+  }
+  output?: {
+    result: unknown
+    success: boolean
+    error?: string
+  }
+  metadata?: {
+    responseTime?: number
+    contextCount?: number
+  }
+  // AI usage fields
+  model?: string
+  tokens?: {
+    prompt?: number
+    completion?: number
+    total?: number
+  }
+  // Email activity fields
+  direction?: 'inbound' | 'outbound'
+  email?: {
+    messageId: string
+    from: string
+    to: string
+    subject: string
+    body: string
+  }
 }
 
 const { data: logsData, pending: logsPending, refresh: refreshLogs } = await useAsyncData(
-  () => `agent-logs-${agentId.value}`,
+  () => `agent-activity-logs-${agentId.value}`,
   async () => {
-    const res = await $fetch<{ ok: boolean, items: AgentLogEntry[] }>(`/api/agents/logs`, {
-      query: { agentId: agentId.value, limit: 200 }
+    const res = await $fetch<{ ok: boolean, count: number, logs: AgentLogEntry[] }>(`/api/agents/${agentId.value}/logs`, {
+      query: { type: 'all', limit: 200 }
     })
-    return res.items || []
+    return res.logs || []
   },
   { server: false, lazy: true }
 )
@@ -114,15 +157,31 @@ async function deleteAgent() {
               <h3 class="font-medium text-highlighted">Mailbox</h3>
               <p class="text-sm text-muted truncate">{{ agent?.email }}</p>
             </div>
-            <UButton icon="i-lucide-refresh-ccw" label="Refresh" color="neutral" variant="outline" />
+            <UButton
+              icon="i-lucide-refresh-ccw"
+              label="Refresh"
+              color="neutral"
+              variant="outline"
+              :loading="emailsPending"
+              @click="refreshEmails"
+            />
           </div>
           <div class="mt-4">
-            <InboxList v-if="combinedMails.length > 0" v-model="selectedMail" :mails="combinedMails || []" />
+            <div v-if="emailsPending" class="space-y-2">
+              <USkeleton class="h-4 w-full" />
+              <USkeleton class="h-4 w-3/4" />
+              <USkeleton class="h-4 w-2/3" />
+            </div>
+            <InboxList v-else-if="combinedMails.length > 0" v-model="selectedMail" :mails="combinedMails || []" />
             <div v-else class="flex flex-1 items-center justify-center py-12">
               <div class="text-center">
                 <UIcon name="i-lucide-inbox" class="size-16 text-dimmed mx-auto mb-4" />
                 <p class="text-muted">
-                  {{ selectedTab === 'incoming' ? 'No incoming emails' : selectedTab === 'outgoing' ? 'No outgoing emails' : 'No emails' }}
+                  {{
+                    selectedTab === 'incoming' ? 'No incoming emails'
+                      : selectedTab === 'outgoing' ? 'No outgoing emails sent yet'
+                        : 'No emails'
+                  }}
                 </p>
               </div>
             </div>
@@ -130,14 +189,14 @@ async function deleteAgent() {
         </UCard>
       </div>
 
-      <!-- MCP Log Content -->
+      <!-- Comprehensive Activity Log Content -->
       <div v-if="selectedTab === 'log'">
         <UCard>
           <div class="flex items-center justify-between">
-            <h3 class="font-medium text-highlighted">Mail & MCP Log</h3>
+            <h3 class="font-medium text-highlighted">Agent Activity Log</h3>
             <div class="flex items-center gap-2">
-              <UBadge variant="subtle">{{ logs.length }} Einträge</UBadge>
-              <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" :loading="logsPending" @click="refreshLogs">Aktualisieren</UButton>
+              <UBadge variant="subtle">{{ logs.length }} Activities</UBadge>
+              <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" :loading="logsPending" @click="refreshLogs">Refresh</UButton>
             </div>
           </div>
           <div v-if="logsPending" class="mt-4 space-y-2">
@@ -145,25 +204,145 @@ async function deleteAgent() {
             <USkeleton class="h-4 w-3/4" />
             <USkeleton class="h-4 w-2/3" />
           </div>
-          <div v-else-if="logs.length === 0" class="mt-4 text-sm text-muted">Noch keine Aktivitäten protokolliert.</div>
-          <div v-else class="mt-4 space-y-3">
-            <div v-for="(entry, idx) in logs" :key="idx" class="border rounded p-3 text-xs">
-              <div class="flex items-center justify-between">
-                <span class="font-medium">{{ entry.type || 'event' }}</span>
-                <span class="text-muted">{{ formatTs(entry.timestamp) }}</span>
-              </div>
-              <div class="mt-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div class="space-y-0.5">
-                  <div v-if="entry.messageId">Message-ID: <span class="text-muted">{{ entry.messageId }}</span></div>
-                  <div v-if="entry.to">To: <span class="text-muted">{{ entry.to }}</span></div>
-                  <div v-if="entry.from">From: <span class="text-muted">{{ entry.from }}</span></div>
-                  <div v-if="entry.subject">Subject: <span class="text-muted truncate inline-block max-w-full">{{ entry.subject }}</span></div>
+          <div v-else-if="logs.length === 0" class="mt-4 text-sm text-muted">No activities logged yet.</div>
+          <div v-else class="mt-4 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div v-for="(entry, idx) in logs" :key="entry.id || idx" class="border rounded p-4 text-sm">
+              <!-- Header with type and timestamp -->
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <UBadge
+                    :color="entry.type === 'mcp_usage' ? 'blue' : entry.type === 'ai_usage' ? 'green' : 'orange'"
+                    variant="subtle"
+                  >
+                    {{ entry.type === 'mcp_usage' ? 'MCP' : entry.type === 'ai_usage' ? 'AI' : 'Email' }}
+                  </UBadge>
+                  <span class="font-medium text-sm">
+                    {{ entry.type === 'mcp_usage' ? `${entry.serverName || entry.serverId}`
+                       : entry.type === 'ai_usage' ? `${entry.model || 'OpenAI'}`
+                       : `${entry.direction || 'Email'} Activity` }}
+                  </span>
                 </div>
-                <div class="space-y-0.5">
-                  <div>MCP Servers: <span class="text-muted">{{ (entry.mcpServerIds || []).join(', ') }}</span></div>
-                  <div>MCP Contexts: <span class="text-muted">{{ entry.mcpContextCount || 0 }}</span></div>
-                  <div>Mailgun sent: <span :class="entry.mailgunSent ? 'text-green-600' : 'text-muted'">{{ entry.mailgunSent ? 'yes' : 'no' }}</span></div>
-                  <div>Domain filtered: <span :class="entry.domainFiltered ? 'text-red-600' : 'text-muted'">{{ entry.domainFiltered ? 'yes' : 'no' }}</span></div>
+                <span class="text-muted text-xs">{{ formatTs(entry.timestamp) }}</span>
+              </div>
+
+              <!-- MCP Usage Details -->
+              <div v-if="entry.type === 'mcp_usage'" class="space-y-2">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="space-y-1">
+                    <div class="font-medium text-xs text-muted">INPUT</div>
+                    <div class="text-xs">
+                      <div><strong>Query:</strong> {{ entry.input?.query || 'N/A' }}</div>
+                      <div v-if="entry.input?.parameters?.limit"><strong>Limit:</strong> {{ entry.input.parameters.limit }}</div>
+                    </div>
+                  </div>
+                  <div class="space-y-1">
+                    <div class="font-medium text-xs text-muted">OUTPUT</div>
+                    <div class="text-xs">
+                      <div><strong>Success:</strong>
+                        <span :class="entry.output?.success ? 'text-green-600' : 'text-red-600'">
+                          {{ entry.output?.success ? 'Yes' : 'No' }}
+                        </span>
+                      </div>
+                      <div v-if="entry.output?.error" class="text-red-600"><strong>Error:</strong> {{ entry.output.error }}</div>
+                      <div v-if="entry.metadata?.responseTime"><strong>Response Time:</strong> {{ entry.metadata.responseTime }}ms</div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="entry.output?.result && typeof entry.output.result === 'object'" class="mt-2">
+                  <div class="font-medium text-xs text-muted mb-1">RESULT SUMMARY</div>
+                  <div class="text-xs bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+                    {{ (entry.output.result as any)?.summary || JSON.stringify(entry.output.result).slice(0, 200) + '...' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- AI Usage Details -->
+              <div v-if="entry.type === 'ai_usage'" class="space-y-2">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="space-y-1">
+                    <div class="font-medium text-xs text-muted">INPUT</div>
+                    <div class="text-xs">
+                      <div><strong>Model:</strong> {{ entry.model || 'N/A' }}</div>
+                      <div><strong>Messages:</strong> {{ entry.input?.messages?.length || 0 }}</div>
+                      <div v-if="entry.input?.temperature"><strong>Temperature:</strong> {{ entry.input.temperature }}</div>
+                      <div v-if="entry.input?.maxTokens"><strong>Max Tokens:</strong> {{ entry.input.maxTokens }}</div>
+                    </div>
+                  </div>
+                  <div class="space-y-1">
+                    <div class="font-medium text-xs text-muted">OUTPUT</div>
+                    <div class="text-xs">
+                      <div><strong>Success:</strong>
+                        <span :class="entry.output?.success ? 'text-green-600' : 'text-red-600'">
+                          {{ entry.output?.success ? 'Yes' : 'No' }}
+                        </span>
+                      </div>
+                      <div v-if="entry.output?.error" class="text-red-600"><strong>Error:</strong> {{ entry.output.error }}</div>
+                      <div v-if="entry.metadata?.responseTime"><strong>Response Time:</strong> {{ entry.metadata.responseTime }}ms</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+                  <div v-if="entry.tokens?.prompt" class="text-xs">
+                    <div class="font-medium text-muted">Prompt Tokens</div>
+                    <div>{{ entry.tokens.prompt }}</div>
+                  </div>
+                  <div v-if="entry.tokens?.completion" class="text-xs">
+                    <div class="font-medium text-muted">Completion Tokens</div>
+                    <div>{{ entry.tokens.completion }}</div>
+                  </div>
+                  <div v-if="entry.tokens?.total" class="text-xs">
+                    <div class="font-medium text-muted">Total Tokens</div>
+                    <div class="font-medium">{{ entry.tokens.total }}</div>
+                  </div>
+                </div>
+                <div v-if="entry.output?.result" class="mt-2">
+                  <div class="font-medium text-xs text-muted mb-1">AI RESPONSE</div>
+                  <div class="text-xs bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+                    {{ entry.output.result.slice(0, 300) }}{{ entry.output.result.length > 300 ? '...' : '' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Email Activity Details -->
+              <div v-if="entry.type === 'email_activity'" class="space-y-2">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="space-y-1">
+                    <div class="font-medium text-xs text-muted">EMAIL DETAILS</div>
+                    <div class="text-xs">
+                      <div><strong>Direction:</strong>
+                        <span :class="entry.direction === 'inbound' ? 'text-blue-600' : 'text-green-600'">
+                          {{ entry.direction === 'inbound' ? 'Incoming' : 'Outgoing' }}
+                        </span>
+                      </div>
+                      <div v-if="entry.email?.messageId"><strong>Message ID:</strong> {{ entry.email.messageId }}</div>
+                      <div v-if="entry.email?.from"><strong>From:</strong> {{ entry.email.from }}</div>
+                      <div v-if="entry.email?.to"><strong>To:</strong> {{ entry.email.to }}</div>
+                    </div>
+                  </div>
+                  <div class="space-y-1">
+                    <div class="font-medium text-xs text-muted">STATUS</div>
+                    <div class="text-xs">
+                      <div v-if="entry.email?.subject"><strong>Subject:</strong> {{ entry.email.subject }}</div>
+                      <div v-if="entry.metadata?.mailgunSent !== undefined">
+                        <strong>Mailgun Sent:</strong>
+                        <span :class="entry.metadata.mailgunSent ? 'text-green-600' : 'text-muted'">
+                          {{ entry.metadata.mailgunSent ? 'Yes' : 'No' }}
+                        </span>
+                      </div>
+                      <div v-if="entry.metadata?.isAutomatic !== undefined">
+                        <strong>Automatic:</strong>
+                        <span :class="entry.metadata.isAutomatic ? 'text-blue-600' : 'text-orange-600'">
+                          {{ entry.metadata.isAutomatic ? 'Yes' : 'No' }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="entry.email?.body" class="mt-2">
+                  <div class="font-medium text-xs text-muted mb-1">EMAIL BODY</div>
+                  <div class="text-xs bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+                    {{ entry.email.body.slice(0, 300) }}{{ entry.email.body.length > 300 ? '...' : '' }}
+                  </div>
                 </div>
               </div>
             </div>

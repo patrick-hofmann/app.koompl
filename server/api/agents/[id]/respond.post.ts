@@ -1,6 +1,8 @@
 import type { Agent } from '~/types'
 import { listMcpServers } from '../../../utils/mcpStorage'
 import { fetchMcpContext, type McpContextResult } from '../../../utils/mcpClients'
+import { mailStorage } from '../../../utils/mailStorage'
+import { agentLogger } from '../../../utils/agentLogging'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -112,7 +114,11 @@ export default defineEventHandler(async (event) => {
           from,
           receivedAt: new Date().toISOString()
         }
-        const results = await Promise.allSettled(selectedServers.map(server => fetchMcpContext(server, emailContext, { limit: 5 })))
+        const results = await Promise.allSettled(selectedServers.map(server => fetchMcpContext(server, emailContext, { 
+          limit: 5,
+          agentId: agent.id,
+          agentEmail: agent.email
+        })))
         fetchedMcpContexts = results
           .filter((r): r is PromiseFulfilledResult<McpContextResult | null> => r.status === 'fulfilled')
           .map(r => r.value)
@@ -128,44 +134,73 @@ export default defineEventHandler(async (event) => {
       { role: 'user', content: userContent }
     ].filter(Boolean) as Array<{ role: string, content: string }>
 
-    const res: { choices?: Array<{ message?: { content?: string } }> } = await $fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages,
-        temperature,
-        max_tokens: maxTokens
-      })
-    })
+    const aiStartTime = Date.now()
+    let aiResult: string = ''
+    let aiTokens: { prompt?: number, completion?: number, total?: number } | undefined
+    let aiError: string | undefined
 
-    const result = String(res?.choices?.[0]?.message?.content || '').trim()
-
-    // Write agent activity log entry
     try {
-      const logKey = 'email:log.json'
-      const currentLog: Array<Record<string, unknown>> = (await agentsStorage.getItem<Array<Record<string, unknown>>>(logKey)) || []
-      currentLog.push({
-        timestamp: new Date().toISOString(),
-        type: 'agent_respond',
-        messageId: (globalThis as unknown as { crypto?: { randomUUID?: () => string } })?.crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
-        to: '',
-        from,
-        subject,
-        agentId: agent.id,
-        usedOpenAI: true,
-        mailgunSent: false,
-        domainFiltered: false,
-        mcpServerIds: agent.mcpServerIds || [],
-        mcpContextCount: (Array.isArray(body?.mcpContexts) ? body!.mcpContexts!.length : 0) + fetchedMcpContexts.length
+      const res: { 
+        choices?: Array<{ message?: { content?: string } }>
+        usage?: { prompt_tokens?: number, completion_tokens?: number, total_tokens?: number }
+      } = await $fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages,
+          temperature,
+          max_tokens: maxTokens
+        })
       })
-      await agentsStorage.setItem(logKey, currentLog)
-    } catch {
-      // ignore logging errors
+
+      aiResult = String(res?.choices?.[0]?.message?.content || '').trim()
+      aiTokens = res?.usage ? {
+        prompt: res.usage.prompt_tokens,
+        completion: res.usage.completion_tokens,
+        total: res.usage.total_tokens
+      } : undefined
+    } catch (error) {
+      aiError = error instanceof Error ? error.message : String(error)
+      throw error
+    } finally {
+      // Log AI usage regardless of success or failure
+      try {
+        await agentLogger.logAiUsage({
+          agentId: agent.id,
+          agentEmail: agent.email,
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          input: {
+            messages,
+            temperature,
+            maxTokens
+          },
+          output: {
+            result: aiResult,
+            success: !aiError,
+            error: aiError,
+            tokens: aiTokens
+          },
+          metadata: {
+            responseTime: Date.now() - aiStartTime,
+            promptLength: userContent.length,
+            responseLength: aiResult.length
+          }
+        })
+      } catch (logError) {
+        console.error('Failed to log AI usage:', logError)
+      }
     }
+
+    const result = aiResult
+
+    // Note: Manual testing responses are NOT stored as email activities
+    // This endpoint is only for testing AI responses via UI
+    // Actual email sending should use /api/mailgun/outbound
 
     return { ok: true, result }
   } catch (e) {

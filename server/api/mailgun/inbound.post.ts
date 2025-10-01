@@ -1,19 +1,12 @@
-import { listMcpServers } from '../../utils/mcpStorage'
-import { fetchMcpContext, type McpContextResult } from '../../utils/mcpClients'
-import { createGeneralAgent } from '../../utils/mcpAgent'
+// MCP fetching and AI generation are handled in /api/agents/[id]/respond
+import { mailStorage } from '../../utils/mailStorage'
+import { agentLogger } from '../../utils/agentLogging'
 import type { Agent } from '~/types'
-import type { StoredMcpServer } from '../../utils/mcpStorage'
+// import type { StoredMcpServer } from '../../utils/mcpStorage'
 
 export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens.
   try {
-    const config = useRuntimeConfig()
-    const mailgunKey = config?.mailgun?.key
-
-    // Mailgun forwards MIME or parsed form fields depending on route settings.
-    // We accept both JSON and form-urlencoded payloads.
-
-    const inboundStorage = useStorage('inbound')
     const agentsStorage = useStorage('agents')
     const settingsStorage = useStorage('settings')
 
@@ -85,29 +78,18 @@ export default defineEventHandler(async (event) => {
       payload ? (payload as Record<string, unknown>)['body-html'] : undefined
     )
 
-    // Persist raw payload for traceability (namespaced by inbound storage)
-    const inboundKey = `${receivedAt}_${(messageId || '').replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2)}.json`
-    await inboundStorage.setItem(inboundKey, {
-      receivedAt,
-      messageId,
-      from,
-      to,
-      subject,
-      text,
-      html,
-      raw: payload
-    })
-
-    // Also persist simplified inbound snapshot to agents storage as inbound.json
-    await agentsStorage.setItem('inbound.json', {
-      receivedAt,
-      messageId,
-      from,
-      to,
-      subject,
-      text: String(text || ''),
+    // Store in unified mail storage system
+    const inboundEmail = await mailStorage.storeInboundEmail({
+      messageId: String(messageId || ''),
+      from: String(from || ''),
+      to: String(to || ''),
+      subject: String(subject || ''),
+      body: String(text || ''),
       html: String(html || ''),
-      mcpContexts: []
+      agentId: undefined, // Will be set below after agent resolution
+      agentEmail: undefined,
+      mcpContexts: [],
+      rawPayload: payload
     })
 
     // Helper: extract the bare email address from header-like strings
@@ -128,28 +110,31 @@ export default defineEventHandler(async (event) => {
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
     const agent = toEmail ? agents.find(a => String(a?.email || '').toLowerCase() === toEmail) : undefined
 
-    let mcpContexts: McpContextResult[] = []
-    if (agent?.mcpServerIds?.length) {
-      try {
-        const allServers = await listMcpServers()
-        const selectedServers = allServers.filter(server => agent.mcpServerIds?.includes(server.id))
-        if (selectedServers.length) {
-          const emailContext = {
+    // Do not fetch MCP contexts here
+
+    // Log inbound email activity EARLY (before any outbound processing)
+    try {
+      if (agent && agent.id && agent.email) {
+        await agentLogger.logEmailActivity({
+          agentId: agent.id,
+          agentEmail: agent.email,
+          direction: 'inbound',
+          email: {
+            messageId: String(messageId || ''),
+            from: String(from || ''),
+            to: String(to || ''),
             subject: String(subject || ''),
-            text: String(text || ''),
-            from: String(fromEmail || from || ''),
-            receivedAt
+            body: String(text || '')
+          },
+          metadata: {
+            mailgunSent: false,
+            isAutomatic: false,
+            mcpContextCount: 0
           }
-          const results = await Promise.allSettled(selectedServers.map((server: StoredMcpServer) => fetchMcpContext(server, emailContext, { limit: 5 })))
-          mcpContexts = results
-            .filter((entry): entry is PromiseFulfilledResult<McpContextResult | null> => entry.status === 'fulfilled')
-            .map(entry => entry.value)
-            .filter((value): value is McpContextResult => Boolean(value))
-        }
-      } catch (err) {
-        console.error('Failed to fetch MCP context', err)
-        mcpContexts = []
+        })
       }
+    } catch (logErr) {
+      console.error('Failed to log inbound email activity:', logErr)
     }
 
     // Prepare settings for mailgun
@@ -164,93 +149,29 @@ export default defineEventHandler(async (event) => {
       isDomainAllowed = isEmailAllowed(fromEmail, allowedDomains)
     }
 
-    // Generate AI response using MCP agents
+    // Generate AI response by delegating to respond endpoint (handles MCP fetching/logging)
     let aiAnswer: string | null = null
     if (agent && isDomainAllowed) {
       try {
-        // Create MCP agent based on agent configuration
-        const mcpAgent = createGeneralAgent()
-
-        // Get MCP servers for this agent
-        const allServers = await listMcpServers()
-        const agentServers = agent.mcpServerIds?.length
-          ? allServers.filter(server => agent.mcpServerIds?.includes(server.id))
-          : []
-
-        // Process email with MCP agent
-        const emailContext = {
-          subject: String(subject || ''),
-          text: String(text || ''),
-          from: String(fromEmail || from || ''),
-          receivedAt
-        }
-
-        const agentResponse = await mcpAgent.processEmail(
-          emailContext,
-          agent.prompt || 'You are a helpful AI assistant.',
-          agentServers
-        )
-
-        if (agentResponse.success && agentResponse.result) {
-          aiAnswer = agentResponse.result.trim()
-        } else {
-          // Fallback to original method if MCP agent fails
-          const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`/api/agents/${agent.id}/respond`, {
-            method: 'POST',
-            body: {
-              subject: String(subject || ''),
-              text: String(text || ''),
-              from: String(fromEmail || from || ''),
-              includeQuote: true,
-              maxTokens: 700,
-              temperature: 0.4,
-              mcpContexts: mcpContexts.map(entry => ({
-                serverId: entry.serverId,
-                serverName: entry.serverName,
-                provider: entry.provider,
-                category: entry.category,
-                summary: entry.summary
-              }))
-            }
-          })
-
-          if (response.ok && response.result) {
-            aiAnswer = response.result.trim()
+        const base = getRequestURL(event)
+        const origin = `${base.protocol}//${base.host}`
+        const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`${origin}/api/agents/${agent.id}/respond`, {
+          method: 'POST',
+          body: {
+            subject: String(subject || ''),
+            text: String(text || ''),
+            from: String(fromEmail || from || ''),
+            includeQuote: true,
+            maxTokens: 700,
+            temperature: 0.4
           }
+        })
+        if (response.ok && response.result) {
+          aiAnswer = response.result.trim()
         }
-
-        // Cleanup MCP agent
-        await mcpAgent.cleanup()
       } catch (error) {
-        console.error('MCP Agent processing error:', error)
-        // Fallback to original method
-        try {
-          const response = await $fetch<{ ok: boolean, result?: string, error?: string }>(`/api/agents/${agent.id}/respond`, {
-            method: 'POST',
-            body: {
-              subject: String(subject || ''),
-              text: String(text || ''),
-              from: String(fromEmail || from || ''),
-              includeQuote: true,
-              maxTokens: 700,
-              temperature: 0.4,
-              mcpContexts: mcpContexts.map(entry => ({
-                serverId: entry.serverId,
-                serverName: entry.serverName,
-                provider: entry.provider,
-                category: entry.category,
-                summary: entry.summary
-              }))
-            }
-          })
-
-          if (response.ok && response.result) {
-            aiAnswer = response.result.trim()
-          }
-        } catch {
-          // Swallow errors; we still return ok to Mailgun
-          aiAnswer = null
-        }
+        console.error('Respond endpoint error:', error)
+        aiAnswer = null
       }
     }
 
@@ -273,73 +194,46 @@ export default defineEventHandler(async (event) => {
     // Preserve UTF-8 characters (no ASCII-only sanitization)
     const cleanBody = String(tofuBody || '').trim()
 
-    // Send reply via Mailgun if we have credentials and a resolvable routing
-    let outboundResult: { ok: boolean, id?: string, message?: string, error?: string } = { ok: false }
-    if (mailgunKey && fromEmail && toEmail) {
+    // Send reply via dedicated outbound route if we have agent and email addresses
+    let _outboundResult: { ok: boolean, id?: string, message?: string, error?: string } = { ok: false }
+    if (agent && fromEmail && toEmail && aiAnswer) {
       try {
-        const domain = String(toEmail.split('@')[1] || '').trim()
-        if (domain) {
-          const form = new URLSearchParams()
-          form.set('to', fromEmail)
-          form.set('subject', `Re: ${String(subject || '').replace(/^Re:\s*/i, '')}`)
-          form.set('text', cleanBody)
-          form.set('from', `${agent?.name || 'Agent'} <${toEmail}>`)
-          form.set('o:tracking', 'no')
-          form.set('o:tracking-clicks', 'no')
-          form.set('o:tracking-opens', 'no')
-          form.set('h:Content-Type', 'text/plain; charset=utf-8')
-          form.set('h:MIME-Version', '1.0')
-          // Let Mailgun set appropriate transfer encoding for UTF-8
+        const base = getRequestURL(event)
+        const origin = `${base.protocol}//${base.host}`
+        const response = await $fetch(`${origin}/api/mailgun/outbound`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: `${agent.name || 'Agent'} <${toEmail}>`,
+            to: fromEmail,
+            subject: `Re: ${String(subject || '').replace(/^Re:\s*/i, '')}`,
+            text: cleanBody,
+            agentId: agent.id,
+            agentEmail: agent.email,
+            mcpServerIds: agent.mcpServerIds || [],
+            mcpContextCount: 0,
+            isAutomatic: true // This is an automatic response via Mailgun
+          })
+        })
 
-          const url = `https://api.mailgun.net/v3/${encodeURIComponent(domain)}/messages`
-          const res: { id?: string, message?: string, status?: string } = await $fetch(url, {
-            method: 'POST',
-            headers: {
-              'Authorization': 'Basic ' + Buffer.from(`api:${mailgunKey}`).toString('base64'),
-              'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: form.toString()
-          }).catch(e => ({ message: String(e), status: 'error' }))
-
-          outboundResult = res?.status === 'error' ? { ok: false, error: res?.message } : { ok: true, id: res?.id, message: res?.message }
-        }
-      } catch {
-        outboundResult = { ok: false }
+        _outboundResult = response.ok ? { ok: true, id: response.messageId, message: 'Sent via outbound route' } : { ok: false, error: response.error }
+      } catch (error) {
+        console.error('Failed to send via outbound route:', error)
+        _outboundResult = { ok: false, error: String(error) }
       }
     }
 
-    // Persist outbound snapshot alongside inbound for auditability
-    await agentsStorage.setItem('outbound.json', {
-      sentAt: new Date().toISOString(),
-      inReplyTo: messageId,
-      to: fromEmail || from || '',
-      from: toEmail || to || '',
-      subject: `Re: ${String(subject || '').replace(/^Re:\s*/i, '')}`,
-      text: cleanBody,
-      result: outboundResult
+    // Update the inbound email with agent information without creating a duplicate log entry
+    await mailStorage.updateInboundEmailContext({
+      messageId: String(messageId || ''),
+      agentId: agent?.id,
+      agentEmail: agent?.email,
+      mcpContexts: []
     })
 
-    // Write agent activity log entry
-    const logKey = 'email:log.json'
-    const currentLog: Array<Record<string, unknown>> = (await agentsStorage.getItem<Array<Record<string, unknown>>>(logKey)) || []
-    currentLog.push({
-      timestamp: new Date().toISOString(),
-      type: 'inbound_processed',
-      messageId,
-      to: toEmail,
-      from: fromEmail,
-      subject,
-      agentId: agent?.id || null,
-      usedOpenAI: Boolean(aiAnswer),
-      mailgunSent: Boolean(outboundResult?.ok),
-      domainFiltered: !isDomainAllowed,
-      storageInboundKey: inboundKey,
-      mcpServerIds: agent?.mcpServerIds || [],
-      mcpContextCount: mcpContexts.length
-    })
-    await agentsStorage.setItem(logKey, currentLog)
+    // (inbound email activity was already logged earlier)
 
-    return { ok: true, id: inboundKey }
+    return { ok: true, id: inboundEmail.id }
   } catch {
     // Even on error, Mailgun should receive ok
     return { ok: true }

@@ -177,7 +177,7 @@ export default defineNuxtConfig({
       //   driver: 'memory'
       // },
       // Filesystem storage for agents (Koompls)
-      agents: {
+      'agents': {
         // driver: 'fs',
         // base: './.data/agents'
         driver: 's3',
@@ -188,7 +188,7 @@ export default defineNuxtConfig({
         endpoint: process.env.S3_ENDPOINT
       },
       // Filesystem storage for app settings
-      settings: {
+      'settings': {
         // driver: 'fs',
         // base: './.data/settings'
         driver: 's3',
@@ -199,7 +199,7 @@ export default defineNuxtConfig({
         endpoint: process.env.S3_ENDPOINT
       },
       // MCP servers storage (falls back to settings bucket if dedicated bucket not set)
-      mcp: {
+      'mcp': {
         driver: 's3',
         bucket: process.env.S3_BUCKET_MCPS || process.env.S3_BUCKET_SETTINGS,
         accessKeyId: process.env.S3_ACCESS_KEY_ID,
@@ -208,11 +208,33 @@ export default defineNuxtConfig({
         endpoint: process.env.S3_ENDPOINT
       },
       // Inbound emails archive
-      inbound: {
+      'inbound': {
         // driver: 'fs',
         // base: './.data/inbound'
         driver: 's3',
         bucket: process.env.S3_BUCKET_INBOUND,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
+      },
+      // Persistent storage for agent activity logs
+      'agent-logs': {
+        // driver: 'fs',
+        // base: './.data/agent-logs'
+        driver: 's3',
+        bucket: process.env.S3_BUCKET_AGENT_LOGS || process.env.S3_BUCKET_SETTINGS,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
+      },
+      // Persistent unified mail storage (inbound/outbound logs and snapshots)
+      'mail': {
+        // driver: 'fs',
+        // base: './.data/mail'
+        driver: 's3',
+        bucket: process.env.S3_BUCKET_MAIL || process.env.S3_BUCKET_INBOUND || process.env.S3_BUCKET_SETTINGS,
         accessKeyId: process.env.S3_ACCESS_KEY_ID,
         secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
         region: process.env.S3_REGION,

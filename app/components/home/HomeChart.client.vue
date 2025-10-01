@@ -8,6 +8,7 @@ const cardRef = useTemplateRef<HTMLElement | null>('cardRef')
 const props = defineProps<{
   period: Period
   range: Range
+  direction?: 'received' | 'sent' | 'both'
 }>()
 
 type DataRecord = {
@@ -36,7 +37,8 @@ const formatDateForPeriod = (date: Date, period: Period): string => {
 }
 
 // Fetch emails data based on current props period/range on-demand
-watch([() => props.period, () => props.range], async () => {
+watch([() => props.period, () => props.range, () => props.direction], async () => {
+  console.log('props.direction', props.direction)
   isLoading.value = true
 
   // Get emails data from API
@@ -54,9 +56,12 @@ watch([() => props.period, () => props.range], async () => {
       query: {
         period: props.period,
         rangeStart: props.range.start.toISOString(),
-        rangeEnd: props.range.end.toISOString()
+        rangeEnd: props.range.end.toISOString(),
+        direction: props.direction || 'both'
       }
     })
+
+    console.log('emailsData', emailsData)
 
     const dates = ({
       daily: eachDayOfInterval,
@@ -143,7 +148,7 @@ const template = (d: DataRecord) => `${formatDate(d.date)}: ${formatNumber(d.ema
     <template #header>
       <div>
         <p class="text-xs text-muted uppercase mb-1.5">
-          Emails Received
+          {{ props.direction === 'sent' ? 'Emails Sent' : props.direction === 'both' ? 'Emails (Received + Sent)' : 'Emails Received' }}
         </p>
         <p class="text-3xl text-highlighted font-semibold">
           {{ formatNumber(total) }}

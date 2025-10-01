@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import type { McpProvider, McpCategory } from '~/types'
 import type { StoredMcpServer } from './mcpStorage'
 import { getMcpProviderPreset, setMcpServerStatus } from './mcpStorage'
+import { agentLogger } from './agentLogging'
 
 export type McpEmailContext = {
   subject: string
@@ -318,9 +319,15 @@ function extractSearchTerms(text: string): string[] {
 export async function fetchMcpContext(
   server: StoredMcpServer,
   email: McpEmailContext,
-  options: { limit?: number } = {}
+  options: { 
+    limit?: number
+    agentId?: string
+    agentEmail?: string
+  } = {}
 ): Promise<McpContextResult | null> {
   const limit = normalizeLimit(options.limit)
+  const startTime = Date.now()
+  
   try {
     let result: McpContextResult | null = null
     switch (server.provider) {
@@ -344,10 +351,79 @@ export async function fetchMcpContext(
     }
 
     await setMcpServerStatus(server.id, 'ok')
+    
+    // Log MCP usage if agent information is provided
+    if (options.agentId && options.agentEmail) {
+      try {
+        await agentLogger.logMcpUsage({
+          agentId: options.agentId,
+          agentEmail: options.agentEmail,
+          serverId: server.id,
+          serverName: server.name,
+          provider: server.provider,
+          category: server.category,
+          input: {
+            query: email.text || email.subject || 'No query provided',
+            context: {
+              subject: email.subject,
+              from: email.from,
+              receivedAt: email.receivedAt
+            },
+            parameters: { limit }
+          },
+          output: {
+            result: result,
+            success: true
+          },
+          metadata: {
+            responseTime: Date.now() - startTime,
+            contextCount: result?.details ? 1 : 0
+          }
+        })
+      } catch (logError) {
+        console.error('Failed to log MCP usage:', logError)
+      }
+    }
+    
     return result
   } catch (error) {
     await setMcpServerStatus(server.id, 'error')
     console.error('MCP server error', server.id, error)
+    
+    // Log failed MCP usage if agent information is provided
+    if (options.agentId && options.agentEmail) {
+      try {
+        await agentLogger.logMcpUsage({
+          agentId: options.agentId,
+          agentEmail: options.agentEmail,
+          serverId: server.id,
+          serverName: server.name,
+          provider: server.provider,
+          category: server.category,
+          input: {
+            query: email.text || email.subject || 'No query provided',
+            context: {
+              subject: email.subject,
+              from: email.from,
+              receivedAt: email.receivedAt
+            },
+            parameters: { limit }
+          },
+          output: {
+            result: null,
+            success: false,
+            error: error instanceof Error ? error.message : String(error)
+          },
+          metadata: {
+            responseTime: Date.now() - startTime,
+            contextCount: 0
+          }
+        })
+      } catch (logError) {
+        console.error('Failed to log MCP usage error:', logError)
+      }
+    }
+    
     return null
   }
 }
