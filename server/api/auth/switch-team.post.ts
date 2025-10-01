@@ -1,6 +1,6 @@
 // import type { Team } from '~/types'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event)
     const { teamId } = body
@@ -22,7 +22,7 @@ export default defineEventHandler(async event => {
     }
 
     // Find the requested team from available teams
-    const targetTeam = session.availableTeams.find(t => t.id === teamId)
+    const targetTeam = session.availableTeams.find((t) => t.id === teamId)
     if (!targetTeam) {
       throw createError({
         statusCode: 403,
@@ -33,8 +33,19 @@ export default defineEventHandler(async event => {
     // Replace entire session via helper to avoid accumulation issues
     const { setCustomUserSession } = await import('../../utils/authSession')
     await setCustomUserSession(event, {
-      user: { id: session.user.id, name: session.user.name, email: session.user.email, role: targetTeam.role },
-      team: { id: targetTeam.id, name: targetTeam.name, description: targetTeam.description, role: targetTeam.role },
+      user: {
+        id: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
+        role: targetTeam.role,
+        isSuperAdmin: session.user.isSuperAdmin
+      },
+      team: {
+        id: targetTeam.id,
+        name: targetTeam.name,
+        description: targetTeam.description,
+        role: targetTeam.role
+      },
       availableTeams: session.availableTeams || [],
       loggedInAt: session.loggedInAt
     })

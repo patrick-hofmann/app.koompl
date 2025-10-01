@@ -1,6 +1,6 @@
 // import type { Team, AuthUser, TeamMembership } from '~/types'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event)
     const { email, password } = body
@@ -12,58 +12,11 @@ export default defineEventHandler(async event => {
       })
     }
 
-    // Load auth data from JSON
-    const authData = {
-      teams: [
-        {
-          id: '1',
-          name: 'Team 1',
-          description: 'Team 1 description'
-        },
-        {
-          id: '2',
-          name: 'Team 2',
-          description: 'Team 2 description'
-        }
-      ],
-      users: [
-        {
-          id: '1',
-          name: 'Member 1',
-          email: 'test1@delta-mind.at',
-          password: 'password1'
-        },
-        {
-          id: '2',
-          name: 'Member 2',
-          email: 'test2@delta-mind.at',
-          password: 'password2'
-        }
-      ],
-      teamMemberships: [
-        {
-          id: '1',
-          userId: '1',
-          teamId: '1',
-          role: 'admin'
-        },
-        {
-          id: '2',
-          userId: '2',
-          teamId: '1',
-          role: 'user'
-        },
-        {
-          id: '3',
-          userId: '2',
-          teamId: '2',
-          role: 'admin'
-        }
-      ]
-    }
+    const { getIdentity } = await import('../../utils/identityStorage')
+    const authData = await getIdentity()
 
     // Find user credentials
-    const foundUser = authData.users.find(u => u.email === email && u.password === password)
+    const foundUser = authData.users.find((u) => u.email === email && u.password === password)
     if (!foundUser) {
       throw createError({
         statusCode: 401,
@@ -72,7 +25,7 @@ export default defineEventHandler(async event => {
     }
 
     // Get all team memberships for this user
-    const userMemberships = authData.teamMemberships.filter(m => m.userId === foundUser.id)
+    const userMemberships = authData.memberships.filter((m) => m.userId === foundUser.id)
     if (userMemberships.length === 0) {
       throw createError({
         statusCode: 401,
@@ -81,25 +34,32 @@ export default defineEventHandler(async event => {
     }
 
     // Get available teams for this user
-    const availableTeams = userMemberships.map(membership => {
-      const team = authData.teams.find(t => t.id === membership.teamId)
-      if (!team) {
-        return null
-      }
-      return {
-        id: team.id,
-        name: team.name,
-        description: team.description,
-        role: membership.role
-      }
-    }).filter(Boolean)
+    const availableTeams = userMemberships
+      .map((membership) => {
+        const team = authData.teams.find((t) => t.id === membership.teamId)
+        if (!team) {
+          return null
+        }
+        return {
+          id: team.id,
+          name: team.name,
+          description: team.description,
+          role: membership.role
+        }
+      })
+      .filter(Boolean)
 
     // Uniquify in case something duplicated accidentally
-    const uniqueTeams = availableTeams.filter((team, index, arr) =>
-      arr.findIndex(t => t.id === team.id) === index
+    const uniqueTeams = availableTeams.filter(
+      (team, index, arr) => arr.findIndex((t) => t.id === team.id) === index
     )
     if (uniqueTeams.length !== availableTeams.length) {
-      console.warn('DUPLICATES DETECTED in team computation:', availableTeams.length, '->', uniqueTeams.length)
+      console.warn(
+        'DUPLICATES DETECTED in team computation:',
+        availableTeams.length,
+        '->',
+        uniqueTeams.length
+      )
     }
 
     // Select the first team as default (could be enhanced to remember last selected team)
@@ -114,13 +74,25 @@ export default defineEventHandler(async event => {
     // Clear any existing session and set fresh user session via helper
     await clearUserSession(event)
     const { setCustomUserSession } = await import('../../utils/authSession')
+    const isSuperAdmin = authData.superAdminIds.includes(foundUser.id)
     await setCustomUserSession(event, {
-      user: { id: foundUser.id, name: foundUser.name, email: foundUser.email, role: currentTeam.role },
-      team: { id: currentTeam.id, name: currentTeam.name, description: currentTeam.description, role: currentTeam.role },
+      user: {
+        id: foundUser.id,
+        name: foundUser.name,
+        email: foundUser.email,
+        role: currentTeam.role,
+        isSuperAdmin
+      },
+      team: {
+        id: currentTeam.id,
+        name: currentTeam.name,
+        description: currentTeam.description,
+        role: currentTeam.role
+      },
       availableTeams: uniqueTeams
     })
 
-    return { success: true, availableTeams: uniqueTeams }
+    return { success: true, availableTeams: uniqueTeams, isSuperAdmin }
   } catch (error: unknown) {
     const err = error as { statusCode?: number; statusMessage?: string }
     throw createError({

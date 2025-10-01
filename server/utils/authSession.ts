@@ -4,32 +4,33 @@ import type { H3Event } from 'h3'
  */
 
 type SessionUser = {
-  id: string;
-  name: string;
-  email: string;
+  id: string
+  name: string
+  email: string
   role?: string
+  isSuperAdmin?: boolean
 }
 
 type SessionTeam = {
-  id: string;
-  name: string;
-  description?: string;
+  id: string
+  name: string
+  description?: string
   role?: string
 }
 
 type AvailableTeam = {
-  id: string;
-  name: string;
-  description?: string;
+  id: string
+  name: string
+  description?: string
   role?: string
 }
 
 export async function setCustomUserSession(
   event: H3Event,
   params: {
-    user: SessionUser;
-    team: SessionTeam;
-    availableTeams: AvailableTeam[];
+    user: SessionUser
+    team: SessionTeam
+    availableTeams: AvailableTeam[]
     loggedInAt?: string
   }
 ): Promise<void> {
@@ -38,7 +39,8 @@ export async function setCustomUserSession(
       id: params.user.id,
       name: params.user.name,
       email: params.user.email,
-      role: params.user.role || params.team.role
+      role: params.user.role || params.team.role,
+      isSuperAdmin: params.user.isSuperAdmin ?? false
     },
     team: {
       id: params.team.id,
@@ -53,6 +55,17 @@ export async function getRequiredSession<TSession = unknown>(event: H3Event): Pr
   const session = await getUserSession<TSession>(event)
   if (!session?.user || !session?.team) {
     throw createError({ statusCode: 401, statusMessage: 'Not authenticated' })
+  }
+  return session
+}
+
+export async function requireSuperAdmin<TSession = { user?: SessionUser | null }>(
+  event: H3Event
+): Promise<TSession> {
+  const session = await getRequiredSession<TSession>(event)
+  const user = (session as { user?: SessionUser | null }).user
+  if (!user?.isSuperAdmin) {
+    throw createError({ statusCode: 403, statusMessage: 'Super admin privileges required' })
   }
   return session
 }

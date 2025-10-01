@@ -117,7 +117,6 @@ export const ORDER_KEYS = [
 */
 
 export default defineNuxtConfig({
-
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
@@ -144,7 +143,8 @@ export default defineNuxtConfig({
       maxAge: 60 * 60 * 24 * 7 // 1 week
     },
     public: {
-      sessionPassword: process.env.NUXT_SESSION_PASSWORD || 'dev-session-password-must-be-at-least-32-characters'
+      sessionPassword:
+        process.env.NUXT_SESSION_PASSWORD || 'dev-session-password-must-be-at-least-32-characters'
     }
   },
 
@@ -177,7 +177,7 @@ export default defineNuxtConfig({
       //   driver: 'memory'
       // },
       // Filesystem storage for agents (Koompls)
-      'agents': {
+      agents: {
         // driver: 'fs',
         // base: './.data/agents'
         driver: 's3',
@@ -188,7 +188,7 @@ export default defineNuxtConfig({
         endpoint: process.env.S3_ENDPOINT
       },
       // Filesystem storage for app settings
-      'settings': {
+      settings: {
         // driver: 'fs',
         // base: './.data/settings'
         driver: 's3',
@@ -198,8 +198,17 @@ export default defineNuxtConfig({
         region: process.env.S3_REGION,
         endpoint: process.env.S3_ENDPOINT
       },
+      // User, team, and membership directory
+      identity: {
+        driver: 's3',
+        bucket: process.env.S3_BUCKET_IDENTITY || process.env.S3_BUCKET_SETTINGS,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
+      },
       // MCP servers storage (falls back to settings bucket if dedicated bucket not set)
-      'mcp': {
+      mcp: {
         driver: 's3',
         bucket: process.env.S3_BUCKET_MCPS || process.env.S3_BUCKET_SETTINGS,
         accessKeyId: process.env.S3_ACCESS_KEY_ID,
@@ -208,7 +217,7 @@ export default defineNuxtConfig({
         endpoint: process.env.S3_ENDPOINT
       },
       // Inbound emails archive
-      'inbound': {
+      inbound: {
         // driver: 'fs',
         // base: './.data/inbound'
         driver: 's3',
@@ -230,11 +239,14 @@ export default defineNuxtConfig({
         endpoint: process.env.S3_ENDPOINT
       },
       // Persistent unified mail storage (inbound/outbound logs and snapshots)
-      'mail': {
+      mail: {
         // driver: 'fs',
         // base: './.data/mail'
         driver: 's3',
-        bucket: process.env.S3_BUCKET_MAIL || process.env.S3_BUCKET_INBOUND || process.env.S3_BUCKET_SETTINGS,
+        bucket:
+          process.env.S3_BUCKET_MAIL ||
+          process.env.S3_BUCKET_INBOUND ||
+          process.env.S3_BUCKET_SETTINGS,
         accessKeyId: process.env.S3_ACCESS_KEY_ID,
         secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
         region: process.env.S3_REGION,

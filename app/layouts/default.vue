@@ -6,7 +6,7 @@ const toast = useToast()
 const router = useRouter()
 
 // Check authentication status
-const { loggedIn } = await useUserSession()
+const { loggedIn, session } = await useUserSession()
 
 // Redirect to login if not authenticated
 watchEffect(() => {
@@ -21,138 +21,191 @@ if (!loggedIn.value && route.path !== '/login') {
 }
 
 const open = ref(false)
+const isSuperAdmin = computed(() => Boolean(session.value?.user?.isSuperAdmin))
 
-const links = [[{
-  label: 'Home',
-  icon: 'i-lucide-house',
-  to: '/',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Koompls',
-  icon: 'i-lucide-bot',
-  to: '/agents',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Domains',
-  icon: 'i-lucide-globe',
-  to: '/domains',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'MCP Servers',
-  icon: 'i-lucide-server-cog',
-  to: '/mcp',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Team Settings',
-  icon: 'i-lucide-users',
-  type: 'trigger',
-  children: [{
-    label: 'AI Providers',
-    to: '/settings/ai',
-    onSelect: () => {
-      open.value = false
+const primaryLinks = computed<NavigationMenuItem[]>(() => {
+  const items: NavigationMenuItem[] = [
+    {
+      label: 'Home',
+      icon: 'i-lucide-house',
+      to: '/',
+      onSelect: () => {
+        open.value = false
+      }
+    },
+    {
+      label: 'Koompls',
+      icon: 'i-lucide-bot',
+      to: '/agents',
+      onSelect: () => {
+        open.value = false
+      }
+    },
+    {
+      label: 'Domains',
+      icon: 'i-lucide-globe',
+      to: '/domains',
+      onSelect: () => {
+        open.value = false
+      }
+    },
+    {
+      label: 'MCP Servers',
+      icon: 'i-lucide-server-cog',
+      to: '/mcp',
+      onSelect: () => {
+        open.value = false
+      }
     }
-  }, {
-    label: 'Members',
-    to: '/settings/members',
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Security',
-    to: '/settings/team-security',
-    onSelect: () => {
-      open.value = false
-    }
-  }]
-}, {
-  label: 'User Settings',
-  icon: 'i-lucide-user',
-  type: 'trigger',
-  children: [{
-    label: 'Profile',
-    to: '/settings',
-    exact: true,
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Notifications',
-    to: '/settings/notifications',
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Security',
-    to: '/settings/security',
-    onSelect: () => {
-      open.value = false
-    }
-  }]
-}], [{
-  label: 'Feedback',
-  icon: 'i-lucide-message-circle',
-  to: '/feedback'
-}, {
-  label: 'Help & Support',
-  icon: 'i-lucide-info',
-  to: 'https://github.com/nuxt-ui-templates/dashboard',
-  target: '_blank'
-}]] satisfies NavigationMenuItem[][]
+  ]
 
-const groups = computed(() => [{
-  id: 'links',
-  label: 'Go to',
-  items: links.flat()
-}, {
-  id: 'code',
-  label: 'Code',
-  items: [{
-    id: 'source',
-    label: 'View page source',
-    icon: 'i-simple-icons-github',
-    to: `https://github.com/nuxt-ui-templates/dashboard/blob/main/app/pages${route.path === '/' ? '/index' : route.path}.vue`,
+  if (isSuperAdmin.value) {
+    items.push({
+      label: 'Admin',
+      icon: 'i-lucide-shield-check',
+      to: '/admin',
+      onSelect: () => {
+        open.value = false
+      }
+    })
+  }
+
+  items.push(
+    {
+      label: 'Team Settings',
+      icon: 'i-lucide-users',
+      type: 'trigger',
+      children: [
+        {
+          label: 'AI Providers',
+          to: '/settings/ai',
+          onSelect: () => {
+            open.value = false
+          }
+        },
+        {
+          label: 'Members',
+          to: '/settings/members',
+          onSelect: () => {
+            open.value = false
+          }
+        },
+        {
+          label: 'Security',
+          to: '/settings/team-security',
+          onSelect: () => {
+            open.value = false
+          }
+        }
+      ]
+    },
+    {
+      label: 'User Settings',
+      icon: 'i-lucide-user',
+      type: 'trigger',
+      children: [
+        {
+          label: 'Profile',
+          to: '/settings',
+          exact: true,
+          onSelect: () => {
+            open.value = false
+          }
+        },
+        {
+          label: 'Notifications',
+          to: '/settings/notifications',
+          onSelect: () => {
+            open.value = false
+          }
+        },
+        {
+          label: 'Security',
+          to: '/settings/security',
+          onSelect: () => {
+            open.value = false
+          }
+        }
+      ]
+    }
+  )
+
+  return items
+})
+
+const secondaryLinks: NavigationMenuItem[] = [
+  {
+    label: 'Feedback',
+    icon: 'i-lucide-message-circle',
+    to: '/feedback'
+  },
+  {
+    label: 'Help & Support',
+    icon: 'i-lucide-info',
+    to: 'https://github.com/nuxt-ui-templates/dashboard',
     target: '_blank'
-  }]
-}])
+  }
+]
+
+const links = computed<NavigationMenuItem[][]>(() => [primaryLinks.value, secondaryLinks])
+
+const groups = computed(() => [
+  {
+    id: 'links',
+    label: 'Go to',
+    items: links.value.flat()
+  },
+  {
+    id: 'code',
+    label: 'Code',
+    items: [
+      {
+        id: 'source',
+        label: 'View page source',
+        icon: 'i-simple-icons-github',
+        to: `https://github.com/nuxt-ui-templates/dashboard/blob/main/app/pages${route.path === '/' ? '/index' : route.path}.vue`,
+        target: '_blank'
+      }
+    ]
+  }
+])
 
 // Show cookie consent only for logged in users
-watch(loggedIn, async isLoggedIn => {
-  if (!isLoggedIn) {
-    return
-  }
+watch(
+  loggedIn,
+  async (isLoggedIn) => {
+    if (!isLoggedIn) {
+      return
+    }
 
-  const cookie = useCookie('cookie-consent')
-  if (cookie.value === 'accepted') {
-    return
-  }
+    const cookie = useCookie('cookie-consent')
+    if (cookie.value === 'accepted') {
+      return
+    }
 
-  toast.add({
-    title: 'We use first-party cookies to enhance your experience on our website.',
-    duration: 0,
-    close: false,
-    actions: [{
-      label: 'Accept',
-      color: 'neutral',
-      variant: 'outline',
-      onClick: () => {
-        cookie.value = 'accepted'
-      }
-    }, {
-      label: 'Opt out',
-      color: 'neutral',
-      variant: 'ghost'
-    }]
-  })
-}, { immediate: true })
+    toast.add({
+      title: 'We use first-party cookies to enhance your experience on our website.',
+      duration: 0,
+      close: false,
+      actions: [
+        {
+          label: 'Accept',
+          color: 'neutral',
+          variant: 'outline',
+          onClick: () => {
+            cookie.value = 'accepted'
+          }
+        },
+        {
+          label: 'Opt out',
+          color: 'neutral',
+          variant: 'ghost'
+        }
+      ]
+    })
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
