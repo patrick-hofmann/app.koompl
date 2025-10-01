@@ -1,24 +1,10 @@
 import { createError } from 'h3'
 import type { McpProvider, McpCategory } from '~/types'
-import type { StoredMcpServer } from './mcpStorage'
+import type { StoredMcpServer } from '../types/mcp-storage'
 import { getMcpProviderPreset, setMcpServerStatus } from './mcpStorage'
 import { agentLogger } from './agentLogging'
 
-export type McpEmailContext = {
-  subject: string
-  text: string
-  from?: string | null
-  receivedAt: string
-}
-
-export type McpContextResult = {
-  serverId: string
-  serverName: string
-  provider: McpProvider
-  category: McpCategory
-  summary: string
-  details?: unknown
-}
+import type { McpEmailContext, McpContextResult } from '../types/mcp-clients'
 
 const DEFAULT_LIMIT = 5
 

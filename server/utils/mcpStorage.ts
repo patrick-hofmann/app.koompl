@@ -1,11 +1,7 @@
 import { nanoid } from 'nanoid'
 import { createError } from 'h3'
 import type { McpServer, McpProvider, McpCategory } from '~/types'
-
-export type StoredMcpServer = McpServer & {
-  createdAt: string
-  updatedAt: string
-}
+import type { StoredMcpServer, McpServerTemplate } from '../types/mcp-storage'
 
 const STORAGE_NAMESPACE = 'mcp'
 const STORAGE_KEY = 'servers.json'
@@ -303,16 +299,7 @@ export function getMcpProviderPreset(provider: McpProvider) {
   return PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom
 }
 
-export interface McpServerTemplate {
-  id: string
-  name: string
-  description: string
-  provider: McpProvider
-  category: McpCategory
-  icon: string
-  color: string
-  defaultConfig: Partial<McpServer>
-}
+// moved to server/types/mcp-storage.d.ts
 
 export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
   {

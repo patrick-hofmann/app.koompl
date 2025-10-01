@@ -1,27 +1,11 @@
 import { MCPAgent, MCPClient } from 'mcp-use'
 import { ChatAnthropic } from '@langchain/anthropic'
 import { ChatOpenAI } from '@langchain/openai'
-import type { StoredMcpServer } from './mcpStorage'
-import type { McpEmailContext } from './mcpClients'
+import type { StoredMcpServer } from '../types/mcp-storage'
+import type { McpEmailContext } from '../types/mcp-clients'
+import type { McpAgentConfig, McpAgentResponse } from '../types/mcp-agent'
 
-export interface McpAgentConfig {
-  llmProvider: 'anthropic' | 'openai'
-  model?: string
-  maxSteps?: number
-  temperature?: number
-  maxTokens?: number
-}
-
-export interface McpAgentResponse {
-  success: boolean
-  result?: string
-  error?: string
-  toolCalls?: Array<{
-    tool: string
-    input: unknown
-    output?: unknown
-  }>
-}
+// types moved to server/types/mcp-agent.d.ts
 
 export class KoomplMcpAgent {
   private agent: MCPAgent

@@ -6,20 +6,7 @@
  */
 
 import type { AgentFlow, FlowDecision } from '../types/agent-flows'
-
-export interface DecisionContext {
-  flow: AgentFlow
-  agent: {
-    id: string
-    name: string
-    email: string
-    prompt?: string
-    multiRoundConfig?: {
-      canCommunicateWithAgents?: boolean
-      allowedAgentIds?: string[]
-    }
-  }
-}
+import type { DecisionContext } from '../types/decision-engine'
 
 export class DecisionEngine {
   /**
