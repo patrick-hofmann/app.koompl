@@ -1,5 +1,12 @@
+// Determine development mode without relying on Node typings or external modules
+const isDevelopment = ((globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env?.NODE_ENV) !== 'production'
+
 export default defineEventHandler(async event => {
   try {
+    // Only allow this simulated inbound roundtrip in development
+    if (!isDevelopment) {
+      throw createError({ statusCode: 404, statusMessage: 'Not Found' })
+    }
     const id = getRouterParam(event, 'id') as string
     if (!id) {
       throw createError({ statusCode: 400, statusMessage: 'Missing id' })
