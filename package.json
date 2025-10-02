@@ -11,7 +11,13 @@
     "typecheck": "nuxt typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:kanban:inspect": "npx @modelcontextprotocol/inspector",
+    "test:kanban": "node test-runner.js --type=integration",
+    "test:kanban:integration": "node test-kanban-integration.js",
+    "test:kanban:integration:full": "node test-kanban-integration.js --scenario=full",
+    "test:kanban:integration:perf": "node test-kanban-integration.js --scenario=integration",
+    "test:kanban:example": "node example-test-run.js"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.68",

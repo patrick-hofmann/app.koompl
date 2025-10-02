@@ -64,6 +64,9 @@ export async function getBoardByIdOrName(
   context: KanbanMcpContext,
   identifier: string
 ): Promise<KanbanBoard | null> {
+  if (!identifier) {
+    return null
+  }
   const boards = await getTeamBoards(context.teamId)
 
   // Try to find by ID first
@@ -71,7 +74,8 @@ export async function getBoardByIdOrName(
 
   // If not found, try by name (case-insensitive)
   if (!board) {
-    board = boards.find((b) => b.name.toLowerCase() === identifier.toLowerCase())
+    const nameToFind = String(identifier).toLowerCase()
+    board = boards.find((b) => b.name?.toLowerCase() === nameToFind)
   }
 
   return board || null

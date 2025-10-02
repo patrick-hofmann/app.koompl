@@ -11,10 +11,13 @@ export default defineEventHandler(async (event) => {
     let teamId: string | undefined
     let userId: string | undefined
     try {
+      const body = await readBody(event)
       const session = await getUserSession(event)
-      teamId = session.team?.id
-      userId = session.user?.id
-    } catch {
+      teamId = body.teamId || session.team?.id
+      userId = body.userId || session.user?.id
+      console.log('[AgentAPI] Session found:', { teamId, userId })
+    } catch (error) {
+      console.log('[AgentAPI] No session available (likely inbound email):', error)
       // Session not available (e.g., when called from inbound handler)
     }
 
@@ -25,6 +28,8 @@ export default defineEventHandler(async (event) => {
       includeQuote?: boolean
       maxTokens?: number
       temperature?: number
+      teamId?: string
+      userId?: string
       mcpContexts?: Array<{
         serverId?: string
         serverName?: string
@@ -52,6 +57,10 @@ export default defineEventHandler(async (event) => {
           .filter((entry) => entry.summary.length > 0)
       : []
 
+    // Prefer explicit IDs from body (e.g., TestAgentModal), fallback to session-derived IDs
+    const effectiveTeamId = String(body?.teamId || teamId || '').trim() || undefined
+    const effectiveUserId = String(body?.userId || userId || '').trim() || undefined
+
     return await generateAgentResponse({
       agentId: id,
       subject,
@@ -60,8 +69,8 @@ export default defineEventHandler(async (event) => {
       includeQuote,
       maxTokens,
       temperature,
-      teamId,
-      userId,
+      teamId: effectiveTeamId,
+      userId: effectiveUserId,
       mcpContexts
     })
   } catch (e) {

@@ -2,6 +2,8 @@ import type { Agent } from '~/types'
 import { listMcpServers } from './mcpStorage'
 import { fetchMcpContext, type McpContextResult } from './mcpClients'
 import { agentLogger } from './agentLogging'
+import { createGeneralAgent } from './mcpAgent'
+import { createBuiltinKanbanHttpClient, type HttpMcpClient } from './httpMcpClient'
 
 export interface AgentRespondRequest {
   agentId: string
@@ -99,13 +101,81 @@ export async function generateAgentResponse(
       userContent += "\n\nUse the context when it is relevant to the user's request."
     }
 
-    // Fetch MCP context server-side
+    // Check if agent has MCP servers configured
+    const allServers = await listMcpServers()
+    const selectedServers = Array.isArray(agent.mcpServerIds)
+      ? allServers.filter((s) => agent.mcpServerIds!.includes(s.id))
+      : []
+
+    // If agent has MCP servers and teamId/userId are available, use KoomplMcpAgent for tool execution
+    // Note: Currently only non-builtin servers support full MCP agent execution
+    const externalServers = selectedServers.filter((s) => s.provider !== 'builtin-kanban')
+    const hasBuiltinKanban = selectedServers.some((s) => s.provider === 'builtin-kanban')
+
+    if (externalServers.length > 0 && teamId && userId) {
+      console.log(
+        '[AgentResponder] Using MCP agent with tool execution for',
+        externalServers.length,
+        'external servers'
+      )
+
+      const mcpAgent = createGeneralAgent({
+        llmProvider: 'openai',
+        model: 'gpt-4o',
+        maxTokens: maxTokens || 1000,
+        temperature: temperature || 0.4
+      })
+
+      const emailContext = {
+        subject,
+        text,
+        from,
+        receivedAt: new Date().toISOString()
+      }
+
+      const kanbanContext = { teamId, userId, agentId: agent.id }
+
+      try {
+        const response = await mcpAgent.processEmail(
+          emailContext,
+          agent.prompt || 'You are a helpful AI assistant.',
+          externalServers,
+          kanbanContext
+        )
+
+        await mcpAgent.cleanup()
+
+        if (!response.success) {
+          return { ok: false, error: response.error || 'MCP agent failed' }
+        }
+
+        return { ok: true, result: response.result || '' }
+      } catch (error) {
+        await mcpAgent.cleanup()
+        console.error('[AgentResponder] MCP agent error:', error)
+        return { ok: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    }
+
+    // For builtin-kanban only: use HTTP MCP client with dynamic tool discovery
+    if (hasBuiltinKanban && teamId && userId && externalServers.length === 0) {
+      console.log('[AgentResponder] Using HTTP MCP client for builtin Kanban')
+      const httpMcpClient = createBuiltinKanbanHttpClient(teamId, userId)
+      return await handleHttpMcpWithFunctionCalling({
+        agent,
+        subject,
+        text,
+        from,
+        maxTokens,
+        temperature,
+        openaiKey,
+        httpMcpClient
+      })
+    }
+
+    // Fallback: Fetch MCP context (read-only) for agents without full tool execution capability
     const fetchedMcpContexts: McpContextResult[] = []
     try {
-      const allServers = await listMcpServers()
-      const selectedServers = Array.isArray(agent.mcpServerIds)
-        ? allServers.filter((s) => agent.mcpServerIds!.includes(s.id))
-        : []
       if (selectedServers.length) {
         const emailContext = {
           subject,
@@ -218,6 +288,124 @@ export async function generateAgentResponse(
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
+}
+
+/**
+ * Handle HTTP MCP servers with OpenAI function calling (dynamic tool discovery)
+ */
+async function handleHttpMcpWithFunctionCalling(params: {
+  agent: Agent
+  subject: string
+  text: string
+  from: string
+  maxTokens: number
+  temperature: number
+  openaiKey: string
+  httpMcpClient: HttpMcpClient
+}): Promise<AgentRespondResult> {
+  const { agent, subject, text, from, maxTokens, temperature, openaiKey, httpMcpClient } = params
+
+  // Discover tools dynamically from the MCP server
+  console.log('[HttpMCP] Discovering tools from HTTP MCP server...')
+  const mcpTools = await httpMcpClient.listTools()
+  console.log(`[HttpMCP] Discovered ${mcpTools.length} tools`)
+
+  // Convert MCP tools to OpenAI function calling format
+  const tools = mcpTools.map((tool) => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema
+    }
+  }))
+
+  let userContent = ''
+  if (subject) userContent += `Subject: ${subject}\n`
+  if (from) userContent += `From: ${from}\n`
+  userContent += '\nEmail body:\n' + text
+  userContent +=
+    '\n\nTask: Process the request and use the available Kanban tools if needed. Provide a helpful response.'
+
+  const messages: Array<{
+    role: string
+    content: string
+    tool_calls?: any
+    tool_call_id?: string
+    name?: string
+  }> = [
+    agent.prompt ? { role: 'system', content: String(agent.prompt) } : null,
+    { role: 'user', content: userContent }
+  ].filter(Boolean) as any
+
+  let iterations = 0
+  const maxIterations = 5
+
+  while (iterations < maxIterations) {
+    iterations++
+
+    const response: any = await $fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages,
+        tools,
+        temperature,
+        max_tokens: maxTokens
+      })
+    })
+
+    const choice = response.choices?.[0]
+    if (!choice) break
+
+    const message = choice.message
+    messages.push(message)
+
+    // If no tool calls, we're done
+    if (!message.tool_calls || message.tool_calls.length === 0) {
+      return { ok: true, result: message.content || '' }
+    }
+
+    // Execute tool calls via HTTP MCP client
+    for (const toolCall of message.tool_calls) {
+      const functionName = toolCall.function.name
+      const args = JSON.parse(toolCall.function.arguments || '{}')
+
+      console.log(`[HttpMCP] Calling tool: ${functionName}`, args)
+
+      let resultContent: string
+      try {
+        const mcpResult = await httpMcpClient.callTool(functionName, args)
+
+        // Extract text from MCP result
+        if (mcpResult.isError) {
+          resultContent =
+            mcpResult.content[0]?.text || JSON.stringify({ error: 'Tool call failed' })
+        } else {
+          resultContent = mcpResult.content[0]?.text || JSON.stringify({ success: true })
+        }
+      } catch (error) {
+        resultContent = JSON.stringify({
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        name: functionName,
+        content: resultContent
+      })
+    }
+  }
+
+  // If we exhausted iterations, return the last message
+  const lastMessage = messages[messages.length - 1]
+  return { ok: true, result: lastMessage.content || 'Maximum iterations reached' }
 }
 
 function getOpenAIKey(settings: Record<string, unknown>): string | null {

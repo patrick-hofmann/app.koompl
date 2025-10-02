@@ -2,13 +2,16 @@
 const props = defineProps<{ open: boolean; agentId: string | null }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
-// Get current user session
-const { user: sessionUser } = await useUserSession()
+// Get current user session (single session ref for stability across pages)
+const { session } = useUserSession()
+
+const userId = computed(() => session.value?.user?.id)
+const teamId = computed(() => session.value?.team?.id)
 
 // Initialize form with current user's name and email
 const form = reactive<{ subject: string; text: string }>({
   subject: 'Test Email',
-  text: `Hello, this is a test from ${sessionUser.value?.name || 'User'} (${sessionUser.value?.email || 'user@example.com'}).`
+  text: `Hello, this is a test from ${session.value?.user?.name || 'User'} (${session.value?.user?.email || 'user@example.com'}).`
 })
 const loading = ref(false)
 const result = ref<string | null>(null)
@@ -22,7 +25,13 @@ async function runTest() {
       `/api/agents/${props.agentId}/test`,
       {
         method: 'POST',
-        body: { subject: form.subject, text: form.text }
+        body: {
+          subject: form.subject,
+          text: form.text,
+          // Help server-side MCP resolve context
+          teamId: teamId.value,
+          userId: userId.value
+        }
       }
     )
     result.value = res.ok ? res.result || '' : `Error: ${res.error}`
@@ -42,6 +51,8 @@ async function runTest() {
     <template #content>
       <UCard>
         <div class="space-y-3">
+          <p class="text-sm text-muted">Team ID: {{ teamId }}</p>
+          <p class="text-sm text-muted">User ID: {{ userId }}</p>
           <UForm :state="form" @submit="runTest">
             <UFormField label="Subject">
               <UInput v-model="form.subject" />

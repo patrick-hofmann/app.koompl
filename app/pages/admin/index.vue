@@ -449,6 +449,7 @@ function formatDateTime(value?: string) {
                     />
                   </div>
                   <p class="text-sm text-muted">{{ user.email }}</p>
+                  <p class="text-xs text-muted">User-ID: {{ user.id }}</p>
                   <p v-if="user.updatedAt" class="text-xs text-muted">
                     Updated {{ formatDateTime(user.updatedAt) }}
                   </p>
@@ -554,6 +555,7 @@ function formatDateTime(value?: string) {
                 <div class="space-y-1">
                   <h4 class="font-medium text-highlighted">{{ team.name }}</h4>
                   <p v-if="team.description" class="text-sm text-muted">{{ team.description }}</p>
+                  <p class="text-xs text-muted">Team-ID: {{ team.id }}</p>
                   <p class="text-xs text-muted">
                     Members: {{ identity.memberships.filter((m) => m.teamId === team.id).length }}
                   </p>

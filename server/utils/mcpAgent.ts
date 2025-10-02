@@ -50,11 +50,36 @@ export class KoomplMcpAgent {
   /**
    * Add MCP servers to the agent
    */
-  async addServers(servers: StoredMcpServer[]): Promise<void> {
+  async addServers(
+    servers: StoredMcpServer[],
+    kanbanContext?: { teamId: string; userId: string; agentId?: string }
+  ): Promise<void> {
+    console.log(`[MCPAgent] Adding ${servers.length} servers to agent`)
     const serverConfigs: Record<string, unknown> = {}
 
     for (const server of servers) {
-      if (server.provider === 'custom' && server.url) {
+      console.log(`[MCPAgent] Processing server: ${server.name} (${server.provider})`)
+
+      if (server.provider === 'builtin-kanban' && kanbanContext) {
+        console.log('[MCPAgent] Configuring built-in Kanban server with context:', {
+          teamId: kanbanContext.teamId,
+          userId: kanbanContext.userId
+        })
+        // Configure built-in Kanban as a proper MCP server
+        const serverPath = new URL('./builtinKanbanMcpServer.mjs', import.meta.url).pathname
+        serverConfigs[server.id] = {
+          command: 'node',
+          args: [serverPath],
+          env: {
+            KANBAN_TEAM_ID: kanbanContext.teamId,
+            KANBAN_USER_ID: kanbanContext.userId,
+            KANBAN_AGENT_ID: kanbanContext.agentId || ''
+          }
+        }
+      } else if (server.provider === 'builtin-kanban') {
+        console.log('[MCPAgent] Skipping built-in Kanban server - no context provided')
+        continue
+      } else if (server.provider === 'custom' && server.url) {
         // Custom MCP server via HTTP
         serverConfigs[server.id] = {
           command: 'node',
@@ -119,6 +144,8 @@ export class KoomplMcpAgent {
       }
     }
 
+    console.log(`[MCPAgent] Final server configs:`, Object.keys(serverConfigs))
+
     // Update client configuration
     this.client = new MCPClient({ mcpServers: serverConfigs })
     this.agent = new MCPAgent({
@@ -127,6 +154,8 @@ export class KoomplMcpAgent {
       maxSteps: this.config.maxSteps,
       useServerManager: true
     })
+
+    console.log('[MCPAgent] Successfully configured MCP agent with servers')
   }
 
   /**
@@ -149,25 +178,43 @@ export class KoomplMcpAgent {
   async processEmail(
     email: McpEmailContext,
     agentPrompt: string,
-    servers: StoredMcpServer[]
+    servers: StoredMcpServer[],
+    kanbanContext?: { teamId: string; userId: string; agentId?: string }
   ): Promise<McpAgentResponse> {
     try {
+      console.log('[MCPAgent] Starting email processing...')
+      console.log('[MCPAgent] Email context:', {
+        subject: email.subject,
+        from: email.from,
+        textLength: email.text.length
+      })
+
       // Add servers to the agent
-      await this.addServers(servers)
+      await this.addServers(servers, kanbanContext)
 
       // Create a comprehensive prompt that includes email context and MCP capabilities
       const systemPrompt = this.createSystemPrompt(agentPrompt, servers)
       const userPrompt = this.createUserPrompt(email)
 
+      console.log(
+        '[MCPAgent] Running agent with prompt length:',
+        systemPrompt.length + userPrompt.length
+      )
+
       // Run the agent
       const result = await this.agent.run(`${systemPrompt}\n\n${userPrompt}`)
+
+      console.log(
+        '[MCPAgent] Agent completed successfully, result length:',
+        result?.toString().length || 0
+      )
 
       return {
         success: true,
         result: typeof result === 'string' ? result : String(result)
       }
     } catch (error) {
-      console.error('MCP Agent error:', error)
+      console.error('[MCPAgent] Error during email processing:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)
@@ -181,11 +228,12 @@ export class KoomplMcpAgent {
   async *streamEmailProcessing(
     email: McpEmailContext,
     agentPrompt: string,
-    servers: StoredMcpServer[]
+    servers: StoredMcpServer[],
+    kanbanContext?: { teamId: string; userId: string; agentId?: string }
   ): AsyncGenerator<McpAgentResponse, void, unknown> {
     try {
       // Add servers to the agent
-      await this.addServers(servers)
+      await this.addServers(servers, kanbanContext)
 
       const systemPrompt = this.createSystemPrompt(agentPrompt, servers)
       const userPrompt = this.createUserPrompt(email)
