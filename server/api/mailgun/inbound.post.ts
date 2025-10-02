@@ -295,29 +295,54 @@ export default defineEventHandler(async (event) => {
       if (!aiAnswer) {
         console.log('[Inbound] Using fallback response text; AI answer unavailable')
       }
-      try {
-        const response = await event.$fetch('/api/mailgun/outbound', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: `${agent.name || 'Agent'} <${toEmail}>`,
-            to: fromEmail,
-            subject: `Re: ${String(subject || '').replace(/^Re:\s*/i, '')}`,
-            text: cleanBody,
-            agentId: agent.id,
-            agentEmail: agent.email,
-            mcpServerIds: agent.mcpServerIds || [],
-            mcpContextCount: 0,
-            isAutomatic: true // This is an automatic response via Mailgun
-          })
+
+      const replyFromEmail = agent.email || toEmail || ''
+      const replyToEmail = fromEmail || ''
+      const replySubjectRoot = String(subject || '')
+        .replace(/^Re:\s*/i, '')
+        .trim()
+      const replySubject = replySubjectRoot ? `Re: ${replySubjectRoot}` : 'Re: (no subject)'
+
+      if (!replyFromEmail || !replyToEmail || !cleanBody) {
+        console.error('[Inbound] ✗ Missing outbound fields', {
+          replyFromEmail,
+          replyToEmail,
+          hasBody: Boolean(cleanBody)
+        })
+      } else {
+        const outboundPayload = {
+          from: `${agent.name || 'Agent'} <${replyFromEmail}>`,
+          to: replyToEmail,
+          subject: replySubject,
+          text: cleanBody,
+          agentId: agent.id,
+          agentEmail: agent.email,
+          mcpServerIds: agent.mcpServerIds || [],
+          mcpContextCount: 0,
+          isAutomatic: true as const
+        }
+
+        console.log('[Inbound] → Sending outbound reply via Mailgun', {
+          from: outboundPayload.from,
+          to: outboundPayload.to,
+          subject: outboundPayload.subject,
+          bodyLength: outboundPayload.text.length
         })
 
-        _outboundResult = response.ok
-          ? { ok: true, id: response.messageId, message: 'Sent via outbound route' }
-          : { ok: false, error: response.error }
-      } catch (error) {
-        console.error('Failed to send via outbound route:', error)
-        _outboundResult = { ok: false, error: String(error) }
+        try {
+          const response = await event.$fetch('/api/mailgun/outbound', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(outboundPayload)
+          })
+
+          _outboundResult = response.ok
+            ? { ok: true, id: response.messageId, message: 'Sent via outbound route' }
+            : { ok: false, error: response.error }
+        } catch (error) {
+          console.error('Failed to send via outbound route:', error)
+          _outboundResult = { ok: false, error: String(error) }
+        }
       }
     }
 
