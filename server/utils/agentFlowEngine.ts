@@ -8,6 +8,7 @@
 import type {
   AgentFlow,
   EmailTrigger,
+  FlowRequester,
   FlowStatus,
   RoundResult,
   ResumeInput,
@@ -35,6 +36,8 @@ export class AgentFlowEngine {
     trigger: EmailTrigger
     maxRounds?: number
     timeoutMinutes?: number
+    teamId?: string
+    userId?: string
   }): Promise<AgentFlow> {
     const flowId = `flow-${params.agentId}-${nanoid(8)}`
     const now = new Date().toISOString()
@@ -52,6 +55,8 @@ export class AgentFlowEngine {
       rounds: [],
       currentRound: 0,
       maxRounds: params.maxRounds || 10,
+      teamId: params.teamId,
+      userId: params.userId,
       createdAt: now,
       updatedAt: now,
       timeoutAt,
@@ -65,6 +70,11 @@ export class AgentFlowEngine {
     await this.saveFlow(flow)
 
     console.log(`[AgentFlowEngine] Started flow ${flowId} for agent ${params.agentId}`)
+    if (params.teamId) {
+      console.log(
+        `[AgentFlowEngine] Flow context: teamId=${params.teamId}, userId=${params.userId || 'none'}`
+      )
+    }
 
     return flow
   }
@@ -527,6 +537,13 @@ export class AgentFlowEngine {
     // Generate unique request ID for tracking this specific request
     const requestId = `req-${nanoid(8)}`
 
+    // Format message body in email forwarding style with original email context
+    const formattedBody = this.formatForwardedMessage(
+      decision.targetAgent!.messageBody,
+      flow.trigger,
+      flow.requester
+    )
+
     // Send email to target agent with request ID
     const { MessageRouter } = await import('./messageRouter')
     // Update flow status to waiting BEFORE sending email
@@ -548,7 +565,7 @@ export class AgentFlowEngine {
         direction: 'sent',
         to: toAgentEmail,
         subject: `[Req: ${requestId}] ${decision.targetAgent.messageSubject}`,
-        body: decision.targetAgent.messageBody,
+        body: formattedBody,
         timestamp: new Date().toISOString()
       })
 
@@ -567,7 +584,7 @@ export class AgentFlowEngine {
         fromAgentEmail: fromAgent.email,
         toAgentEmail: toAgentEmail,
         subject: decision.targetAgent.messageSubject,
-        body: decision.targetAgent.messageBody,
+        body: formattedBody,
         flowId: flow.id,
         requestId: requestId
       })
@@ -584,6 +601,33 @@ export class AgentFlowEngine {
       `[AgentFlowEngine] ⏳ Flow ${flow.id} now waiting for response from agent ${toAgentEmail}`
     )
     console.log(`[AgentFlowEngine] ⏳ Request ID: ${requestId}`)
+  }
+
+  /**
+   * Format message body in email forwarding style with original email context
+   */
+  private formatForwardedMessage(
+    messageBody: string,
+    trigger: EmailTrigger,
+    requester: FlowRequester
+  ): string {
+    const date = new Date(trigger.receivedAt).toLocaleString('de-DE', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+    return `${messageBody}
+
+---- Original Message ----
+Date: ${date}
+From: ${requester.name || requester.email} <${requester.email}>
+To: ${trigger.to}
+Subject: ${trigger.subject}
+
+${trigger.body}`
   }
 
   private validateTargetAgent(decision: FlowDecision): void {

@@ -3,14 +3,12 @@ import { mailStorage } from '../../utils/mailStorage'
 import { agentLogger } from '../../utils/agentLogging'
 import { agentFlowEngine } from '../../utils/agentFlowEngine'
 import { MessageRouter } from '../../utils/messageRouter'
-import { generateAgentResponse } from '../../utils/agentResponder'
 import type { Agent } from '~/types'
 
 export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens.
   try {
     const agentsStorage = useStorage('agents')
-    const settingsStorage = useStorage('settings')
 
     let payload: Record<string, unknown> | null = null
     const contentType = getHeader(event, 'content-type') || ''
@@ -43,7 +41,7 @@ export default defineEventHandler(async (event) => {
       }
       return undefined
     }
-    const receivedAt = new Date().toISOString()
+    const _receivedAt = new Date().toISOString()
     const messageId = String(
       firstString(
         payload ? (payload as Record<string, unknown>)['Message-Id'] : undefined,
@@ -85,7 +83,7 @@ export default defineEventHandler(async (event) => {
     )
 
     // Store in unified mail storage system
-    const inboundEmail = await mailStorage.storeInboundEmail({
+    const _inboundEmail = await mailStorage.storeInboundEmail({
       messageId: String(messageId || ''),
       from: String(from || ''),
       to: String(to || ''),
@@ -188,219 +186,110 @@ export default defineEventHandler(async (event) => {
     // This is a NEW request for this agent
     console.log(`[Inbound] ✓ This is a NEW REQUEST for agent ${agent.name}`)
 
-    // Check if agent has multi-round enabled
-    if (agent.multiRoundConfig?.enabled) {
-      // Start a new multi-round flow FOR THIS AGENT
-      console.log('[Inbound] → Starting new multi-round flow...')
-      console.log(`[Inbound]   Max rounds: ${agent.multiRoundConfig.maxRounds}`)
-      console.log(`[Inbound]   Timeout: ${agent.multiRoundConfig.timeoutMinutes} minutes`)
-
-      const flow = await agentFlowEngine.startFlow({
-        agentId: agent.id,
-        trigger: {
-          type: 'email',
-          messageId: String(messageId || ''),
-          from: String(fromEmail || from || ''),
-          to: String(toEmail || to || ''),
-          subject: String(subject || ''),
-          body: String(text || ''),
-          receivedAt: new Date().toISOString()
-        },
-        maxRounds: agent.multiRoundConfig.maxRounds,
-        timeoutMinutes: agent.multiRoundConfig.timeoutMinutes
-      })
-
-      console.log(`[Inbound] ✓ Flow created: ${flow.id}`)
-      console.log('[Inbound] → Executing first round...')
-
-      // Execute first round
-      await agentFlowEngine.executeRound(flow.id, agent.id)
-
-      console.log('[Inbound] ✓ First round executed')
-      console.log('[Inbound] ════════════════════════════════════════════\n')
-
-      return { ok: true, flowId: flow.id, newFlow: true }
-    }
-
-    console.log('[Inbound] ⚠ Multi-round NOT enabled, falling back to single-round processing')
-    console.log('[Inbound] ════════════════════════════════════════════\n')
-
-    // Fall back to legacy single-round processing
-    console.log(`[Inbound] Processing as single-round for agent ${agent.id}`)
-
-    // Prepare settings for mailgun
-    const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
-    const allowedDomains = firstString((settings as Record<string, unknown>)['allowedDomains'])
-    const isProduction = process.env.NODE_ENV === 'production'
-
-    // Check domain filtering before processing AI response
-    let isDomainAllowed = true
-    if (isProduction && allowedDomains && fromEmail) {
-      // Import domain matcher utility
-      const { isEmailAllowed } = await import('~/utils/domainMatcher')
-      isDomainAllowed = isEmailAllowed(fromEmail, allowedDomains)
-      console.log(`[Inbound] Domain check (${fromEmail}) allowed=${isDomainAllowed}`)
-    } else if (!isProduction) {
-      console.log('[Inbound] Skipping domain check in development environment')
-    }
-
-    // Generate AI response by delegating to shared responder utility
-    let aiAnswer: string | null = null
-    if (agent && isDomainAllowed) {
-      // Look up user by email to get userId for calendar/MCP context
-      let userId: string | undefined
-      if (fromEmail) {
-        try {
-          const { getIdentity } = await import('../../utils/identityStorage')
-          const identity = await getIdentity()
-          const user = identity.users.find(
-            (u) => u.email.toLowerCase().trim() === fromEmail.toLowerCase().trim()
-          )
-          if (user) {
-            userId = user.id
-            console.log(`[Inbound] Found user ID for ${fromEmail}: ${userId}`)
-          } else {
-            console.log(`[Inbound] No user found for email: ${fromEmail}`)
-          }
-        } catch (err) {
-          console.error('[Inbound] Error looking up user:', err)
-        }
-      }
-
-      // Use agent's team context for MCP tools
-      const response = await generateAgentResponse({
-        agentId: agent.id,
-        subject: String(subject || ''),
-        text: String(text || ''),
-        from: String(fromEmail || from || ''),
-        includeQuote: true,
-        maxTokens: 700,
-        temperature: 0.4,
-        teamId: agent.teamId,
-        userId
-      })
-      if (response.ok && response.result) {
-        aiAnswer = response.result.trim()
-      } else {
-        console.warn(
-          '[Inbound] Respond helper returned no result:',
-          response.error || 'unknown_error'
+    // Look up user by email to get userId for MCP context (calendar, kanban, etc.)
+    let userId: string | undefined
+    if (fromEmail) {
+      try {
+        const { getIdentity } = await import('../../utils/identityStorage')
+        const identity = await getIdentity()
+        const user = identity.users.find(
+          (u) => u.email.toLowerCase().trim() === fromEmail.toLowerCase().trim()
         )
-      }
-    }
+        if (user) {
+          userId = user.id
+          console.log(`[Inbound] Found user ID for ${fromEmail}: ${userId}`)
+        } else {
+          console.log(`[Inbound] No user found for email: ${fromEmail}`)
 
-    // Compose TOFU response: answer text on top, full quote below
-    let answerText: string
-    if (!isDomainAllowed) {
-      answerText =
-        'Sorry, your email domain is not authorized to receive automated responses. Please contact the administrator if you believe this is an error.'
-    } else if (aiAnswer) {
-      answerText = aiAnswer
-    } else {
-      answerText =
-        "Sorry, I'm not sure how to respond to that. There may be a problem with your email or the agent may not be configured correctly."
-    }
+          // Check if sender is an agent (agent-to-agent delegation)
+          const senderAgent = agents.find(
+            (a) => String(a?.email || '').toLowerCase() === fromEmail.toLowerCase()
+          )
+          if (senderAgent) {
+            console.log(`[Inbound] Sender is an agent: ${senderAgent.name} (${senderAgent.email})`)
+            console.log('[Inbound] → Looking for delegating flow to extract user context...')
 
-    const quoted = String(text || '')
-      .split('\n')
-      .map((line) => `> ${line}`)
-      .join('\n')
-    const tofuBody = `${answerText}\n\nOn ${receivedAt}, ${from || '(sender)'} wrote:\n${quoted}`
-
-    // Preserve UTF-8 characters (no ASCII-only sanitization)
-    const cleanBody = String(tofuBody || '').trim()
-
-    // Send reply via dedicated outbound route if we have agent and email addresses
-    let _outboundResult: { ok: boolean; id?: string; message?: string; error?: string } = {
-      ok: false
-    }
-    if (agent && fromEmail && toEmail && isDomainAllowed) {
-      if (!aiAnswer) {
-        console.log('[Inbound] Using fallback response text; AI answer unavailable')
-      }
-
-      const replyFromEmail = agent.email || toEmail || ''
-      const replyToEmail = fromEmail || ''
-      const replySubjectRoot = String(subject || '')
-        .replace(/^Re:\s*/i, '')
-        .trim()
-      const replySubject = replySubjectRoot ? `Re: ${replySubjectRoot}` : 'Re: (no subject)'
-
-      if (!replyFromEmail || !replyToEmail || !cleanBody) {
-        console.error('[Inbound] ✗ Missing outbound fields', {
-          replyFromEmail,
-          replyToEmail,
-          hasBody: Boolean(cleanBody)
-        })
-      } else {
-        const outboundPayload = {
-          from: formatEmailAddress(agent.name, replyFromEmail),
-          to: replyToEmail,
-          subject: replySubject,
-          text: cleanBody,
-          agentId: agent.id,
-          agentEmail: agent.email,
-          mcpServerIds: agent.mcpServerIds || [],
-          mcpContextCount: 0,
-          isAutomatic: true as const
-        }
-
-        console.log('[Inbound] → Sending outbound reply via Mailgun', {
-          from: outboundPayload.from,
-          to: outboundPayload.to,
-          subject: outboundPayload.subject,
-          bodyLength: outboundPayload.text.length
-        })
-
-        try {
-          let response = undefined
-          try {
-            response = await event.$fetch('/api/mailgun/outbound', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: outboundPayload
+            // Find the sender agent's active flows to extract original user context
+            const senderFlows = await agentFlowEngine.listAgentFlows(senderAgent.id, {
+              status: ['waiting', 'active']
             })
-          } catch (error) {
-            console.error(
-              'Failed to send via outbound route via event - trying direct fetch:',
-              error
-            )
-            response = await $fetch('/api/mailgun/outbound', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: outboundPayload
-            })
+
+            // Look for a flow that has this request ID in its wait state
+            const requestId = messageRouter.extractRequestId(subject || '')
+            if (requestId) {
+              console.log(`[Inbound] Extracted request ID: ${requestId}`)
+              const delegatingFlow = senderFlows.find(
+                (f) =>
+                  f.waitingFor?.type === 'agent_response' && f.waitingFor?.requestId === requestId
+              )
+
+              if (delegatingFlow && delegatingFlow.userId) {
+                userId = delegatingFlow.userId
+                console.log(
+                  `[Inbound] ✓ Found user context from delegating flow ${delegatingFlow.id}`
+                )
+                console.log(`[Inbound] ✓ Using userId: ${userId}`)
+              } else if (delegatingFlow) {
+                console.log(
+                  `[Inbound] ⚠ Delegating flow found but has no userId: ${delegatingFlow.id}`
+                )
+              } else {
+                console.log('[Inbound] ⚠ No delegating flow found for request ID')
+              }
+            }
           }
-
-          _outboundResult = response.ok
-            ? { ok: true, id: response.messageId, message: 'Sent via outbound route' }
-            : { ok: false, error: response.error }
-        } catch (error) {
-          console.error('Failed to send via outbound route:', error)
-          _outboundResult = { ok: false, error: String(error) }
         }
+      } catch (err) {
+        console.error('[Inbound] Error looking up user:', err)
       }
     }
 
-    // Update the inbound email with agent information without creating a duplicate log entry
-    await mailStorage.updateInboundEmailContext({
-      messageId: String(messageId || ''),
-      agentId: agent?.id,
-      agentEmail: agent?.email,
-      mcpContexts: []
+    // ALL agents now use multi-round flow processing (single-round is just maxRounds=1)
+    const maxRounds = agent.multiRoundConfig?.maxRounds || 1
+    const timeoutMinutes = agent.multiRoundConfig?.timeoutMinutes || 30
+
+    console.log('[Inbound] → Starting flow...')
+    console.log(`[Inbound]   Max rounds: ${maxRounds}`)
+    console.log(`[Inbound]   Timeout: ${timeoutMinutes} minutes`)
+    console.log(`[Inbound]   Context: teamId=${agent.teamId || 'none'}, userId=${userId || 'none'}`)
+
+    const flow = await agentFlowEngine.startFlow({
+      agentId: agent.id,
+      trigger: {
+        type: 'email',
+        messageId: String(messageId || ''),
+        from: String(fromEmail || from || ''),
+        to: String(toEmail || to || ''),
+        subject: String(subject || ''),
+        body: String(text || ''),
+        receivedAt: new Date().toISOString()
+      },
+      maxRounds,
+      timeoutMinutes,
+      teamId: agent.teamId,
+      userId
     })
 
-    // (inbound email activity was already logged earlier)
+    console.log(`[Inbound] ✓ Flow created: ${flow.id}`)
+    console.log('[Inbound] → Executing first round...')
 
-    return { ok: true, id: inboundEmail.id }
+    // Execute first round
+    await agentFlowEngine.executeRound(flow.id, agent.id)
+
+    console.log('[Inbound] ✓ First round executed')
+    console.log('[Inbound] ════════════════════════════════════════════\n')
+
+    return { ok: true, flowId: flow.id, newFlow: true }
   } catch {
     // Even on error, Mailgun should receive ok
     return { ok: true }
   }
 })
 
-function formatEmailAddress(name: string | undefined, email: string): string {
-  const safeEmail = email.trim()
-  const safeName = (name || 'Agent').replace(/["<>]/g, '').trim()
-  return safeName ? `${safeName} <${safeEmail}>` : safeEmail
-}
+// Helper function no longer used in unified multi-round flow
+// Kept for potential future use
+// function formatEmailAddress(name: string | undefined, email: string): string {
+//   const safeEmail = email.trim()
+//   const safeName = (name || 'Agent').replace(/["<>]/g, '').trim()
+//   return safeName ? `${safeName} <${safeEmail}>` : safeEmail
+// }

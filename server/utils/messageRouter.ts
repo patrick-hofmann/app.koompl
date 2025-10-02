@@ -366,7 +366,7 @@ export class MessageRouter {
   /**
    * Extract request ID from subject line
    */
-  private extractRequestId(subject: string): string | null {
+  extractRequestId(subject: string): string | null {
     // Match [Req: req-abc123] or Re: [Req: req-abc123]
     // Include dashes in the pattern since nanoid can generate IDs with dashes
     const match = subject.match(/\[Req:\s*(req-[a-zA-Z0-9_-]+)\]/)

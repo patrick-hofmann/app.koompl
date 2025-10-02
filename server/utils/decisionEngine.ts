@@ -7,6 +7,8 @@
 
 import type { AgentFlow, FlowDecision } from '../types/agent-flows'
 import type { DecisionContext } from '../types/decision-engine'
+import { getKanbanTools, executeKanbanTool, getCalendarTools } from './builtinMcpTools'
+import { executeCalendarTool } from './builtinCalendarTools'
 
 export class DecisionEngine {
   /**
@@ -15,13 +17,26 @@ export class DecisionEngine {
   async makeDecision(context: DecisionContext): Promise<FlowDecision> {
     const { flow, agent } = context
 
+    // Check if agent has builtin MCP servers that support direct tool execution
+    const builtinServers = await this.getBuiltinServers(agent)
+    const hasBuiltinTools = builtinServers.kanban || builtinServers.calendar
+
     // Build context for AI
     const prompt = await this.buildDecisionPrompt(flow, agent)
 
     // Call AI to make decision
     try {
       console.log(`[DecisionEngine] Requesting decision from AI for flow ${flow.id}`)
-      const decision = await this.callAI(prompt, agent)
+
+      let decision: FlowDecision
+
+      // Use function calling if builtin tools are available and flow has context
+      if (hasBuiltinTools && flow.teamId && flow.userId) {
+        console.log(`[DecisionEngine] Using direct tool execution (builtin servers available)`)
+        decision = await this.callAIWithTools(prompt, agent, flow, builtinServers)
+      } else {
+        decision = await this.callAI(prompt, agent)
+      }
 
       // Validate decision
       this.validateDecision(decision)
@@ -80,6 +95,13 @@ export class DecisionEngine {
     const currentRound = flow.currentRound
     const maxRounds = flow.maxRounds
 
+    // Add current date/time context
+    const now = new Date()
+    const currentDateTime = now.toISOString()
+    const currentDate = now.toISOString().split('T')[0]
+    const currentTime = now.toTimeString().split(' ')[0]
+    const dayOfWeek = now.toLocaleDateString('de-DE', { weekday: 'long' })
+
     // Summarize actions taken
     const actionsSummary = this.summarizeActions(flow)
 
@@ -91,46 +113,81 @@ export class DecisionEngine {
 
     const systemPrompt = agent.prompt || 'You are a helpful AI assistant.'
 
+    // Check if this is the first round (encourage immediate completion if possible)
+    const isFirstRound = currentRound === 0 || flow.rounds.length === 0
+    const efficiencyGuidance = isFirstRound
+      ? '\n⚡ EFFICIENCY FIRST: This is the first round. If you can fully answer the request with available tools or information, COMPLETE immediately. Multi-round processing is only for complex scenarios requiring agent coordination.\n'
+      : ''
+
     return `${systemPrompt}
 
+CURRENT CONTEXT:
+- Current Date: ${currentDate} (${dayOfWeek})
+- Current Time: ${currentTime}
+- Current DateTime (ISO): ${currentDateTime}
+${flow.userId ? `- User ID: ${flow.userId}` : ''}
+${flow.teamId ? `- Team ID: ${flow.teamId}` : ''}
+${efficiencyGuidance}
 CURRENT SITUATION:
-You are processing a request in a multi-round flow.
+You are processing a request in a multi-round flow system.
 
 Original Request From: ${flow.requester.name} (${flow.requester.email})
 Subject: ${originalSubject}
 Body: ${originalRequest}
 
 Current Progress:
-- Round: ${currentRound}/${maxRounds}
+- Round: ${currentRound + 1}/${maxRounds}
 - Actions Taken: ${actionsSummary}
 - Information Gathered: ${informationSummary}
 
 Available Actions:
-1. CONTINUE - Take another action in this flow (gather more info, process data, etc.)
+1. COMPLETE - ⭐ You have enough information to respond (PREFERRED for simple requests)
 2. WAIT_FOR_AGENT - Need information from another agent
-3. COMPLETE - You have enough information to respond to the user
+3. CONTINUE - Need to gather more info or process data in another round
 4. FAIL - Cannot fulfill the user's request
 
 ${availableAgents ? `Available Agents You Can Contact:\n${availableAgents}` : ''}
 
-TASK:
-Analyze the situation and decide what to do next. Consider:
-1. Do you have all the information needed to answer the user's original request?
-2. If not, what information is missing and where can you get it?
-3. Is the request even possible to fulfill?
+DECISION GUIDELINES:
+✅ COMPLETE if:
+   - You can answer the request with current information
+   - You have successfully executed all required actions
+   - Simple requests (calendar events, status checks, etc.) should complete in round 1
+   - You have everything needed for a helpful response
+
+⏸️ WAIT_FOR_AGENT if:
+   - You genuinely need information only another agent has
+   - The request explicitly mentions coordination with others
+   - You cannot proceed without external input
+
+🔄 CONTINUE if:
+   - You need to process data or make calculations
+   - You need to check multiple sources sequentially
+   - NOT for simple tool calls (use function calling instead)
+
+❌ FAIL if:
+   - The request is impossible or unclear after clarification
+   - You lack the necessary tools or permissions
+
+TEMPORAL CONTEXT:
+- "heute" / "today" = ${currentDate}
+- "morgen" / "tomorrow" = ${new Date(now.getTime() + 86400000).toISOString().split('T')[0]}
+- "gestern" / "yesterday" = ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}
+- "Mittag" = 12:00, "Vormittag" = 09:00-12:00, "Nachmittag" = 13:00-17:00, "Abend" = 18:00-22:00
+- Always use ISO 8601 format for dates: YYYY-MM-DDTHH:MM:SS
 
 IMPORTANT: When you choose COMPLETE:
-- The "final_response" field should be YOUR response TO THE ORIGINAL USER (${flow.requester.name} - ${flow.requester.email})
-- DO NOT forward what other agents told you - synthesize the information into YOUR OWN response
-- Address the original user directly (${flow.requester.name}) - NOT other agents you consulted
-- Answer their original question based on the information you gathered
-- Remember: You are responding TO ${flow.requester.name}, not to the agents who helped you
-- If other agents said things like "Hallo Christian", ignore that - they were talking to you, but your response goes to ${flow.requester.name}
+- The "final_response" field is YOUR response TO THE ORIGINAL USER (${flow.requester.name})
+- Write naturally and directly to the user
+- DO NOT forward messages from other agents - synthesize the information
+- Do NOT mention internal processes (tools, agents, rounds)
+- Keep it concise and helpful
+- Respond in the same language as the request (German/English)
 
 Respond ONLY with valid JSON in this exact format:
 {
-  "decision": "CONTINUE" | "WAIT_FOR_AGENT" | "COMPLETE" | "FAIL",
-  "reasoning": "detailed explanation of why you chose this action",
+  "decision": "COMPLETE" | "WAIT_FOR_AGENT" | "CONTINUE" | "FAIL",
+  "reasoning": "brief explanation of why you chose this action",
   "confidence": 0.0 to 1.0,
   "target_agent": {
     "agent_email": "agent-b@koompl.local",
@@ -138,14 +195,14 @@ Respond ONLY with valid JSON in this exact format:
     "message_subject": "subject line for the email",
     "message_body": "full email body to send"
   },
-  "final_response": "your complete response to the original user ${flow.requester.name}"
+  "final_response": "your complete response to ${flow.requester.name}"
 }
 
 Notes:
 - Include "target_agent" ONLY if decision is "WAIT_FOR_AGENT"
 - Include "final_response" ONLY if decision is "COMPLETE"
-- Be specific in your reasoning
-- Confidence should reflect how certain you are`
+- Confidence should reflect how certain you are (0.8+ for clear requests)
+- Keep reasoning concise but informative`
   }
 
   /**
@@ -158,6 +215,248 @@ Notes:
     const parsed = this.parseJsonResponse(content)
 
     return this.buildDecisionFromParsed(parsed)
+  }
+
+  /**
+   * Call AI with function calling support for builtin tools
+   */
+  private async callAIWithTools(
+    prompt: string,
+    agent: DecisionContext['agent'],
+    flow: AgentFlow,
+    builtinServers: { kanban: boolean; calendar: boolean }
+  ): Promise<FlowDecision> {
+    const openaiKey = await this.getOpenAiKey()
+
+    // Collect tools from builtin servers
+    const tools: any[] = []
+
+    if (builtinServers.kanban) {
+      const kanbanTools = getKanbanTools()
+      tools.push(
+        ...kanbanTools.map((tool) => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema
+          }
+        }))
+      )
+    }
+
+    if (builtinServers.calendar) {
+      const calendarTools = getCalendarTools()
+      tools.push(
+        ...calendarTools.map((tool) => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema
+          }
+        }))
+      )
+    }
+
+    console.log(`[DecisionEngine] Loaded ${tools.length} builtin tools`)
+
+    // Create context for tool execution
+    const context = {
+      teamId: flow.teamId!,
+      userId: flow.userId!,
+      agentId: agent.id
+    }
+
+    // Enhanced prompt with current date/time
+    const now = new Date()
+    const currentDateTime = now.toISOString()
+    const currentDate = now.toISOString().split('T')[0]
+    const currentTime = now.toTimeString().split(' ')[0]
+    const dayOfWeek = now.toLocaleDateString('de-DE', { weekday: 'long' })
+
+    // Check if first round for efficiency guidance
+    const isFirstRound = flow.currentRound === 0 || flow.rounds.length === 0
+
+    const enhancedPrompt = `${prompt}
+
+CURRENT CONTEXT:
+- Current Date: ${currentDate} (${dayOfWeek})
+- Current Time: ${currentTime}
+- Current DateTime (ISO): ${currentDateTime}
+- User ID: ${flow.userId}
+- Team ID: ${flow.teamId}
+
+${isFirstRound ? '⚡ EFFICIENCY: This is round 1. Use tools to complete the request immediately if possible.\n' : ''}
+TEMPORAL CONTEXT:
+- "heute" / "today" = ${currentDate}
+- "morgen" / "tomorrow" = ${new Date(now.getTime() + 86400000).toISOString().split('T')[0]}
+- "gestern" / "yesterday" = ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}
+- "Mittag" = 12:00, "Vormittag" = 09:00-12:00, "Nachmittag" = 13:00-17:00, "Abend" = 18:00-22:00
+
+TOOL USAGE GUIDELINES:
+- Always use ISO 8601 format for dates: YYYY-MM-DDTHH:MM:SS
+- When calling list_events, list_boards, etc., use the User ID shown above
+- Use tools multiple times if needed (e.g., list then modify)
+- After tool execution, evaluate if you have enough information
+
+AFTER USING TOOLS:
+1. If the request is fulfilled → Choose "COMPLETE" with a natural response
+2. If you need to contact another agent → Choose "WAIT_FOR_AGENT"  
+3. If you need more processing → Choose "CONTINUE" (rare)
+4. If it's impossible → Choose "FAIL" with explanation
+
+⭐ Single-round completion is ENCOURAGED for simple requests (create event, list items, etc.)`
+
+    const messages: Array<{
+      role: string
+      content: string
+      tool_calls?: any
+      tool_call_id?: string
+      name?: string
+    }> = [{ role: 'user', content: enhancedPrompt }]
+
+    let iterations = 0
+    const maxIterations = 5
+
+    while (iterations < maxIterations) {
+      iterations++
+
+      const response: any = await $fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages,
+          tools,
+          temperature: 0.3,
+          max_tokens: 1500
+        })
+      })
+
+      const choice = response.choices?.[0]
+      if (!choice) break
+
+      const message = choice.message
+      messages.push(message)
+
+      // If AI wants to use tools, execute them
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        console.log(`[DecisionEngine] AI is calling ${message.tool_calls.length} tools`)
+
+        for (const toolCall of message.tool_calls) {
+          const functionName = toolCall.function.name
+          const args = JSON.parse(toolCall.function.arguments || '{}')
+
+          console.log(`[DecisionEngine] Executing tool: ${functionName}`, args)
+
+          let resultContent: string
+          try {
+            // Determine which tool executor to use
+            let mcpResult: any
+
+            if (builtinServers.calendar && functionName.includes('event')) {
+              mcpResult = await executeCalendarTool(context, functionName, args)
+            } else if (builtinServers.kanban) {
+              mcpResult = await executeKanbanTool(context, functionName, args)
+            } else {
+              throw new Error(`Unknown tool: ${functionName}`)
+            }
+
+            if (mcpResult.isError) {
+              resultContent =
+                mcpResult.content[0]?.text || JSON.stringify({ error: 'Tool execution failed' })
+            } else {
+              resultContent = mcpResult.content[0]?.text || JSON.stringify({ success: true })
+            }
+          } catch (error) {
+            resultContent = JSON.stringify({
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
+
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: functionName,
+            content: resultContent
+          })
+        }
+
+        // Continue loop to let AI process tool results
+        continue
+      }
+
+      // No more tool calls - AI should provide final decision
+      const content = message.content || ''
+
+      // Try to parse as decision JSON
+      try {
+        const parsed = this.parseJsonResponse(content)
+        return this.buildDecisionFromParsed(parsed)
+      } catch {
+        // If not JSON, treat as a complete response
+        console.log('[DecisionEngine] AI response is not JSON, treating as completion')
+        return {
+          type: 'complete',
+          reasoning: 'AI provided natural language response after tool execution',
+          confidence: 0.8,
+          finalResponse: content
+        }
+      }
+    }
+
+    // Max iterations reached
+    console.warn('[DecisionEngine] Max iterations reached in tool execution')
+    return {
+      type: 'fail',
+      reasoning: 'Maximum tool execution iterations reached',
+      confidence: 0.5,
+      finalResponse:
+        'I apologize, but I was unable to complete your request after multiple attempts. Please try rephrasing your request.'
+    }
+  }
+
+  /**
+   * Detect which builtin MCP servers the agent has access to
+   */
+  private async getBuiltinServers(agent: DecisionContext['agent']): Promise<{
+    kanban: boolean
+    calendar: boolean
+  }> {
+    if (!agent.mcpServerIds || agent.mcpServerIds.length === 0) {
+      return { kanban: false, calendar: false }
+    }
+
+    // Load MCP server configurations
+    const mcpStorage = useStorage('mcp')
+    const servers =
+      (await mcpStorage.getItem<
+        Array<{
+          id: string
+          provider: string
+        }>
+      >('servers.json')) || []
+
+    let hasKanban = false
+    let hasCalendar = false
+
+    for (const serverId of agent.mcpServerIds) {
+      const server = servers.find((s) => s.id === serverId)
+      if (server) {
+        if (server.provider === 'builtin-kanban') hasKanban = true
+        if (server.provider === 'builtin-calendar') hasCalendar = true
+      }
+    }
+
+    console.log(
+      `[DecisionEngine] Builtin servers detected: kanban=${hasKanban}, calendar=${hasCalendar}`
+    )
+
+    return { kanban: hasKanban, calendar: hasCalendar }
   }
 
   private async getOpenAiKey(): Promise<string> {

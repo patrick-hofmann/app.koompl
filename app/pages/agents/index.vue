@@ -10,7 +10,11 @@ const UDropdownMenu = resolveComponent('UDropdownMenu')
 const UCheckbox = resolveComponent('UCheckbox')
 
 // Client-only lazy fetch to avoid SSR blocking on storage
-const { data: agents, refresh } = await useAsyncData('agents', () => $fetch<Agent[]>('/api/agents'), { server: false, lazy: true })
+const { data: agents, refresh } = await useAsyncData(
+  'agents',
+  () => $fetch<Agent[]>('/api/agents'),
+  { server: false, lazy: true }
+)
 
 // Add modal state
 const addOpen = ref(false)
@@ -23,9 +27,9 @@ function openAdd() {
     role: 'Agent',
     prompt: '',
     multiRoundConfig: {
-      enabled: false,
-      maxRounds: 10,
-      timeoutMinutes: 60,
+      enabled: true, // Always enabled in unified architecture
+      maxRounds: 1, // Default to 1 for simple agents
+      timeoutMinutes: 30, // Default 30 minutes
       canCommunicateWithAgents: false,
       allowedAgentEmails: [],
       autoResumeOnResponse: true
@@ -35,7 +39,13 @@ function openAdd() {
 }
 
 const actions: NavigationMenuItem[] = [
-  { label: 'Add Koompl', icon: 'i-lucide-plus', onSelect: () => { openAdd() } }
+  {
+    label: 'Add Koompl',
+    icon: 'i-lucide-plus',
+    onSelect: () => {
+      openAdd()
+    }
+  }
 ]
 
 // Edit modal state
@@ -107,13 +117,17 @@ function getRowItems(row: Row<Agent>) {
     {
       label: 'Edit',
       icon: 'i-lucide-pencil',
-      onSelect() { openEdit(row.original) }
+      onSelect() {
+        openEdit(row.original)
+      }
     },
     {
       label: 'Delete',
       icon: 'i-lucide-trash',
       color: 'error',
-      onSelect() { openDelete(row.original.id) }
+      onSelect() {
+        openDelete(row.original.id)
+      }
     }
   ]
 }
@@ -123,28 +137,32 @@ const columns: TableColumn<Agent>[] = [
     id: 'select',
     header: ({ table }) =>
       h(UCheckbox, {
-        'modelValue': table.getIsSomePageRowsSelected() ? 'indeterminate' : table.getIsAllPageRowsSelected(),
-        'onUpdate:modelValue': (value: boolean | 'indeterminate') => table.toggleAllPageRowsSelected(!!value),
-        'ariaLabel': 'Select all'
+        modelValue: table.getIsSomePageRowsSelected()
+          ? 'indeterminate'
+          : table.getIsAllPageRowsSelected(),
+        'onUpdate:modelValue': (value: boolean | 'indeterminate') =>
+          table.toggleAllPageRowsSelected(!!value),
+        ariaLabel: 'Select all'
       }),
     cell: ({ row }) =>
       h(UCheckbox, {
-        'modelValue': row.getIsSelected(),
+        modelValue: row.getIsSelected(),
         'onUpdate:modelValue': (value: boolean | 'indeterminate') => row.toggleSelected(!!value),
-        'ariaLabel': 'Select row'
+        ariaLabel: 'Select row'
       })
   },
   { accessorKey: 'id', header: 'ID' },
   {
     accessorKey: 'name',
     header: 'Name',
-    cell: ({ row }) => h('div', { class: 'flex items-center gap-3' }, [
-      h(UAvatar, { ...(row.original.avatar), size: 'lg' }),
-      h('div', undefined, [
-        h('p', { class: 'font-medium text-highlighted' }, row.original.name),
-        h('p', undefined, `@${row.original.id}`)
+    cell: ({ row }) =>
+      h('div', { class: 'flex items-center gap-3' }, [
+        h(UAvatar, { ...row.original.avatar, size: 'lg' }),
+        h('div', undefined, [
+          h('p', { class: 'font-medium text-highlighted' }, row.original.name),
+          h('p', undefined, `@${row.original.id}`)
+        ])
       ])
-    ])
   },
   {
     accessorKey: 'email',
@@ -162,11 +180,19 @@ const columns: TableColumn<Agent>[] = [
   },
   {
     id: 'actions',
-    cell: ({ row }) => h('div', { class: 'text-right' },
-      h(UDropdownMenu, { content: { align: 'end' }, items: getRowItems(row) }, () =>
-        h(UButton, { icon: 'i-lucide-ellipsis-vertical', color: 'neutral', variant: 'ghost', class: 'ml-auto' })
+    cell: ({ row }) =>
+      h(
+        'div',
+        { class: 'text-right' },
+        h(UDropdownMenu, { content: { align: 'end' }, items: getRowItems(row) }, () =>
+          h(UButton, {
+            icon: 'i-lucide-ellipsis-vertical',
+            color: 'neutral',
+            variant: 'ghost',
+            class: 'ml-auto'
+          })
+        )
       )
-    )
   }
 ]
 
@@ -197,7 +223,7 @@ const roundTripAgentId = ref<string | null>(null)
     <template #body>
       <div class="flex flex-wrap items-center justify-between gap-1.5 mb-4">
         <UInput
-          :model-value="(table?.tableApi?.getColumn('email')?.getFilterValue() as string)"
+          :model-value="table?.tableApi?.getColumn('email')?.getFilterValue() as string"
           class="max-w-sm"
           icon="i-lucide-search"
           placeholder="Filter emails..."
@@ -219,30 +245,59 @@ const roundTripAgentId = ref<string | null>(null)
         class="shrink-0"
         :data="agents"
         :columns="columns"
-        :ui="{ base: 'table-fixed border-separate border-spacing-0', thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none', tbody: '[&>tr]:last:[&>td]:border-b-0', th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r', td: 'border-b border-default' }"
+        :ui="{
+          base: 'table-fixed border-separate border-spacing-0',
+          thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
+          tbody: '[&>tr]:last:[&>td]:border-b-0',
+          th: 'py-2 first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
+          td: 'border-b border-default'
+        }"
       />
-
     </template>
   </UDashboardPanel>
 
   <!-- Add Modal -->
-  <AgentsEditAgentModal :open="addOpen" :agent="addAgent" @update:open="(v:boolean) => addOpen = v" @saved="refresh" />
+  <AgentsEditAgentModal
+    :open="addOpen"
+    :agent="addAgent"
+    @update:open="(v: boolean) => (addOpen = v)"
+    @saved="refresh"
+  />
 
   <!-- Edit Modal -->
-  <AgentsEditAgentModal :open="editOpen" :agent="editAgent" @update:open="(v:boolean) => editOpen = v" @saved="refresh" />
+  <AgentsEditAgentModal
+    :open="editOpen"
+    :agent="editAgent"
+    @update:open="(v: boolean) => (editOpen = v)"
+    @saved="refresh"
+  />
 
   <!-- Test Agent Modal -->
-  <AgentsTestAgentModal :open="testOpen" :agent-id="testAgentId" @update:open="(v:boolean) => testOpen = v" />
+  <AgentsTestAgentModal
+    :open="testOpen"
+    :agent-id="testAgentId"
+    @update:open="(v: boolean) => (testOpen = v)"
+  />
 
   <!-- Round-trip Test Modal -->
-  <AgentsRoundTripAgentModal :open="roundTripOpen" :agent-id="roundTripAgentId" @update:open="(v:boolean) => roundTripOpen = v" />
+  <AgentsRoundTripAgentModal
+    :open="roundTripOpen"
+    :agent-id="roundTripAgentId"
+    @update:open="(v: boolean) => (roundTripOpen = v)"
+  />
 
   <!-- Delete Confirmation Modal -->
-  <UModal v-model:open="deleteOpen" title="Delete Koompl" description="Are you sure you want to delete the Koompl?">
+  <UModal
+    v-model:open="deleteOpen"
+    title="Delete Koompl"
+    description="Are you sure you want to delete the Koompl?"
+  >
     <template #content>
       <UCard>
         <h3 class="font-medium text-highlighted mb-2">Delete Koompl</h3>
-        <p class="text-sm">Are you sure you want to delete this Koompl? This action cannot be undone.</p>
+        <p class="text-sm">
+          Are you sure you want to delete this Koompl? This action cannot be undone.
+        </p>
         <div class="mt-4 flex items-center gap-2 justify-end">
           <UButton label="Cancel" color="neutral" variant="ghost" @click="deleteOpen = false" />
           <UButton label="Delete" color="error" @click="confirmDelete" />
