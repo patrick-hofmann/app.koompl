@@ -21,7 +21,7 @@ const {
   pending,
   error,
   refresh
-} = await useFetch<IdentityData & { agents?: Agent[] }>('/api/admin/identity', {
+} = await useFetch<IdentityData & { agents?: Agent[] }>('/api/admin/agents', {
   default: () => ({ users: [], teams: [], memberships: [], superAdminIds: [], agents: [] }),
   server: false
 })
