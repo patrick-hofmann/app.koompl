@@ -2,7 +2,14 @@
 const props = defineProps<{ open: boolean; agentId: string | null }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
-const form = reactive<{ subject: string; text: string }>({ subject: 'Test Email', text: 'Hello, this is a test.' })
+// Get current user session
+const { user: sessionUser } = await useUserSession()
+
+// Initialize form with current user's name and email
+const form = reactive<{ subject: string; text: string }>({
+  subject: 'Test Email',
+  text: `Hello, this is a test from ${sessionUser.value?.name || 'User'} (${sessionUser.value?.email || 'user@example.com'}).`
+})
 const loading = ref(false)
 const result = ref<string | null>(null)
 
@@ -11,11 +18,14 @@ async function runTest() {
   loading.value = true
   result.value = null
   try {
-    const res = await $fetch<{ ok: boolean; result?: string; error?: string }>(`/api/agents/${props.agentId}/test`, {
-      method: 'POST',
-      body: { subject: form.subject, text: form.text }
-    })
-    result.value = res.ok ? (res.result || '') : `Error: ${res.error}`
+    const res = await $fetch<{ ok: boolean; result?: string; error?: string }>(
+      `/api/agents/${props.agentId}/test`,
+      {
+        method: 'POST',
+        body: { subject: form.subject, text: form.text }
+      }
+    )
+    result.value = res.ok ? res.result || '' : `Error: ${res.error}`
   } finally {
     loading.value = false
   }
@@ -23,7 +33,12 @@ async function runTest() {
 </script>
 
 <template>
-  <UModal title="Test Agent" description="Generate a sample AI reply for this agent" :open="open" @update:open="emit('update:open', $event)">
+  <UModal
+    title="Test Agent"
+    description="Generate a sample AI reply for this agent"
+    :open="open"
+    @update:open="emit('update:open', $event)"
+  >
     <template #content>
       <UCard>
         <div class="space-y-3">
@@ -35,7 +50,12 @@ async function runTest() {
               <UTextarea v-model="form.text" :rows="5" autoresize />
             </UFormField>
             <div class="flex items-center gap-2 justify-end">
-              <UButton label="Close" color="neutral" variant="ghost" @click="emit('update:open', false)" />
+              <UButton
+                label="Close"
+                color="neutral"
+                variant="ghost"
+                @click="emit('update:open', false)"
+              />
               <UButton type="submit" :loading="loading" label="Run Test" />
             </div>
           </UForm>
