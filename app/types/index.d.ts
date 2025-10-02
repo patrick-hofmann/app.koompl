@@ -118,6 +118,9 @@ export interface Agent {
   avatar?: AvatarProps | { src?: string; text?: string; alt?: string }
   mcpServerIds?: string[]
   multiRoundConfig?: MultiRoundConfig
+  teamId?: string // Team this agent belongs to
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface Team {

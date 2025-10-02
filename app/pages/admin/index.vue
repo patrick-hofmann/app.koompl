@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IdentityData, AuthUser, Team } from '~/types'
+import type { IdentityData, AuthUser, Team, Agent } from '~/types'
 
 const toast = useToast()
 
@@ -21,8 +21,8 @@ const {
   pending,
   error,
   refresh
-} = await useFetch<IdentityData>('/api/admin/identity', {
-  default: () => ({ users: [], teams: [], memberships: [], superAdminIds: [] }),
+} = await useFetch<IdentityData & { agents?: Agent[] }>('/api/admin/identity', {
+  default: () => ({ users: [], teams: [], memberships: [], superAdminIds: [], agents: [] }),
   server: false
 })
 
@@ -138,6 +138,31 @@ function parseErrorMessage(err: unknown, fallback = 'Something went wrong') {
 
 async function refreshIdentity() {
   await refresh()
+}
+
+async function updateAgentTeam(agentId: string, newTeamId: string | null) {
+  try {
+    await $fetch(`/api/agents/${agentId}`, {
+      method: 'PATCH',
+      body: {
+        teamId: newTeamId
+      }
+    })
+
+    toast.add({
+      title: 'Success',
+      description: 'Agent team assignment updated',
+      color: 'green'
+    })
+
+    await refreshIdentity()
+  } catch (err) {
+    toast.add({
+      title: 'Error',
+      description: parseErrorMessage(err, 'Failed to update agent team'),
+      color: 'red'
+    })
+  }
 }
 
 function resetUserForm() {
@@ -725,6 +750,70 @@ function formatDateTime(value?: string) {
                 />
               </div>
             </form>
+          </div>
+        </UCard>
+
+        <UCard>
+          <template #header>
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-base font-medium text-highlighted">Agents</h3>
+                <p class="text-sm text-muted">Manage agent-team assignments.</p>
+              </div>
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-refresh-ccw"
+                :loading="pending"
+                @click="refreshIdentity"
+              >
+                Refresh
+              </UButton>
+            </div>
+          </template>
+
+          <div class="space-y-3">
+            <div
+              v-for="agent in identity.agents"
+              :key="agent.id"
+              class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-default p-4"
+            >
+              <div class="space-y-1 flex-1">
+                <div class="flex items-center gap-2">
+                  <h4 class="font-medium text-highlighted">{{ agent.name }}</h4>
+                  <UBadge
+                    v-if="agent.teamId"
+                    :label="teamsById[agent.teamId]?.name || 'Unknown Team'"
+                    color="primary"
+                    size="xs"
+                  />
+                  <UBadge v-else label="No Team" color="neutral" size="xs" />
+                </div>
+                <p class="text-sm text-muted">{{ agent.email }}</p>
+                <p class="text-xs text-muted">Agent-ID: {{ agent.id }}</p>
+                <p v-if="agent.teamId" class="text-xs text-muted">Team-ID: {{ agent.teamId }}</p>
+              </div>
+
+              <div class="flex flex-col gap-2">
+                <USelectMenu
+                  :model-value="agent.teamId"
+                  :items="teamItems"
+                  value-key="value"
+                  label-key="label"
+                  placeholder="Assign to team"
+                  @update:model-value="(value) => updateAgentTeam(agent.id, value)"
+                >
+                  <template #label>
+                    <span class="text-sm">
+                      {{ agent.teamId ? teamsById[agent.teamId]?.name || 'Unknown' : 'No Team' }}
+                    </span>
+                  </template>
+                </USelectMenu>
+              </div>
+            </div>
+            <p v-if="!identity.agents?.length && !pending" class="text-sm text-muted">
+              No agents configured yet.
+            </p>
           </div>
         </UCard>
       </div>

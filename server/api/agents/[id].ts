@@ -1,7 +1,7 @@
 import type { Agent } from '~/types'
 import { createAgentStorage, updateAgentObject } from '../../utils/shared'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   const agentStorage = createAgentStorage()
   const id = getRouterParam(event, 'id') as string
   const method = getMethod(event)
@@ -26,7 +26,11 @@ export default defineEventHandler(async event => {
     }
 
     const updated = updateAgentObject(existing, body)
-    return await agentStorage.update(id, updated)
+    return await agentStorage.update(id, {
+      ...updated,
+      teamId: body.teamId !== undefined ? body.teamId : existing.teamId,
+      updatedAt: new Date().toISOString()
+    })
   }
 
   if (method === 'DELETE') {

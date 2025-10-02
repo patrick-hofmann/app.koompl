@@ -247,6 +247,7 @@ export default defineEventHandler(async (event) => {
     // Generate AI response by delegating to shared responder utility
     let aiAnswer: string | null = null
     if (agent && isDomainAllowed) {
+      // Use agent's team context for MCP tools (userId is optional)
       const response = await generateAgentResponse({
         agentId: agent.id,
         subject: String(subject || ''),
@@ -254,7 +255,8 @@ export default defineEventHandler(async (event) => {
         from: String(fromEmail || from || ''),
         includeQuote: true,
         maxTokens: 700,
-        temperature: 0.4
+        temperature: 0.4,
+        teamId: agent.teamId
       })
       if (response.ok && response.result) {
         aiAnswer = response.result.trim()
