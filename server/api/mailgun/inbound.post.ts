@@ -332,7 +332,8 @@ export default defineEventHandler(async (event) => {
         try {
           const response = await event.$fetch('/api/mailgun/outbound', {
             method: 'POST',
-            body: outboundPayload
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(outboundPayload)
           })
 
           _outboundResult = response.ok
