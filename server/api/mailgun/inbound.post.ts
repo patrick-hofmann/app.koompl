@@ -330,11 +330,24 @@ export default defineEventHandler(async (event) => {
         })
 
         try {
-          const response = await event.$fetch('/api/mailgun/outbound', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(outboundPayload)
-          })
+          let response = undefined
+          try {
+            response = await event.$fetch('/api/mailgun/outbound', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: outboundPayload
+            })
+          } catch (error) {
+            console.error(
+              'Failed to send via outbound route via event - trying direct fetch:',
+              error
+            )
+            response = await $fetch('/api/mailgun/outbound', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: outboundPayload
+            })
+          }
 
           _outboundResult = response.ok
             ? { ok: true, id: response.messageId, message: 'Sent via outbound route' }

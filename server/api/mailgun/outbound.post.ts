@@ -33,12 +33,20 @@ export default defineEventHandler(async (event) => {
     }>(event)
 
     console.log('[Outbound.post] Received payload', {
-      from: body?.from,
-      to: body?.to,
-      subject: body?.subject,
-      textLength: body?.text ? body.text.length : 0,
-      agentId: body?.agentId,
-      agentEmail: body?.agentEmail
+      rawBodyType: typeof body,
+      rawBodyKeys: body && typeof body === 'object' ? Object.keys(body) : null,
+      from: (body as { from?: string })?.from,
+      to: (body as { to?: string })?.to,
+      subject: (body as { subject?: string })?.subject,
+      textLength:
+        body &&
+        typeof body === 'object' &&
+        'text' in body &&
+        typeof (body as { text?: string }).text === 'string'
+          ? (body as { text: string }).text.length
+          : 0,
+      agentId: (body as { agentId?: string })?.agentId,
+      agentEmail: (body as { agentEmail?: string })?.agentEmail
     })
 
     const {
