@@ -32,11 +32,15 @@ export class DecisionEngine {
       console.log(`[DecisionEngine]   Confidence: ${(decision.confidence * 100).toFixed(0)}%`)
 
       if (decision.type === 'wait_for_agent' && decision.targetAgent) {
-        console.log(`[DecisionEngine]   → Will contact agent: ${decision.targetAgent.agentEmail || decision.targetAgent.agentId}`)
+        console.log(
+          `[DecisionEngine]   → Will contact agent: ${decision.targetAgent.agentEmail || decision.targetAgent.agentId}`
+        )
         console.log(`[DecisionEngine]   → Subject: ${decision.targetAgent.messageSubject}`)
         console.log(`[DecisionEngine]   → Question: ${decision.targetAgent.question}`)
       } else if (decision.type === 'complete' && decision.finalResponse) {
-        console.log(`[DecisionEngine]   → Will send final response to user (${decision.finalResponse.length} chars)`)
+        console.log(
+          `[DecisionEngine]   → Will send final response to user (${decision.finalResponse.length} chars)`
+        )
       } else if (decision.type === 'wait_for_mcp' && decision.mcpCall) {
         console.log(`[DecisionEngine]   → Will call MCP: ${decision.mcpCall.serverId}`)
       } else if (decision.type === 'fail') {
@@ -58,7 +62,8 @@ export class DecisionEngine {
         type: 'fail',
         reasoning: `Decision engine error: ${error instanceof Error ? error.message : String(error)}`,
         confidence: 0,
-        finalResponse: 'I apologize, but I encountered an error processing your request. Please try again.'
+        finalResponse:
+          'I apologize, but I encountered an error processing your request. Please try again.'
       }
     }
   }
@@ -66,7 +71,10 @@ export class DecisionEngine {
   /**
    * Build decision prompt for AI
    */
-  private async buildDecisionPrompt(flow: AgentFlow, agent: DecisionContext['agent']): Promise<string> {
+  private async buildDecisionPrompt(
+    flow: AgentFlow,
+    agent: DecisionContext['agent']
+  ): Promise<string> {
     const originalRequest = flow.trigger.body
     const originalSubject = flow.trigger.subject
     const currentRound = flow.currentRound
@@ -144,10 +152,18 @@ Notes:
    * Call AI to get decision
    */
   private async callAI(prompt: string, _agent: DecisionContext['agent']): Promise<FlowDecision> {
-    const settingsStorage = useStorage('settings')
-    const settings = await settingsStorage.getItem<Record<string, unknown>>('settings.json') || {}
+    const openaiKey = await this.getOpenAiKey()
+    const response = await this.callOpenAiApi(prompt, openaiKey)
+    const content = this.extractResponseContent(response)
+    const parsed = this.parseJsonResponse(content)
 
-    // Get OpenAI API key
+    return this.buildDecisionFromParsed(parsed)
+  }
+
+  private async getOpenAiKey(): Promise<string> {
+    const settingsStorage = useStorage('settings')
+    const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
+
     const envKey = (process.env as Record<string, unknown>)['OPENAI_API_KEY']
     const settingsKey = (settings as Record<string, unknown>)['openaiApiKey']
     const openaiKey = String(envKey || settingsKey || '').trim()
@@ -156,39 +172,45 @@ Notes:
       throw new Error('OpenAI API key not configured')
     }
 
-    // Call OpenAI
-    const response = await $fetch<{
+    return openaiKey
+  }
+
+  private async callOpenAiApi(prompt: string, openaiKey: string) {
+    return await $fetch<{
       choices?: Array<{ message?: { content?: string } }>
     }>('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openaiKey}`,
+        Authorization: `Bearer ${openaiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        messages: [
-          { role: 'user', content: prompt }
-        ],
+        messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         max_tokens: 1000
       })
     })
+  }
 
+  private extractResponseContent(response: any): string {
     const content = response?.choices?.[0]?.message?.content
     if (!content) {
       throw new Error('No response from AI')
     }
+    return content
+  }
 
-    // Parse JSON response
+  private parseJsonResponse(content: string) {
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       throw new Error('AI response is not valid JSON')
     }
 
-    const parsed = JSON.parse(jsonMatch[0])
+    return JSON.parse(jsonMatch[0])
+  }
 
-    // Map to our decision format
+  private buildDecisionFromParsed(parsed: any): FlowDecision {
     const decision: FlowDecision = {
       type: this.mapDecisionType(parsed.decision),
       reasoning: String(parsed.reasoning || 'No reasoning provided'),
@@ -248,7 +270,11 @@ Notes:
       throw new Error('Decision must have reasoning')
     }
 
-    if (typeof decision.confidence !== 'number' || decision.confidence < 0 || decision.confidence > 1) {
+    if (
+      typeof decision.confidence !== 'number' ||
+      decision.confidence < 0 ||
+      decision.confidence > 1
+    ) {
       throw new Error('Decision confidence must be between 0 and 1')
     }
 
@@ -294,7 +320,7 @@ Notes:
 
     for (const round of flow.rounds) {
       // Check for received messages
-      const receivedMessages = round.messages.filter(m => m.direction === 'received')
+      const receivedMessages = round.messages.filter((m) => m.direction === 'received')
 
       for (const msg of receivedMessages) {
         // Extract the core information, removing greeting/salutation parts
@@ -303,7 +329,9 @@ Notes:
           .replace(/^(Viele Grüße|Best regards|Thanks|Thank you),?\s*$/i, '')
           .trim()
 
-        information.push(`Agent ${msg.from} provided: ${cleanBody.substring(0, 300)}${cleanBody.length > 300 ? '...' : ''}`)
+        information.push(
+          `Agent ${msg.from} provided: ${cleanBody.substring(0, 300)}${cleanBody.length > 300 ? '...' : ''}`
+        )
       }
 
       // Check for MCP results
@@ -333,66 +361,76 @@ Notes:
     let allowedEmails = multiRoundConfig.allowedAgentEmails || []
 
     // Migration: if allowedAgentEmails is empty but allowedAgentIds exists, convert IDs to emails
-    if (allowedEmails.length === 0 && (multiRoundConfig as Record<string, unknown>).allowedAgentIds) {
+    if (
+      allowedEmails.length === 0 &&
+      (multiRoundConfig as Record<string, unknown>).allowedAgentIds
+    ) {
       const agentsStorage = useStorage('agents')
-      const allAgents = await agentsStorage.getItem<Array<{
-        id?: string;
-        email?: string
-      }>>('agents.json') || []
+      const allAgents =
+        (await agentsStorage.getItem<
+          Array<{
+            id?: string
+            email?: string
+          }>
+        >('agents.json')) || []
 
       const oldIds = (multiRoundConfig as Record<string, unknown>).allowedAgentIds as string[]
       allowedEmails = oldIds
-        .map(id => {
-          const foundAgent = allAgents.find(a => a?.id === id)
+        .map((id) => {
+          const foundAgent = allAgents.find((a) => a?.id === id)
           return foundAgent?.email
         })
         .filter((email): email is string => !!email)
 
-      console.log(`[DecisionEngine Migration] Converted ${oldIds.length} agent IDs to ${allowedEmails.length} emails`)
+      console.log(
+        `[DecisionEngine Migration] Converted ${oldIds.length} agent IDs to ${allowedEmails.length} emails`
+      )
     }
 
     if (allowedEmails.length === 0) {
       // If no specific agents configured, load all agents except current one
       const agentsStorage = useStorage('agents')
-      const allAgents = await agentsStorage.getItem<Array<{
-        id?: string;
-        name?: string;
-        email?: string;
-        role?: string
-      }>>('agents.json') || []
+      const allAgents =
+        (await agentsStorage.getItem<
+          Array<{
+            id?: string
+            name?: string
+            email?: string
+            role?: string
+          }>
+        >('agents.json')) || []
 
-      const otherAgents = allAgents.filter(a =>
-        a?.email && a.email.toLowerCase() !== agent.email.toLowerCase()
+      const otherAgents = allAgents.filter(
+        (a) => a?.email && a.email.toLowerCase() !== agent.email.toLowerCase()
       )
 
       if (otherAgents.length === 0) {
         return 'You can communicate with other agents, but no other agents are available.'
       }
 
-      return otherAgents.map(a =>
-        `- ${a.email} (${a.name} - ${a.role || 'Agent'})`
-      ).join('\n')
+      return otherAgents.map((a) => `- ${a.email} (${a.name} - ${a.role || 'Agent'})`).join('\n')
     }
 
     // Load details for allowed agents
     const agentsStorage = useStorage('agents')
-    const allAgents = await agentsStorage.getItem<Array<{
-      id?: string;
-      name?: string;
-      email?: string;
-      role?: string
-    }>>('agents.json') || []
+    const allAgents =
+      (await agentsStorage.getItem<
+        Array<{
+          id?: string
+          name?: string
+          email?: string
+          role?: string
+        }>
+      >('agents.json')) || []
 
-    const allowedAgents = allAgents.filter(a =>
-      a?.email && allowedEmails.includes(a.email.toLowerCase())
+    const allowedAgents = allAgents.filter(
+      (a) => a?.email && allowedEmails.includes(a.email.toLowerCase())
     )
 
     if (allowedAgents.length === 0) {
       return 'Configured agents not found.'
     }
 
-    return allowedAgents.map(a =>
-      `- ${a.email} (${a.name} - ${a.role || 'Agent'})`
-    ).join('\n')
+    return allowedAgents.map((a) => `- ${a.email} (${a.name} - ${a.role || 'Agent'})`).join('\n')
   }
 }

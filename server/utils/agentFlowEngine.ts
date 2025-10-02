@@ -71,38 +71,47 @@ export class AgentFlowEngine {
 
   /**
    * Execute a single round of the flow
-   * Returns decision on what to do next
    */
   async executeRound(flowId: string, agentId?: string): Promise<RoundResult> {
     console.log(`[AgentFlowEngine] Executing round for flow ${flowId}`)
 
-    // Load flow state
+    const flow = await this.validateAndLoadFlow(flowId, agentId)
+    this.validateFlowCanExecute(flow)
+
+    const round = await this.createNewRound(flow)
+    await this.processDecision(flow, round)
+    await this.updateFlowWithRound(flow, round)
+
+    return await this.handleDecision(flow, round.decision)
+  }
+
+  private async validateAndLoadFlow(flowId: string, agentId?: string): Promise<AgentFlow> {
     const flow = await this.loadFlow(flowId, agentId)
     if (!flow) {
       throw createError({ statusCode: 404, statusMessage: `Flow ${flowId} not found` })
     }
+    return flow
+  }
 
-    // Check if flow is in a state that allows execution
+  private validateFlowCanExecute(flow: AgentFlow): void {
     if (flow.status !== 'active') {
       throw createError({
         statusCode: 400,
-        statusMessage: `Flow ${flowId} is not active (status: ${flow.status})`
+        statusMessage: `Flow ${flow.id} is not active (status: ${flow.status})`
       })
     }
 
-    // Check if we've exceeded max rounds
     if (flow.currentRound >= flow.maxRounds) {
-      await this.failFlow(flowId, 'Exceeded maximum rounds', agentId)
-      return {
-        decision: 'fail',
-        reasoning: 'Exceeded maximum rounds',
-        confidence: 1.0
-      }
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Flow ${flow.id} has exceeded maximum rounds (${flow.maxRounds})`
+      })
     }
+  }
 
-    // Start new round
+  private async createNewRound(flow: AgentFlow): Promise<FlowRound> {
     const roundNumber = flow.currentRound + 1
-    const round: FlowRound = {
+    return {
       roundNumber,
       startedAt: new Date().toISOString(),
       decision: {
@@ -115,8 +124,9 @@ export class AgentFlowEngine {
       mcpCalls: [],
       messages: []
     }
+  }
 
-    // Get decision from DecisionEngine
+  private async processDecision(flow: AgentFlow, round: FlowRound): Promise<void> {
     const { DecisionEngine } = await import('./decisionEngine')
     const decisionEngine = new DecisionEngine()
 
@@ -129,17 +139,7 @@ export class AgentFlowEngine {
       round.decision = decision
       round.completedAt = new Date().toISOString()
 
-      // Record AI call in round
-      if (decision) {
-        round.aiCalls.push({
-          id: `ai-${nanoid(8)}`,
-          provider: 'openai',
-          model: 'gpt-4o-mini',
-          prompt: 'Decision prompt',
-          response: JSON.stringify(decision),
-          timestamp: new Date().toISOString()
-        })
-      }
+      this.recordAiCall(round, decision)
     } catch (error) {
       console.error('[AgentFlowEngine] Decision engine error:', error)
       round.decision = {
@@ -149,23 +149,31 @@ export class AgentFlowEngine {
       }
       round.completedAt = new Date().toISOString()
     }
+  }
 
-    // Update flow
+  private recordAiCall(round: FlowRound, decision: FlowDecision): void {
+    if (decision) {
+      round.aiCalls.push({
+        id: `ai-${nanoid(8)}`,
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        prompt: 'Decision prompt',
+        response: JSON.stringify(decision),
+        timestamp: new Date().toISOString()
+      })
+    }
+  }
+
+  private async updateFlowWithRound(flow: AgentFlow, round: FlowRound): Promise<void> {
     flow.rounds.push(round)
-    flow.currentRound = roundNumber
+    flow.currentRound = round.roundNumber
     flow.updatedAt = new Date().toISOString()
 
-    // Update metadata
     flow.metadata.totalAiCalls += round.aiCalls.length
     flow.metadata.totalMcpCalls += round.mcpCalls.length
     flow.metadata.totalAgentMessages += round.messages.length
 
     await this.saveFlow(flow)
-
-    // Handle decision
-    const result = await this.handleDecision(flow, round.decision)
-
-    return result
   }
 
   /**
@@ -513,51 +521,8 @@ export class AgentFlowEngine {
   }
 
   private async handleWaitForAgent(flow: AgentFlow, decision: FlowDecision): Promise<void> {
-    if (!decision.targetAgent) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Decision type is wait_for_agent but targetAgent is not specified'
-      })
-    }
-
-    // Get agent emails (support both new email format and legacy ID format)
-    const agentsStorage = useStorage('agents')
-    const agents =
-      (await agentsStorage.getItem<
-        Array<{
-          id?: string
-          email?: string
-        }>
-      >('agents.json')) || []
-
-    const fromAgent = agents.find((a) => a?.id === flow.agentId)
-    if (!fromAgent?.email) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: `Agent ${flow.agentId} not found or has no email`
-      })
-    }
-
-    // Target agent can be specified by email (preferred) or by ID (legacy)
-    let toAgentEmail = decision.targetAgent.agentEmail
-    if (!toAgentEmail && decision.targetAgent.agentId) {
-      // Legacy support: look up email by ID
-      const toAgent = agents.find((a) => a?.id === decision.targetAgent?.agentId)
-      if (!toAgent?.email) {
-        throw createError({
-          statusCode: 500,
-          statusMessage: `Target agent ${decision.targetAgent.agentId} not found or has no email`
-        })
-      }
-      toAgentEmail = toAgent.email
-    }
-
-    if (!toAgentEmail) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: 'Target agent email not specified and could not be resolved'
-      })
-    }
+    this.validateTargetAgent(decision)
+    const { fromAgent, toAgentEmail } = await this.resolveAgentEmails(flow, decision)
 
     // Generate unique request ID for tracking this specific request
     const requestId = `req-${nanoid(8)}`
@@ -619,6 +584,62 @@ export class AgentFlowEngine {
       `[AgentFlowEngine] ⏳ Flow ${flow.id} now waiting for response from agent ${toAgentEmail}`
     )
     console.log(`[AgentFlowEngine] ⏳ Request ID: ${requestId}`)
+  }
+
+  private validateTargetAgent(decision: FlowDecision): void {
+    if (!decision.targetAgent) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Decision type is wait_for_agent but targetAgent is not specified'
+      })
+    }
+  }
+
+  private async resolveAgentEmails(flow: AgentFlow, decision: FlowDecision) {
+    const agents = await this.loadAgents()
+
+    const fromAgent = agents.find((a) => a?.id === flow.agentId)
+    if (!fromAgent?.email) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Agent ${flow.agentId} not found or has no email`
+      })
+    }
+
+    const toAgentEmail = this.resolveTargetAgentEmail(agents, decision)
+    if (!toAgentEmail) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Target agent email not specified and could not be resolved'
+      })
+    }
+
+    return { fromAgent, toAgentEmail }
+  }
+
+  private async loadAgents() {
+    const agentsStorage = useStorage('agents')
+    return (
+      (await agentsStorage.getItem<Array<{ id?: string; email?: string }>>('agents.json')) || []
+    )
+  }
+
+  private resolveTargetAgentEmail(
+    agents: Array<{ id?: string; email?: string }>,
+    decision: FlowDecision
+  ): string | null {
+    // Try email first (preferred)
+    if (decision.targetAgent?.agentEmail) {
+      return decision.targetAgent.agentEmail
+    }
+
+    // Legacy support: look up email by ID
+    if (decision.targetAgent?.agentId) {
+      const toAgent = agents.find((a) => a?.id === decision.targetAgent?.agentId)
+      return toAgent?.email || null
+    }
+
+    return null
   }
 
   private async handleWaitForMcp(flow: AgentFlow, decision: FlowDecision): Promise<void> {

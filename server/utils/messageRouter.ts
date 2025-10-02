@@ -1,8 +1,7 @@
 /**
- * Message Router - Email Routing and Matching
+ * Message Router - Simplified Email Routing
  *
- * Routes incoming emails to the appropriate handler and matches responses to flows.
- * Handles agent-to-agent and agent-to-user communication.
+ * Routes incoming emails to flows and handles agent communication.
  */
 
 import type { AgentFlow } from '../types/agent-flows'
@@ -20,20 +19,11 @@ export interface InboundEmail {
 
 export class MessageRouter {
   /**
-   * Route an incoming email to the appropriate handler
-   * - If it's a response to one of this agent's flows: resume that flow
-   * - If it's a new request: handle as new (caller decides to start flow or single-round)
+   * Route incoming email - check if it matches an active flow
    */
-  async routeInboundEmail(
-    email: InboundEmail,
-    agentId: string
-  ): Promise<{
-    isFlowResponse: boolean
-    flow?: AgentFlow
-  }> {
+  async routeInboundEmail(email: InboundEmail, agentId: string) {
     console.log(`[MessageRouter] Routing email for agent ${agentId}`)
 
-    // Check if this is a response to THIS AGENT's active flow
     const flow = await this.matchEmailToFlow(email, agentId)
 
     if (flow) {
@@ -46,8 +36,7 @@ export class MessageRouter {
   }
 
   /**
-   * Send an email from one agent to another
-   * IMPORTANT: This includes a request ID for tracking responses
+   * Send email from one agent to another
    */
   async sendAgentToAgentEmail(params: {
     fromAgentEmail: string
@@ -57,145 +46,20 @@ export class MessageRouter {
     flowId: string
     requestId: string
   }): Promise<string> {
-    console.log('\n[MessageRouter] ════════════════════════════════════════════')
-    console.log('[MessageRouter] 📧 AGENT-TO-AGENT EMAIL')
-    console.log(`[MessageRouter] From: ${params.fromAgentEmail}`)
-    console.log(`[MessageRouter] To: ${params.toAgentEmail}`)
-    console.log(`[MessageRouter] Subject: [Req: ${params.requestId}] ${params.subject}`)
-    console.log(`[MessageRouter] Flow ID: ${params.flowId}`)
-    console.log('[MessageRouter] ════════════════════════════════════════════')
+    this.logEmailStart(params)
 
-    // Get agent details by email
-    console.log('[MessageRouter] → Looking up agents...')
-    const fromAgent = await this.getAgentByEmail(params.fromAgentEmail)
-    const toAgent = await this.getAgentByEmail(params.toAgentEmail)
+    const { fromAgent, toAgent } = await this.validateAgents(
+      params.fromAgentEmail,
+      params.toAgentEmail
+    )
+    await this.checkPermissions(fromAgent, params.toAgentEmail)
 
-    if (!fromAgent || !toAgent) {
-      console.error('[MessageRouter] ✗ Agent lookup failed:')
-      console.error(
-        `[MessageRouter]   From agent (${params.fromAgentEmail}): ${fromAgent ? '✓ found' : '✗ NOT FOUND'}`
-      )
-      console.error(
-        `[MessageRouter]   To agent (${params.toAgentEmail}): ${toAgent ? '✓ found' : '✗ NOT FOUND'}`
-      )
-      throw createError({
-        statusCode: 404,
-        statusMessage: 'One or both agents not found'
-      })
-    }
+    const emailData = this.prepareEmailData(fromAgent, toAgent, params)
+    const { messageId, mailgunSent } = await this.dispatchEmail(emailData)
 
-    console.log('[MessageRouter] ✓ Both agents found')
-    console.log(`[MessageRouter]   From: ${fromAgent.name} <${fromAgent.email}>`)
-    console.log(`[MessageRouter]   To: ${toAgent.name} <${toAgent.email}>`)
+    await this.logEmailActivity(fromAgent, emailData, messageId, mailgunSent, params)
 
-    // Check if fromAgent is allowed to communicate with toAgent
-    if (fromAgent.multiRoundConfig?.canCommunicateWithAgents) {
-      let allowedEmails = fromAgent.multiRoundConfig.allowedAgentEmails || []
-
-      // Migration: if allowedAgentEmails is empty but allowedAgentIds exists, convert IDs to emails
-      if (
-        allowedEmails.length === 0 &&
-        (fromAgent.multiRoundConfig as Record<string, unknown>).allowedAgentIds
-      ) {
-        const agentsStorage = useStorage('agents')
-        const allAgents =
-          (await agentsStorage.getItem<
-            Array<{
-              id?: string
-              email?: string
-            }>
-          >('agents.json')) || []
-
-        const oldIds = (fromAgent.multiRoundConfig as Record<string, unknown>)
-          .allowedAgentIds as string[]
-        allowedEmails = oldIds
-          .map((id) => {
-            const foundAgent = allAgents.find((a) => a?.id === id)
-            return foundAgent?.email?.toLowerCase()
-          })
-          .filter((email): email is string => !!email)
-
-        console.log(
-          `[MessageRouter Migration] Converted ${oldIds.length} agent IDs to ${allowedEmails.length} emails`
-        )
-      }
-
-      if (allowedEmails.length > 0 && !allowedEmails.includes(params.toAgentEmail.toLowerCase())) {
-        console.error('[MessageRouter] ✗ Permission denied:')
-        console.error(
-          `[MessageRouter]   ${fromAgent.name} is only allowed to contact: ${allowedEmails.join(', ')}`
-        )
-        console.error(`[MessageRouter]   Attempted to contact: ${params.toAgentEmail}`)
-        throw createError({
-          statusCode: 403,
-          statusMessage: `Agent ${params.fromAgentEmail} is not allowed to communicate with ${params.toAgentEmail}`
-        })
-      }
-
-      console.log('[MessageRouter] ✓ Permission check passed')
-      if (allowedEmails.length > 0) {
-        console.log(`[MessageRouter]   Allowed agents: ${allowedEmails.join(', ')}`)
-      } else {
-        console.log('[MessageRouter]   Can contact: ALL agents')
-      }
-    } else {
-      console.error(`[MessageRouter] ✗ Inter-agent communication is disabled for ${fromAgent.name}`)
-      throw createError({
-        statusCode: 403,
-        statusMessage: `Agent ${params.fromAgentEmail} does not have inter-agent communication enabled`
-      })
-    }
-
-    // Format subject with request ID
-    const subjectWithReqId = `[Req: ${params.requestId}] ${params.subject}`
-
-    // Compose email
-    const from = `${fromAgent.name} <${fromAgent.email}>`
-    const to = toAgent.email
-    const subject = subjectWithReqId
-    const body = params.body
-
-    // Send based on environment configuration
-    console.log('[MessageRouter] → Dispatching email...')
-    const { messageId, mailgunSent } = await this.dispatchEmail({
-      from,
-      to,
-      subject,
-      text: body,
-      simulateInboundForAgent: toAgent.email
-    })
-
-    console.log('[MessageRouter] ✓ Email dispatched successfully')
-    console.log(`[MessageRouter]   Mailgun sent: ${mailgunSent ? 'YES' : 'NO'}`)
-    console.log(`[MessageRouter]   Message ID: ${messageId}`)
-    console.log('[MessageRouter] ════════════════════════════════════════════\n')
-
-    // Log activity
-    try {
-      await agentLogger.logEmailActivity({
-        agentId: fromAgent.id,
-        agentEmail: fromAgent.email,
-        direction: 'outbound',
-        email: {
-          messageId,
-          from,
-          to,
-          subject,
-          body
-        },
-        metadata: {
-          mailgunSent,
-          isAutomatic: true,
-          mcpContextCount: 0,
-          requestId: params.requestId,
-          targetAgent: params.toAgentEmail,
-          flowId: params.flowId
-        }
-      })
-    } catch (error) {
-      console.error('[MessageRouter] Failed to log email activity:', error)
-    }
-
+    this.logEmailSuccess(messageId, mailgunSent)
     return messageId
   }
 
@@ -213,36 +77,38 @@ export class MessageRouter {
       `[MessageRouter] Sending email from agent ${params.fromAgentId} to user ${params.toEmail}`
     )
 
-    // Get agent details
     const agent = await this.getAgent(params.fromAgentId)
-
     if (!agent) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
 
-    // Compose email
-    const from = `${agent.name} <${agent.email}>`
-    const to = params.toEmail
-    const subject = params.subject
-    const body = params.body
-
     const toAgent = await this.getAgentByEmail(params.toEmail)
 
-    console.log('[MessageRouter] → Dispatching email...')
-    const { messageId, mailgunSent } = await this.dispatchEmail({
-      from,
-      to,
-      subject,
-      text: body,
+    const emailData = {
+      from: `${agent.name} <${agent.email}>`,
+      to: params.toEmail,
+      subject: params.subject,
+      text: params.body,
       simulateInboundForAgent: toAgent?.email,
       forceMailgun: !toAgent
-    })
+    }
 
-    console.log('[MessageRouter] ✓ Email dispatched successfully')
-    console.log(`[MessageRouter]   Mailgun sent: ${mailgunSent ? 'YES' : 'NO'}`)
-    console.log(`[MessageRouter]   Message ID: ${messageId}`)
+    console.log('[MessageRouter] → Dispatching email...')
+    const { messageId, mailgunSent } = await this.dispatchEmail(emailData)
 
-    // Log activity
+    await this.logUserEmailActivity(params, agent, emailData, messageId, mailgunSent)
+    this.logUserEmailResult(toAgent, params.toEmail)
+
+    return messageId
+  }
+
+  private async logUserEmailActivity(
+    params: any,
+    agent: any,
+    emailData: any,
+    messageId: string,
+    mailgunSent: boolean
+  ) {
     try {
       await agentLogger.logEmailActivity({
         agentId: params.fromAgentId,
@@ -250,10 +116,10 @@ export class MessageRouter {
         direction: 'outbound',
         email: {
           messageId,
-          from,
-          to,
-          subject,
-          body
+          from: emailData.from,
+          to: emailData.to,
+          subject: emailData.subject,
+          body: emailData.text
         },
         metadata: {
           mailgunSent,
@@ -265,25 +131,168 @@ export class MessageRouter {
     } catch (error) {
       console.error('[MessageRouter] Failed to log email activity:', error)
     }
+  }
+
+  private logUserEmailResult(toAgent: any, toEmail: string) {
+    console.log('[MessageRouter] ✓ Email dispatched successfully')
 
     if (toAgent) {
       console.log(`[MessageRouter] ✓ Agent recipient detected: ${toAgent.name}`)
       console.log('[MessageRouter] → Inbound processing will occur via Mailgun/webhook flow')
     } else {
-      console.log(`[MessageRouter] → External user ${params.toEmail} - dispatch complete`)
+      console.log(`[MessageRouter] → External user ${toEmail} - dispatch complete`)
+    }
+  }
+
+  // Helper methods for sendAgentToAgentEmail
+
+  private logEmailStart(params: any) {
+    console.log('\n[MessageRouter] ════════════════════════════════════════════')
+    console.log('[MessageRouter] 📧 AGENT-TO-AGENT EMAIL')
+    console.log(`[MessageRouter] From: ${params.fromAgentEmail}`)
+    console.log(`[MessageRouter] To: ${params.toAgentEmail}`)
+    console.log(`[MessageRouter] Subject: [Req: ${params.requestId}] ${params.subject}`)
+    console.log(`[MessageRouter] Flow ID: ${params.flowId}`)
+    console.log('[MessageRouter] ════════════════════════════════════════════')
+  }
+
+  private async validateAgents(fromEmail: string, toEmail: string) {
+    console.log('[MessageRouter] → Looking up agents...')
+    const fromAgent = await this.getAgentByEmail(fromEmail)
+    const toAgent = await this.getAgentByEmail(toEmail)
+
+    if (!fromAgent || !toAgent) {
+      console.error('[MessageRouter] ✗ Agent lookup failed:')
+      console.error(
+        `[MessageRouter]   From agent (${fromEmail}): ${fromAgent ? '✓ found' : '✗ NOT FOUND'}`
+      )
+      console.error(
+        `[MessageRouter]   To agent (${toEmail}): ${toAgent ? '✓ found' : '✗ NOT FOUND'}`
+      )
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'One or both agents not found'
+      })
     }
 
-    return messageId
+    console.log('[MessageRouter] ✓ Both agents found')
+    console.log(`[MessageRouter]   From: ${fromAgent.name} <${fromAgent.email}>`)
+    console.log(`[MessageRouter]   To: ${toAgent.name} <${toAgent.email}>`)
+
+    return { fromAgent, toAgent }
+  }
+
+  private async checkPermissions(fromAgent: any, toEmail: string) {
+    if (!fromAgent.multiRoundConfig?.canCommunicateWithAgents) {
+      console.error(`[MessageRouter] ✗ Inter-agent communication is disabled for ${fromAgent.name}`)
+      throw createError({
+        statusCode: 403,
+        statusMessage: `Agent ${fromAgent.email} does not have inter-agent communication enabled`
+      })
+    }
+
+    let allowedEmails = fromAgent.multiRoundConfig.allowedAgentEmails || []
+
+    // Migration: convert old agent IDs to emails
+    if (allowedEmails.length === 0 && (fromAgent.multiRoundConfig as any).allowedAgentIds) {
+      allowedEmails = await this.migrateAgentIds(fromAgent.multiRoundConfig)
+    }
+
+    if (allowedEmails.length > 0 && !allowedEmails.includes(toEmail.toLowerCase())) {
+      console.error('[MessageRouter] ✗ Permission denied:')
+      console.error(
+        `[MessageRouter]   ${fromAgent.name} is only allowed to contact: ${allowedEmails.join(', ')}`
+      )
+      console.error(`[MessageRouter]   Attempted to contact: ${toEmail}`)
+      throw createError({
+        statusCode: 403,
+        statusMessage: `Agent ${fromAgent.email} is not allowed to communicate with ${toEmail}`
+      })
+    }
+
+    console.log('[MessageRouter] ✓ Permission check passed')
+    if (allowedEmails.length > 0) {
+      console.log(`[MessageRouter]   Allowed agents: ${allowedEmails.join(', ')}`)
+    } else {
+      console.log('[MessageRouter]   Can contact: ALL agents')
+    }
+  }
+
+  private async migrateAgentIds(multiRoundConfig: any) {
+    const agentsStorage = useStorage('agents')
+    const allAgents = (await agentsStorage.getItem<any[]>('agents.json')) || []
+    const oldIds = multiRoundConfig.allowedAgentIds as string[]
+
+    const allowedEmails = oldIds
+      .map((id) => {
+        const foundAgent = allAgents.find((a) => a?.id === id)
+        return foundAgent?.email?.toLowerCase()
+      })
+      .filter((email): email is string => !!email)
+
+    console.log(
+      `[MessageRouter Migration] Converted ${oldIds.length} agent IDs to ${allowedEmails.length} emails`
+    )
+    return allowedEmails
+  }
+
+  private prepareEmailData(fromAgent: any, toAgent: any, params: any) {
+    const subjectWithReqId = `[Req: ${params.requestId}] ${params.subject}`
+
+    return {
+      from: `${fromAgent.name} <${fromAgent.email}>`,
+      to: toAgent.email,
+      subject: subjectWithReqId,
+      text: params.body,
+      simulateInboundForAgent: toAgent.email
+    }
+  }
+
+  private async logEmailActivity(
+    fromAgent: any,
+    emailData: any,
+    messageId: string,
+    mailgunSent: boolean,
+    params: any
+  ) {
+    try {
+      await agentLogger.logEmailActivity({
+        agentId: fromAgent.id,
+        agentEmail: fromAgent.email,
+        direction: 'outbound',
+        email: {
+          messageId,
+          from: emailData.from,
+          to: emailData.to,
+          subject: emailData.subject,
+          body: emailData.text
+        },
+        metadata: {
+          mailgunSent,
+          isAutomatic: true,
+          mcpContextCount: 0,
+          requestId: params.requestId,
+          targetAgent: params.toAgentEmail,
+          flowId: params.flowId
+        }
+      })
+    } catch (error) {
+      console.error('[MessageRouter] Failed to log email activity:', error)
+    }
+  }
+
+  private logEmailSuccess(messageId: string, mailgunSent: boolean) {
+    console.log('[MessageRouter] ✓ Email dispatched successfully')
+    console.log(`[MessageRouter]   Mailgun sent: ${mailgunSent ? 'YES' : 'NO'}`)
+    console.log(`[MessageRouter]   Message ID: ${messageId}`)
+    console.log('[MessageRouter] ════════════════════════════════════════════\n')
   }
 
   /**
    * Check if incoming email is a response to THIS AGENT's active flow
-   * IMPORTANT: Only checks flows belonging to the receiving agent
    */
   async matchEmailToFlow(email: InboundEmail, agentId: string): Promise<AgentFlow | null> {
-    // Extract request ID from subject line
     const requestId = this.extractRequestId(email.subject)
-
     if (!requestId) {
       console.log('[MessageRouter] No request ID found in subject, not a flow response')
       return null
@@ -291,62 +300,67 @@ export class MessageRouter {
 
     console.log(`[MessageRouter] Found request ID: ${requestId}`)
 
-    // Load flows for this agent that are waiting
-    const flows = await agentFlowEngine.listAgentFlows(agentId, {
-      status: ['waiting']
-    })
-
+    const flows = await agentFlowEngine.listAgentFlows(agentId, { status: ['waiting'] })
     console.log(`[MessageRouter] Found ${flows.length} waiting flow(s) for agent`)
 
-    // Find flow waiting for this request ID
     for (const flow of flows) {
-      console.log(
-        `[MessageRouter] Checking flow ${flow.id}: waitingFor.type=${flow.waitingFor?.type}, requestId=${flow.waitingFor?.requestId}`
-      )
-
-      if (flow.waitingFor?.type === 'agent_response' && flow.waitingFor.requestId === requestId) {
-        // Verify sender matches expected agent (optional, for security)
-        const expectedAgentIdOrEmail = flow.waitingFor.agentId
-        if (expectedAgentIdOrEmail) {
-          // Handle both agent ID (legacy) and agent email (new format)
-          const expectedAgent = expectedAgentIdOrEmail.includes('@')
-            ? await this.getAgentByEmail(expectedAgentIdOrEmail)
-            : await this.getAgent(expectedAgentIdOrEmail)
-
-          const senderEmail = this.extractEmail(email.from)
-
-          if (expectedAgent && senderEmail !== expectedAgent.email) {
-            console.warn(
-              `[MessageRouter] Sender ${senderEmail} does not match expected agent ${expectedAgent.email}`
-            )
-            continue
-          }
-
-          console.log(`[MessageRouter] ✓ Flow matched: ${flow.id}`)
-          console.log(`[MessageRouter]   Expected agent: ${expectedAgent?.email}`)
-          console.log(`[MessageRouter]   Actual sender: ${senderEmail}`)
+      if (this.isFlowWaitingForRequest(flow, requestId)) {
+        if (await this.validateFlowMatch(flow, email)) {
+          console.log(`[MessageRouter] Matched email to flow ${flow.id}`)
+          return flow
         }
-
-        // Check temporal proximity (not expired)
-        if (flow.waitingFor.expectedBy) {
-          const expectedBy = new Date(flow.waitingFor.expectedBy).getTime()
-          const now = Date.now()
-
-          if (now > expectedBy) {
-            console.warn(
-              `[MessageRouter] Flow ${flow.id} has expired (expected by ${flow.waitingFor.expectedBy})`
-            )
-            continue
-          }
-        }
-
-        console.log(`[MessageRouter] Matched email to flow ${flow.id}`)
-        return flow
       }
     }
 
     console.log('[MessageRouter] No matching flow found for request ID')
     return null
+  }
+
+  private isFlowWaitingForRequest(flow: AgentFlow, requestId: string): boolean {
+    console.log(
+      `[MessageRouter] Checking flow ${flow.id}: waitingFor.type=${flow.waitingFor?.type}, requestId=${flow.waitingFor?.requestId}`
+    )
+    return flow.waitingFor?.type === 'agent_response' && flow.waitingFor.requestId === requestId
+  }
+
+  private async validateFlowMatch(flow: AgentFlow, email: InboundEmail): Promise<boolean> {
+    // Check if sender matches expected agent
+    if (flow.waitingFor?.agentId) {
+      const senderEmail = this.extractEmail(email.from)
+      const expectedAgent = await this.getExpectedAgent(flow.waitingFor.agentId)
+
+      if (expectedAgent && senderEmail !== expectedAgent.email) {
+        console.warn(
+          `[MessageRouter] Sender ${senderEmail} does not match expected agent ${expectedAgent.email}`
+        )
+        return false
+      }
+
+      console.log(`[MessageRouter] ✓ Flow matched: ${flow.id}`)
+      console.log(`[MessageRouter]   Expected agent: ${expectedAgent?.email}`)
+      console.log(`[MessageRouter]   Actual sender: ${senderEmail}`)
+    }
+
+    // Check if flow has expired
+    if (flow.waitingFor?.expectedBy) {
+      const expectedBy = new Date(flow.waitingFor.expectedBy).getTime()
+      const now = Date.now()
+
+      if (now > expectedBy) {
+        console.warn(
+          `[MessageRouter] Flow ${flow.id} has expired (expected by ${flow.waitingFor.expectedBy})`
+        )
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private async getExpectedAgent(agentIdOrEmail: string) {
+    return agentIdOrEmail.includes('@')
+      ? await this.getAgentByEmail(agentIdOrEmail)
+      : await this.getAgent(agentIdOrEmail)
   }
 
   /**
@@ -379,7 +393,7 @@ export class MessageRouter {
   }
 
   /**
-   * Send email based on environment and optionally trigger inbound processing during development
+   * Send email based on environment configuration
    */
   private async dispatchEmail(params: {
     from: string
@@ -391,63 +405,67 @@ export class MessageRouter {
   }): Promise<{ messageId: string; mailgunSent: boolean }> {
     const isProduction = process.env.NODE_ENV === 'production'
     const shouldSendViaMailgun = isProduction || Boolean(params.forceMailgun)
-    let messageId: string
-    let mailgunSent = false
 
-    if (shouldSendViaMailgun) {
-      messageId = await this.sendEmailViaMailgun({
-        from: params.from,
-        to: params.to,
-        subject: params.subject,
-        text: params.text
-      })
-      mailgunSent = true
-      if (!isProduction) {
-        console.log(`[MessageRouter] (dev) Forced Mailgun send, message ID: ${messageId}`)
-      }
-    } else {
-      messageId = this.generateDevMessageId()
-      console.log(`[MessageRouter] (dev) Generated message ID ${messageId} (Mailgun bypassed)`)
-    }
+    const { messageId, mailgunSent } = shouldSendViaMailgun
+      ? await this.sendViaMailgun(params)
+      : this.generateDevMessage(params)
 
     if (!shouldSendViaMailgun && params.simulateInboundForAgent) {
-      const target = params.simulateInboundForAgent
-      const port = process.env.PORT || 3000
-
-      console.log(`[MessageRouter] (dev) Scheduling deferred inbound delivery for ${target}`)
-
-      setImmediate(async () => {
-        try {
-          const payload = {
-            recipient: target,
-            to: target,
-            To: target,
-            'Message-Id': messageId,
-            'message-id': messageId,
-            sender: params.from,
-            from: params.from,
-            From: params.from,
-            subject: params.subject,
-            Subject: params.subject,
-            'stripped-text': params.text,
-            text: params.text,
-            'body-plain': params.text
-          }
-
-          await $fetch(`http://localhost:${port}/api/mailgun/inbound`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          })
-
-          console.log(`[MessageRouter] (dev) Synthetic inbound sent to ${target}`)
-        } catch (error) {
-          console.error('[MessageRouter] ✗ Synthetic inbound failed:', error)
-        }
-      })
+      this.scheduleDevInbound(params, messageId)
     }
 
     return { messageId, mailgunSent }
+  }
+
+  private async sendViaMailgun(params: any) {
+    const messageId = await this.sendEmailViaMailgun(params)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[MessageRouter] (dev) Forced Mailgun send, message ID: ${messageId}`)
+    }
+    return { messageId, mailgunSent: true }
+  }
+
+  private generateDevMessage(_params: any) {
+    const messageId = this.generateDevMessageId()
+    console.log(`[MessageRouter] (dev) Generated message ID ${messageId} (Mailgun bypassed)`)
+    return { messageId, mailgunSent: false }
+  }
+
+  private scheduleDevInbound(params: any, messageId: string) {
+    const target = params.simulateInboundForAgent
+    const port = process.env.PORT || 3000
+
+    console.log(`[MessageRouter] (dev) Scheduling deferred inbound delivery for ${target}`)
+
+    setImmediate(async () => {
+      try {
+        const payload = {
+          recipient: target,
+          to: target,
+          To: target,
+          'Message-Id': messageId,
+          'message-id': messageId,
+          sender: params.from,
+          from: params.from,
+          From: params.from,
+          subject: params.subject,
+          Subject: params.subject,
+          'stripped-text': params.text,
+          text: params.text,
+          'body-plain': params.text
+        }
+
+        await $fetch(`http://localhost:${port}/api/mailgun/inbound`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+
+        console.log(`[MessageRouter] (dev) Synthetic inbound sent to ${target}`)
+      } catch (error) {
+        console.error('[MessageRouter] ✗ Synthetic inbound failed:', error)
+      }
+    })
   }
 
   private generateDevMessageId(): string {
