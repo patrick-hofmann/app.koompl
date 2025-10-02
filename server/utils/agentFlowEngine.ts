@@ -236,12 +236,14 @@ export class AgentFlowEngine {
     const { MessageRouter } = await import('./messageRouter')
     const messageRouter = new MessageRouter()
 
+    const formattedResponse = this.formatFinalResponseWithOriginalEmail(finalResponse, flow)
+
     try {
       await messageRouter.sendAgentToUserEmail({
         fromAgentId: flow.agentId,
         toEmail: flow.requester.email,
         subject: `Re: ${flow.trigger.subject}`,
-        body: finalResponse,
+        body: formattedResponse,
         flowId: flow.id
       })
     } catch (error) {
@@ -257,6 +259,38 @@ export class AgentFlowEngine {
     await this.saveFlow(flow)
 
     console.log(`[AgentFlowEngine] Flow ${flowId} completed successfully`)
+  }
+
+  /**
+   * Append the original user email to the agent's final response for context
+   */
+  private formatFinalResponseWithOriginalEmail(finalResponse: string, flow: AgentFlow): string {
+    const trimmedResponse = finalResponse.trimEnd()
+    const responseBody = trimmedResponse.length > 0 ? trimmedResponse : finalResponse
+    const originalBody = flow.trigger.body.trim()
+
+    if (!originalBody) {
+      return responseBody
+    }
+
+    const quotedOriginal = originalBody
+      .split(/\r?\n/)
+      .map((line) => (line.length > 0 ? `> ${line}` : '>'))
+      .join('\n')
+
+    const requesterDisplay = flow.requester.name
+      ? `${flow.requester.name} <${flow.requester.email}>`
+      : flow.requester.email
+
+    const originalMetadata = [
+      '---- Original Message ----',
+      `Date: ${new Date(flow.trigger.receivedAt).toLocaleString()}`,
+      `From: ${requesterDisplay}`,
+      flow.trigger.to ? `To: ${flow.trigger.to}` : undefined,
+      flow.trigger.subject ? `Subject: ${flow.trigger.subject}` : undefined
+    ].filter(Boolean)
+
+    return `${responseBody}\n\n${originalMetadata.join('\n')}\n\n${quotedOriginal}`
   }
 
   /**
