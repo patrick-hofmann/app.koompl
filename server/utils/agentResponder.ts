@@ -3,7 +3,7 @@ import { listMcpServers } from './mcpStorage'
 import { fetchMcpContext, type McpContextResult } from './mcpClients'
 import { agentLogger } from './agentLogging'
 import { createGeneralAgent } from './mcpAgent'
-import { createBuiltinKanbanHttpClient, type HttpMcpClient } from './httpMcpClient'
+import { getKanbanTools, executeKanbanTool } from './builtinMcpTools'
 
 export interface AgentRespondRequest {
   agentId: string
@@ -157,11 +157,10 @@ export async function generateAgentResponse(
       }
     }
 
-    // For builtin-kanban only: use HTTP MCP client with dynamic tool discovery
+    // For builtin-kanban only: use direct function calls (no HTTP, production-ready)
     if (hasBuiltinKanban && teamId && userId && externalServers.length === 0) {
-      console.log('[AgentResponder] Using HTTP MCP client for builtin Kanban')
-      const httpMcpClient = createBuiltinKanbanHttpClient(teamId, userId)
-      return await handleHttpMcpWithFunctionCalling({
+      console.log('[AgentResponder] Using direct Kanban tool executor (production-ready)')
+      return await handleBuiltinKanbanWithFunctionCalling({
         agent,
         subject,
         text,
@@ -169,7 +168,8 @@ export async function generateAgentResponse(
         maxTokens,
         temperature,
         openaiKey,
-        httpMcpClient
+        teamId,
+        userId
       })
     }
 
@@ -291,9 +291,9 @@ export async function generateAgentResponse(
 }
 
 /**
- * Handle HTTP MCP servers with OpenAI function calling (dynamic tool discovery)
+ * Handle builtin Kanban with OpenAI function calling (direct tool execution, production-ready)
  */
-async function handleHttpMcpWithFunctionCalling(params: {
+async function handleBuiltinKanbanWithFunctionCalling(params: {
   agent: Agent
   subject: string
   text: string
@@ -301,14 +301,14 @@ async function handleHttpMcpWithFunctionCalling(params: {
   maxTokens: number
   temperature: number
   openaiKey: string
-  httpMcpClient: HttpMcpClient
+  teamId: string
+  userId: string
 }): Promise<AgentRespondResult> {
-  const { agent, subject, text, from, maxTokens, temperature, openaiKey, httpMcpClient } = params
+  const { agent, subject, text, from, maxTokens, temperature, openaiKey, teamId, userId } = params
 
-  // Discover tools dynamically from the MCP server
-  console.log('[HttpMCP] Discovering tools from HTTP MCP server...')
-  const mcpTools = await httpMcpClient.listTools()
-  console.log(`[HttpMCP] Discovered ${mcpTools.length} tools`)
+  // Get Kanban tools (no HTTP, direct discovery)
+  const mcpTools = getKanbanTools()
+  console.log(`[BuiltinKanban] Loaded ${mcpTools.length} tools`)
 
   // Convert MCP tools to OpenAI function calling format
   const tools = mcpTools.map((tool) => ({
@@ -319,6 +319,8 @@ async function handleHttpMcpWithFunctionCalling(params: {
       parameters: tool.inputSchema
     }
   }))
+
+  const context = { teamId, userId, agentId: agent.id }
 
   let userContent = ''
   if (subject) userContent += `Subject: ${subject}\n`
@@ -370,21 +372,21 @@ async function handleHttpMcpWithFunctionCalling(params: {
       return { ok: true, result: message.content || '' }
     }
 
-    // Execute tool calls via HTTP MCP client
+    // Execute tool calls directly (no HTTP)
     for (const toolCall of message.tool_calls) {
       const functionName = toolCall.function.name
       const args = JSON.parse(toolCall.function.arguments || '{}')
 
-      console.log(`[HttpMCP] Calling tool: ${functionName}`, args)
+      console.log(`[BuiltinKanban] Executing tool: ${functionName}`, args)
 
       let resultContent: string
       try {
-        const mcpResult = await httpMcpClient.callTool(functionName, args)
+        const mcpResult = await executeKanbanTool(context, functionName, args)
 
-        // Extract text from MCP result
+        // Extract text from result
         if (mcpResult.isError) {
           resultContent =
-            mcpResult.content[0]?.text || JSON.stringify({ error: 'Tool call failed' })
+            mcpResult.content[0]?.text || JSON.stringify({ error: 'Tool execution failed' })
         } else {
           resultContent = mcpResult.content[0]?.text || JSON.stringify({ success: true })
         }
