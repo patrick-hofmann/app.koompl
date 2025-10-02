@@ -3,9 +3,10 @@ import { mailStorage } from '../../utils/mailStorage'
 import { agentLogger } from '../../utils/agentLogging'
 import { agentFlowEngine } from '../../utils/agentFlowEngine'
 import { MessageRouter } from '../../utils/messageRouter'
+import { generateAgentResponse } from '../../utils/agentResponder'
 import type { Agent } from '~/types'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens.
   try {
     const agentsStorage = useStorage('agents')
@@ -43,13 +44,17 @@ export default defineEventHandler(async event => {
       return undefined
     }
     const receivedAt = new Date().toISOString()
-    const messageId = String(firstString(
-      payload ? (payload as Record<string, unknown>)['Message-Id'] : undefined,
-      payload ? (payload as Record<string, unknown>)['message-id'] : undefined,
-      getPath(payload, ['message', 'headers', 'message-id']),
-      (globalThis as unknown as { crypto?: { randomUUID?: () => string } }).crypto?.randomUUID?.(),
-      Math.random().toString(36).slice(2)
-    ))
+    const messageId = String(
+      firstString(
+        payload ? (payload as Record<string, unknown>)['Message-Id'] : undefined,
+        payload ? (payload as Record<string, unknown>)['message-id'] : undefined,
+        getPath(payload, ['message', 'headers', 'message-id']),
+        (
+          globalThis as unknown as { crypto?: { randomUUID?: () => string } }
+        ).crypto?.randomUUID?.(),
+        Math.random().toString(36).slice(2)
+      )
+    )
     const from = firstString(
       payload ? (payload as Record<string, unknown>)['from'] : undefined,
       payload ? (payload as Record<string, unknown>)['sender'] : undefined,
@@ -100,7 +105,9 @@ export default defineEventHandler(async event => {
 
     // Load agents and try to resolve the agent by recipient address
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-    const agent = toEmail ? agents.find(a => String(a?.email || '').toLowerCase() === toEmail) : undefined
+    const agent = toEmail
+      ? agents.find((a) => String(a?.email || '').toLowerCase() === toEmail)
+      : undefined
 
     if (!agent) {
       console.log('[Inbound] No agent found for email:', toEmail)
@@ -140,31 +147,40 @@ export default defineEventHandler(async event => {
     console.log('[Inbound] ════════════════════════════════════════════')
 
     const messageRouter = new MessageRouter()
-    const routingResult = await messageRouter.routeInboundEmail({
-      messageId: String(messageId || ''),
-      from: String(fromEmail || from || ''),
-      to: String(toEmail || to || ''),
-      subject: String(subject || ''),
-      body: String(text || ''),
-      receivedAt: new Date().toISOString()
-    }, agent.id)
+    const routingResult = await messageRouter.routeInboundEmail(
+      {
+        messageId: String(messageId || ''),
+        from: String(fromEmail || from || ''),
+        to: String(toEmail || to || ''),
+        subject: String(subject || ''),
+        body: String(text || ''),
+        receivedAt: new Date().toISOString()
+      },
+      agent.id
+    )
 
-    console.log(`[Inbound] Routing result: isFlowResponse=${routingResult.isFlowResponse}, flowId=${routingResult.flow?.id}`)
+    console.log(
+      `[Inbound] Routing result: isFlowResponse=${routingResult.isFlowResponse}, flowId=${routingResult.flow?.id}`
+    )
 
     if (routingResult.isFlowResponse && routingResult.flow) {
       // This is a response to one of this agent's flows - resume it
       console.log(`[Inbound] ✓ This is a RESPONSE to existing flow ${routingResult.flow.id}`)
       console.log('[Inbound] → Resuming flow...')
 
-      await agentFlowEngine.resumeFlow(routingResult.flow.id, {
-        type: 'email_response',
-        email: {
-          messageId: String(messageId || ''),
-          from: String(fromEmail || from || ''),
-          subject: String(subject || ''),
-          body: String(text || '')
-        }
-      }, agent.id)
+      await agentFlowEngine.resumeFlow(
+        routingResult.flow.id,
+        {
+          type: 'email_response',
+          email: {
+            messageId: String(messageId || ''),
+            from: String(fromEmail || from || ''),
+            subject: String(subject || ''),
+            body: String(text || '')
+          }
+        },
+        agent.id
+      )
       console.log('[Inbound] ✓ Flow resumed successfully')
       return { ok: true, flowId: routingResult.flow.id, resumed: true }
     }
@@ -215,54 +231,56 @@ export default defineEventHandler(async event => {
     // Prepare settings for mailgun
     const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
     const allowedDomains = firstString((settings as Record<string, unknown>)['allowedDomains'])
+    const isProduction = process.env.NODE_ENV === 'production'
 
     // Check domain filtering before processing AI response
-    let isDomainAllowed = false
-    if (allowedDomains && fromEmail) {
+    let isDomainAllowed = true
+    if (isProduction && allowedDomains && fromEmail) {
       // Import domain matcher utility
       const { isEmailAllowed } = await import('~/utils/domainMatcher')
       isDomainAllowed = isEmailAllowed(fromEmail, allowedDomains)
+      console.log(`[Inbound] Domain check (${fromEmail}) allowed=${isDomainAllowed}`)
+    } else if (!isProduction) {
+      console.log('[Inbound] Skipping domain check in development environment')
     }
 
-    // Generate AI response by delegating to respond endpoint (handles MCP fetching/logging)
+    // Generate AI response by delegating to shared responder utility
     let aiAnswer: string | null = null
     if (agent && isDomainAllowed) {
-      try {
-        const base = getRequestURL(event)
-        const origin = `${base.protocol}//${base.host}`
-        const response = await $fetch<{ ok: boolean; result?: string; error?: string }>(`${origin}/api/agents/${agent.id}/respond`, {
-          method: 'POST',
-          body: {
-            subject: String(subject || ''),
-            text: String(text || ''),
-            from: String(fromEmail || from || ''),
-            includeQuote: true,
-            maxTokens: 700,
-            temperature: 0.4
-          }
-        })
-        if (response.ok && response.result) {
-          aiAnswer = response.result.trim()
-        }
-      } catch (error) {
-        console.error('Respond endpoint error:', error)
-        aiAnswer = null
+      const response = await generateAgentResponse({
+        agentId: agent.id,
+        subject: String(subject || ''),
+        text: String(text || ''),
+        from: String(fromEmail || from || ''),
+        includeQuote: true,
+        maxTokens: 700,
+        temperature: 0.4
+      })
+      if (response.ok && response.result) {
+        aiAnswer = response.result.trim()
+      } else {
+        console.warn(
+          '[Inbound] Respond helper returned no result:',
+          response.error || 'unknown_error'
+        )
       }
     }
 
     // Compose TOFU response: answer text on top, full quote below
     let answerText: string
     if (!isDomainAllowed) {
-      answerText = 'Sorry, your email domain is not authorized to receive automated responses. Please contact the administrator if you believe this is an error.'
+      answerText =
+        'Sorry, your email domain is not authorized to receive automated responses. Please contact the administrator if you believe this is an error.'
     } else if (aiAnswer) {
       answerText = aiAnswer
     } else {
-      answerText = 'Sorry, I\'m not sure how to respond to that. There may be a problem with your email or the agent may not be configured correctly.'
+      answerText =
+        "Sorry, I'm not sure how to respond to that. There may be a problem with your email or the agent may not be configured correctly."
     }
 
     const quoted = String(text || '')
       .split('\n')
-      .map(line => `> ${line}`)
+      .map((line) => `> ${line}`)
       .join('\n')
     const tofuBody = `${answerText}\n\nOn ${receivedAt}, ${from || '(sender)'} wrote:\n${quoted}`
 
@@ -270,12 +288,15 @@ export default defineEventHandler(async event => {
     const cleanBody = String(tofuBody || '').trim()
 
     // Send reply via dedicated outbound route if we have agent and email addresses
-    let _outboundResult: { ok: boolean; id?: string; message?: string; error?: string } = { ok: false }
-    if (agent && fromEmail && toEmail && aiAnswer) {
+    let _outboundResult: { ok: boolean; id?: string; message?: string; error?: string } = {
+      ok: false
+    }
+    if (agent && fromEmail && toEmail && isDomainAllowed) {
+      if (!aiAnswer) {
+        console.log('[Inbound] Using fallback response text; AI answer unavailable')
+      }
       try {
-        const base = getRequestURL(event)
-        const origin = `${base.protocol}//${base.host}`
-        const response = await $fetch(`${origin}/api/mailgun/outbound`, {
+        const response = await event.$fetch('/api/mailgun/outbound', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -291,7 +312,9 @@ export default defineEventHandler(async event => {
           })
         })
 
-        _outboundResult = response.ok ? { ok: true, id: response.messageId, message: 'Sent via outbound route' } : { ok: false, error: response.error }
+        _outboundResult = response.ok
+          ? { ok: true, id: response.messageId, message: 'Sent via outbound route' }
+          : { ok: false, error: response.error }
       } catch (error) {
         console.error('Failed to send via outbound route:', error)
         _outboundResult = { ok: false, error: String(error) }

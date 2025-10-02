@@ -31,9 +31,9 @@ export class AgentFlowEngine {
    * Start a new agent flow from an incoming email
    */
   async startFlow(params: {
-    agentId: string;
-    trigger: EmailTrigger;
-    maxRounds?: number;
+    agentId: string
+    trigger: EmailTrigger
+    maxRounds?: number
     timeoutMinutes?: number
   }): Promise<AgentFlow> {
     const flowId = `flow-${params.agentId}-${nanoid(8)}`
@@ -343,7 +343,8 @@ export class AgentFlowEngine {
           const { MessageRouter } = await import('./messageRouter')
           const messageRouter = new MessageRouter()
 
-          const timeoutMessage = 'I apologize, but your request has timed out.\n\nThis can happen when:\n- Required information takes too long to gather\n- Other agents don\'t respond in time\n- The system is experiencing high load\n\nPlease try your request again.'
+          const timeoutMessage =
+            "I apologize, but your request has timed out.\n\nThis can happen when:\n- Required information takes too long to gather\n- Other agents don't respond in time\n- The system is experiencing high load\n\nPlease try your request again."
 
           try {
             await messageRouter.sendAgentToUserEmail({
@@ -378,7 +379,7 @@ export class AgentFlowEngine {
   async listAgentFlows(
     agentId: string,
     filters?: {
-      status?: FlowStatus[];
+      status?: FlowStatus[]
       limit?: number
     }
   ): Promise<AgentFlow[]> {
@@ -487,14 +488,15 @@ export class AgentFlowEngine {
 
     // Get agent emails (support both new email format and legacy ID format)
     const agentsStorage = useStorage('agents')
-    const agents = (await agentsStorage.getItem<
+    const agents =
+      (await agentsStorage.getItem<
         Array<{
-          id?: string;
+          id?: string
           email?: string
         }>
       >('agents.json')) || []
 
-    const fromAgent = agents.find(a => a?.id === flow.agentId)
+    const fromAgent = agents.find((a) => a?.id === flow.agentId)
     if (!fromAgent?.email) {
       throw createError({
         statusCode: 500,
@@ -506,7 +508,7 @@ export class AgentFlowEngine {
     let toAgentEmail = decision.targetAgent.agentEmail
     if (!toAgentEmail && decision.targetAgent.agentId) {
       // Legacy support: look up email by ID
-      const toAgent = agents.find(a => a?.id === decision.targetAgent?.agentId)
+      const toAgent = agents.find((a) => a?.id === decision.targetAgent?.agentId)
       if (!toAgent?.email) {
         throw createError({
           statusCode: 500,
@@ -529,7 +531,7 @@ export class AgentFlowEngine {
     // Send email to target agent with request ID
     const { MessageRouter } = await import('./messageRouter')
     // Update flow status to waiting BEFORE sending email
-    // This is critical because email sending triggers immediate inbound processing
+    // Ensures the inbound handler (webhook or development simulation) finds the flow waiting
     flow.status = 'waiting'
     flow.waitingFor = {
       type: 'agent_response',
@@ -575,7 +577,7 @@ export class AgentFlowEngine {
       throw error
     }
 
-    console.log(`[AgentFlowEngine] 📧 Email sent to: ${toAgentEmail}`)
+    console.log(`[AgentFlowEngine] 📧 Email dispatched to: ${toAgentEmail}`)
     console.log(
       `[AgentFlowEngine] 📧 Subject: [Req: ${requestId}] ${decision.targetAgent.messageSubject}`
     )
@@ -627,7 +629,7 @@ export class AgentFlowEngine {
   }
 
   private async listFlows(filters?: {
-    agentId?: string;
+    agentId?: string
     status?: FlowStatus[]
   }): Promise<AgentFlow[]> {
     const allFlows: AgentFlow[] = []
@@ -657,7 +659,7 @@ export class AgentFlowEngine {
   private async getAgent(agentId: string): Promise<any> {
     const agentsStorage = useStorage('agents')
     const agents = (await agentsStorage.getItem<any[]>('agents.json')) || []
-    const agent = agents.find(a => a?.id === agentId)
+    const agent = agents.find((a) => a?.id === agentId)
 
     if (!agent) {
       throw createError({ statusCode: 404, statusMessage: `Agent ${agentId} not found` })
