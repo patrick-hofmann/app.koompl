@@ -35,11 +35,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   try {
     // Safely extract user data with comprehensive fallbacks
     const userData = {
-      name: (sessionUser?.value?.name || 'Unknown'),
-      email: (sessionUser?.value?.email || 'No email'),
-      id: (sessionUser?.value?.id || 'No ID'),
-      teamName: (session?.value?.team?.name || 'No team'),
-      teamId: (session?.value?.team?.id || 'No team ID')
+      name: sessionUser?.value?.name || 'Unknown',
+      email: sessionUser?.value?.email || 'No email',
+      id: sessionUser?.value?.id || 'No ID',
+      teamName: session?.value?.team?.name || 'No team',
+      teamId: session?.value?.team?.id || 'No team ID'
     }
 
     await $fetch('/api/feedback', {
@@ -52,7 +52,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     toast.add({
       title: 'Feedback Sent',
-      description: 'Thank you for your feedback! We\'ll review it and get back to you soon.',
+      description: "Thank you for your feedback! We'll review it and get back to you soon.",
       icon: 'i-lucide-check',
       color: 'success'
     })
@@ -96,12 +96,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
           class="mb-4"
         />
 
-        <UForm
-          id="feedback-form"
-          :schema="schema"
-          :state="state"
-          @submit="onSubmit"
-        >
+        <UForm id="feedback-form" :schema="schema" :state="state" @submit="onSubmit">
           <UPageCard variant="subtle">
             <UFormField
               name="category"
@@ -110,11 +105,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
               class="flex max-sm:flex-col justify-between items-start gap-4"
               required
             >
-              <USelect
-                v-model="state.category"
-                :options="categories"
-                placeholder="Select category"
-              />
+              <USelect v-model="state.category" :items="categories" placeholder="Select category" />
             </UFormField>
 
             <USeparator />

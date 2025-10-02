@@ -6,16 +6,34 @@ import type { StoredMcpServer, McpServerTemplate } from '../types/mcp-storage'
 const STORAGE_NAMESPACE = 'mcp'
 const STORAGE_KEY = 'servers.json'
 
-const VALID_PROVIDERS: McpProvider[] = ['google-calendar', 'microsoft-outlook', 'todoist', 'trello', 'nuxt-ui', 'custom']
-const VALID_CATEGORIES: McpCategory[] = ['calendar', 'todo', 'project', 'documentation', 'custom']
+const VALID_PROVIDERS: McpProvider[] = [
+  'google-calendar',
+  'microsoft-outlook',
+  'todoist',
+  'trello',
+  'nuxt-ui',
+  'builtin-kanban',
+  'custom'
+]
+const VALID_CATEGORIES: McpCategory[] = [
+  'calendar',
+  'todo',
+  'project',
+  'documentation',
+  'productivity',
+  'custom'
+]
 
-const PROVIDER_PRESETS: Record<McpProvider, {
-  category: McpCategory;
-  defaultName: string;
-  defaultDescription: string;
-  defaultUrl?: string;
-  defaultAuthType: McpServer['auth']['type']
-}> = {
+const PROVIDER_PRESETS: Record<
+  McpProvider,
+  {
+    category: McpCategory
+    defaultName: string
+    defaultDescription: string
+    defaultUrl?: string
+    defaultAuthType: McpServer['auth']['type']
+  }
+> = {
   'google-calendar': {
     category: 'calendar',
     defaultName: 'Google Calendar',
@@ -30,14 +48,14 @@ const PROVIDER_PRESETS: Record<McpProvider, {
     defaultUrl: 'https://graph.microsoft.com/v1.0',
     defaultAuthType: 'oauth2'
   },
-  'todoist': {
+  todoist: {
     category: 'todo',
     defaultName: 'Todoist Tasks',
     defaultDescription: 'List and manage tasks from Todoist.',
     defaultUrl: 'https://api.todoist.com/rest/v2',
     defaultAuthType: 'bearer'
   },
-  'trello': {
+  trello: {
     category: 'project',
     defaultName: 'Trello Boards',
     defaultDescription: 'Surface Trello cards and due dates.',
@@ -51,7 +69,14 @@ const PROVIDER_PRESETS: Record<McpProvider, {
     defaultUrl: 'https://ui.nuxt.com',
     defaultAuthType: 'bearer'
   },
-  'custom': {
+  'builtin-kanban': {
+    category: 'productivity',
+    defaultName: 'Team Kanban Board',
+    defaultDescription:
+      'Built-in Kanban board for task management. Access and manage team boards, cards, and workflows.',
+    defaultAuthType: 'bearer'
+  },
+  custom: {
     category: 'custom',
     defaultName: 'Custom MCP Server',
     defaultDescription: 'Custom Model Context Protocol server integration.',
@@ -95,20 +120,24 @@ async function writeMcpServers(servers: StoredMcpServer[]): Promise<void> {
 export async function findMcpServer(id: string): Promise<StoredMcpServer | undefined> {
   if (!id) return undefined
   const servers = await listMcpServers()
-  return servers.find(server => server?.id === id)
+  return servers.find((server) => server?.id === id)
 }
 
 export async function removeMcpServer(id: string): Promise<void> {
   if (!id) return
   const servers = await listMcpServers()
-  const next = servers.filter(server => server?.id !== id)
+  const next = servers.filter((server) => server?.id !== id)
   await writeMcpServers(next)
 }
 
-export async function setMcpServerStatus(id: string, status: 'ok' | 'error', timestamp: string = nowIso()): Promise<void> {
+export async function setMcpServerStatus(
+  id: string,
+  status: 'ok' | 'error',
+  timestamp: string = nowIso()
+): Promise<void> {
   if (!id) return
   const servers = await listMcpServers()
-  const index = servers.findIndex(server => server?.id === id)
+  const index = servers.findIndex((server) => server?.id === id)
   if (index === -1) return
   const target = servers[index]
   servers[index] = { ...target, lastStatus: status, lastCheckedAt: timestamp, updatedAt: timestamp }
@@ -131,7 +160,7 @@ function ensureUniqueId(candidate: string, servers: StoredMcpServer[]): string {
   }
   let unique = base
   let counter = 1
-  while (servers.some(server => server?.id === unique)) {
+  while (servers.some((server) => server?.id === unique)) {
     unique = `${base}-${counter}`
     counter += 1
   }
@@ -152,12 +181,15 @@ function resolveCategory(input: unknown, fallback: McpCategory): McpCategory {
   return fallback
 }
 
-function normalizeMetadata(metadata: unknown, existing?: Record<string, unknown>): Record<string, unknown> {
+function normalizeMetadata(
+  metadata: unknown,
+  existing?: Record<string, unknown>
+): Record<string, unknown> {
   if (metadata === undefined) {
     return existing || {}
   }
   const result: Record<string, unknown> = {}
-  const entries = Object.entries(metadata as Record<string, unknown> ?? {})
+  const entries = Object.entries((metadata as Record<string, unknown>) ?? {})
   for (const [key, value] of entries) {
     if (!key) continue
     if (value === undefined || value === null || value === '') continue
@@ -166,12 +198,16 @@ function normalizeMetadata(metadata: unknown, existing?: Record<string, unknown>
   return result
 }
 
-function normalizeAuth(auth: unknown, fallbackType: McpServer['auth']['type'], existing?: McpServer['auth']): McpServer['auth'] {
+function normalizeAuth(
+  auth: unknown,
+  fallbackType: McpServer['auth']['type'],
+  existing?: McpServer['auth']
+): McpServer['auth'] {
   const allowedTypes: McpServer['auth']['type'][] = ['oauth2', 'apiKey', 'basic', 'bearer']
   const authInput = auth as Partial<McpServer['auth']> | undefined
   const typeCandidate = authInput?.type || existing?.type || fallbackType
   const type = allowedTypes.includes(typeCandidate as McpServer['auth']['type'])
-    ? typeCandidate as McpServer['auth']['type']
+    ? (typeCandidate as McpServer['auth']['type'])
     : fallbackType
 
   const next: McpServer['auth'] = { type }
@@ -199,7 +235,7 @@ function normalizeAuth(auth: unknown, fallbackType: McpServer['auth']['type'], e
 
   if (Array.isArray(mergeSource.scope)) {
     const scope = mergeSource.scope
-      .map((item: unknown) => typeof item === 'string' ? item.trim() : '')
+      .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
       .filter((item: string) => item.length > 0)
     if (scope.length) {
       next.scope = scope
@@ -224,23 +260,37 @@ function hydrateServer(
 ): StoredMcpServer {
   const provider = resolveProvider(payload.provider ?? existing?.provider)
   const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom
-  const name = String(payload.name ?? existing?.name ?? preset.defaultName).trim() || preset.defaultName
+  const name =
+    String(payload.name ?? existing?.name ?? preset.defaultName).trim() || preset.defaultName
   const inputId = String(payload.id ?? existing?.id ?? slugify(name)).trim()
   const id = existing?.id || ensureUniqueId(slugify(inputId), servers)
-  const category = resolveCategory(payload.category ?? existing?.category ?? preset.category, preset.category)
+  const category = resolveCategory(
+    payload.category ?? existing?.category ?? preset.category,
+    preset.category
+  )
   const urlCandidate = payload.url ?? existing?.url ?? preset.defaultUrl
-  const url = typeof urlCandidate === 'string' && urlCandidate.trim().length > 0 ? urlCandidate.trim() : undefined
-  const descriptionCandidate = payload.description ?? existing?.description ?? preset.defaultDescription
-  const description = typeof descriptionCandidate === 'string' && descriptionCandidate.trim().length > 0
-    ? descriptionCandidate.trim()
-    : preset.defaultDescription
+  const url =
+    typeof urlCandidate === 'string' && urlCandidate.trim().length > 0
+      ? urlCandidate.trim()
+      : undefined
+  const descriptionCandidate =
+    payload.description ?? existing?.description ?? preset.defaultDescription
+  const description =
+    typeof descriptionCandidate === 'string' && descriptionCandidate.trim().length > 0
+      ? descriptionCandidate.trim()
+      : preset.defaultDescription
 
   const auth = normalizeAuth(payload.auth, preset.defaultAuthType, existing?.auth)
-  const metadata = normalizeMetadata(payload.metadata, existing?.metadata as Record<string, unknown> | undefined)
+  const metadata = normalizeMetadata(
+    payload.metadata,
+    existing?.metadata as Record<string, unknown> | undefined
+  )
 
   const createdAt = existing?.createdAt ?? nowIso()
   const updatedAt = nowIso()
-  const lastStatus = (payload.lastStatus ?? existing?.lastStatus ?? 'unknown') as StoredMcpServer['lastStatus']
+  const lastStatus = (payload.lastStatus ??
+    existing?.lastStatus ??
+    'unknown') as StoredMcpServer['lastStatus']
   const lastCheckedAt = (payload.lastCheckedAt ?? existing?.lastCheckedAt ?? null) as string | null
 
   return {
@@ -271,13 +321,16 @@ export async function createMcpServer(payload: Partial<McpServer>): Promise<Stor
   return server
 }
 
-export async function updateMcpServer(id: string, payload: Partial<McpServer>): Promise<StoredMcpServer> {
+export async function updateMcpServer(
+  id: string,
+  payload: Partial<McpServer>
+): Promise<StoredMcpServer> {
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Missing MCP server id' })
   }
 
   const servers = await listMcpServers()
-  const index = servers.findIndex(server => server?.id === id)
+  const index = servers.findIndex((server) => server?.id === id)
   if (index === -1) {
     throw createError({ statusCode: 404, statusMessage: 'MCP server not found' })
   }
@@ -305,7 +358,8 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
   {
     id: 'nuxt-ui-docs',
     name: 'Nuxt UI Documentation',
-    description: 'Access Nuxt UI component documentation, examples, and guidance for Vue.js and Nuxt development.',
+    description:
+      'Access Nuxt UI component documentation, examples, and guidance for Vue.js and Nuxt development.',
     provider: 'nuxt-ui',
     category: 'documentation',
     icon: 'i-lucide-code',
@@ -315,7 +369,8 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
       provider: 'nuxt-ui',
       category: 'documentation',
       url: 'https://ui.nuxt.com',
-      description: 'Access Nuxt UI component documentation, examples, and guidance for Vue.js and Nuxt development.',
+      description:
+        'Access Nuxt UI component documentation, examples, and guidance for Vue.js and Nuxt development.',
       auth: {
         type: 'bearer',
         token: ''
@@ -369,6 +424,30 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
     }
   },
   {
+    id: 'builtin-kanban-template',
+    name: 'Team Kanban Board',
+    description:
+      'Built-in Kanban board for task management. Agents can view and update team boards.',
+    provider: 'builtin-kanban',
+    category: 'productivity',
+    icon: 'i-lucide-kanban',
+    color: 'purple',
+    defaultConfig: {
+      name: 'Team Kanban Board',
+      provider: 'builtin-kanban',
+      category: 'productivity',
+      description:
+        'Built-in Kanban board for task management. Access and manage team boards, cards, and workflows.',
+      auth: {
+        type: 'bearer',
+        token: 'builtin'
+      },
+      metadata: {
+        builtin: true
+      }
+    }
+  },
+  {
     id: 'custom-template',
     name: 'Custom MCP Server',
     description: 'Create a custom MCP server integration.',
@@ -394,5 +473,5 @@ export function getMcpServerTemplates(): McpServerTemplate[] {
 }
 
 export function getMcpServerTemplate(templateId: string): McpServerTemplate | undefined {
-  return MCP_SERVER_TEMPLATES.find(template => template.id === templateId)
+  return MCP_SERVER_TEMPLATES.find((template) => template.id === templateId)
 }

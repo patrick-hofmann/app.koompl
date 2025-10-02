@@ -61,7 +61,13 @@ export interface Range {
   end: Date
 }
 
-export type McpCategory = 'calendar' | 'todo' | 'project' | 'documentation' | 'custom'
+export type McpCategory =
+  | 'calendar'
+  | 'todo'
+  | 'project'
+  | 'documentation'
+  | 'productivity'
+  | 'custom'
 
 export type McpProvider =
   | 'google-calendar'
@@ -69,6 +75,7 @@ export type McpProvider =
   | 'todoist'
   | 'trello'
   | 'nuxt-ui'
+  | 'builtin-kanban'
   | 'custom'
 
 export interface McpServer {

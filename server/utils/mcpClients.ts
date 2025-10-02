@@ -4,6 +4,7 @@ import { getMcpProviderPreset, setMcpServerStatus } from './mcpStorage'
 import { agentLogger } from './agentLogging'
 
 import type { McpEmailContext, McpContextResult } from '../types/mcp-clients'
+import { fetchKanbanContext, type KanbanMcpContext } from './mcpKanban'
 
 const DEFAULT_LIMIT = 5
 
@@ -27,12 +28,16 @@ function ensureToken(server: StoredMcpServer): string {
   return token
 }
 
-async function fetchGoogleCalendarContext(server: StoredMcpServer, limit: number): Promise<McpContextResult | null> {
+async function fetchGoogleCalendarContext(
+  server: StoredMcpServer,
+  limit: number
+): Promise<McpContextResult | null> {
   const token = ensureToken(server)
   const preset = getMcpProviderPreset(server.provider)
-  const calendarId = typeof server.metadata?.calendarId === 'string' && server.metadata.calendarId.trim().length > 0
-    ? String(server.metadata.calendarId).trim()
-    : 'primary'
+  const calendarId =
+    typeof server.metadata?.calendarId === 'string' && server.metadata.calendarId.trim().length > 0
+      ? String(server.metadata.calendarId).trim()
+      : 'primary'
   const baseUrl = server.url || preset.defaultUrl || 'https://www.googleapis.com/calendar/v3'
   const url = joinUrl(baseUrl, `/calendars/${encodeURIComponent(calendarId)}/events`)
   const timeMin = new Date().toISOString()
@@ -63,7 +68,7 @@ async function fetchGoogleCalendarContext(server: StoredMcpServer, limit: number
   }
 
   const summary = events
-    .map(event => {
+    .map((event) => {
       const title = event.summary || event?.title || 'Ohne Titel'
       const start = event.start?.dateTime || event.start?.date || event.start
       const end = event.end?.dateTime || event.end?.date || event.end
@@ -81,7 +86,10 @@ async function fetchGoogleCalendarContext(server: StoredMcpServer, limit: number
   }
 }
 
-async function fetchMicrosoftCalendarContext(server: StoredMcpServer, limit: number): Promise<McpContextResult | null> {
+async function fetchMicrosoftCalendarContext(
+  server: StoredMcpServer,
+  limit: number
+): Promise<McpContextResult | null> {
   const token = ensureToken(server)
   const baseUrl = server.url || 'https://graph.microsoft.com/v1.0'
   const url = joinUrl(baseUrl, '/me/events')
@@ -112,7 +120,7 @@ async function fetchMicrosoftCalendarContext(server: StoredMcpServer, limit: num
   }
 
   const summary = events
-    .map(event => {
+    .map((event) => {
       const subject = event.subject || 'Ohne Betreff'
       const start = event.start?.dateTime || event.start
       const end = event.end?.dateTime || event.end
@@ -130,7 +138,10 @@ async function fetchMicrosoftCalendarContext(server: StoredMcpServer, limit: num
   }
 }
 
-async function fetchTodoistContext(server: StoredMcpServer, limit: number): Promise<McpContextResult | null> {
+async function fetchTodoistContext(
+  server: StoredMcpServer,
+  limit: number
+): Promise<McpContextResult | null> {
   const token = ensureToken(server)
   const baseUrl = server.url || 'https://api.todoist.com/rest/v2'
   const url = joinUrl(baseUrl, '/tasks')
@@ -155,7 +166,7 @@ async function fetchTodoistContext(server: StoredMcpServer, limit: number): Prom
   }
 
   const summary = tasks
-    .map(task => {
+    .map((task) => {
       const content = task.content || 'Aufgabe ohne Beschreibung'
       const due = task.due?.date || task.due?.datetime || 'kein Fälligkeitsdatum'
       return `• ${content} (fällig: ${due})`
@@ -172,19 +183,29 @@ async function fetchTodoistContext(server: StoredMcpServer, limit: number): Prom
   }
 }
 
-async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promise<McpContextResult | null> {
+async function fetchTrelloContext(
+  server: StoredMcpServer,
+  limit: number
+): Promise<McpContextResult | null> {
   const apiKey = server.auth.apiKey
   const token = server.auth.token
   if (!apiKey || !token) {
-    throw createError({ statusCode: 400, statusMessage: `Trello benötigt apiKey und token für ${server.name}` })
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Trello benötigt apiKey und token für ${server.name}`
+    })
   }
 
-  const boardId = typeof server.metadata?.boardId === 'string' && server.metadata.boardId.trim().length > 0
-    ? String(server.metadata.boardId).trim()
-    : null
+  const boardId =
+    typeof server.metadata?.boardId === 'string' && server.metadata.boardId.trim().length > 0
+      ? String(server.metadata.boardId).trim()
+      : null
 
   if (!boardId) {
-    throw createError({ statusCode: 400, statusMessage: 'Trello boardId fehlt in der MCP Konfiguration.' })
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Trello boardId fehlt in der MCP Konfiguration.'
+    })
   }
 
   const baseUrl = server.url || 'https://api.trello.com/1'
@@ -201,7 +222,7 @@ async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promi
 
   const upcoming = Array.isArray(cards)
     ? cards
-        .filter(card => card.due)
+        .filter((card) => card.due)
         .sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime())
         .slice(0, limit)
     : []
@@ -218,7 +239,7 @@ async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promi
   }
 
   const summary = upcoming
-    .map(card => `• ${card.name || 'Karte ohne Titel'} (fällig: ${card.due || 'unbekannt'})`)
+    .map((card) => `• ${card.name || 'Karte ohne Titel'} (fällig: ${card.due || 'unbekannt'})`)
     .join('\n')
 
   return {
@@ -231,16 +252,21 @@ async function fetchTrelloContext(server: StoredMcpServer, limit: number): Promi
   }
 }
 
-async function fetchNuxtUIContext(server: StoredMcpServer, email: McpEmailContext, _limit: number): Promise<McpContextResult | null> {
+async function fetchNuxtUIContext(
+  server: StoredMcpServer,
+  email: McpEmailContext,
+  _limit: number
+): Promise<McpContextResult | null> {
   const baseUrl = server.url || 'https://ui.nuxt.com'
 
   // For Nuxt UI, we'll simulate a context by providing documentation links
   // In a real implementation, this would connect to the actual Nuxt UI MCP server
   const searchTerms = extractSearchTerms(email.text)
 
-  const summary = searchTerms.length > 0
-    ? `Nuxt UI Documentation für: ${searchTerms.join(', ')}. Verfügbare Komponenten und Beispiele unter ${baseUrl}`
-    : `Nuxt UI Documentation verfügbar unter ${baseUrl}. Bietet Komponenten, Beispiele und Anleitungen für Vue.js und Nuxt.`
+  const summary =
+    searchTerms.length > 0
+      ? `Nuxt UI Documentation für: ${searchTerms.join(', ')}. Verfügbare Komponenten und Beispiele unter ${baseUrl}`
+      : `Nuxt UI Documentation verfügbar unter ${baseUrl}. Bietet Komponenten, Beispiele und Anleitungen für Vue.js und Nuxt.`
 
   return {
     serverId: server.id,
@@ -251,15 +277,31 @@ async function fetchNuxtUIContext(server: StoredMcpServer, email: McpEmailContex
     details: {
       baseUrl,
       searchTerms,
-      availableComponents: ['UButton', 'UCard', 'UInput', 'UModal', 'UForm', 'UAlert', 'UBadge', 'USkeleton'],
+      availableComponents: [
+        'UButton',
+        'UCard',
+        'UInput',
+        'UModal',
+        'UForm',
+        'UAlert',
+        'UBadge',
+        'USkeleton'
+      ],
       documentationSections: ['Getting Started', 'Components', 'Theming', 'Icons', 'Pro']
     }
   }
 }
 
-async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContext, limit: number): Promise<McpContextResult | null> {
+async function fetchCustomContext(
+  server: StoredMcpServer,
+  email: McpEmailContext,
+  limit: number
+): Promise<McpContextResult | null> {
   if (!server.url) {
-    throw createError({ statusCode: 400, statusMessage: `Custom MCP Server ${server.name} benötigt eine URL.` })
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Custom MCP Server ${server.name} benötigt eine URL.`
+    })
   }
 
   const headers: Record<string, string> = {
@@ -270,7 +312,9 @@ async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContex
   } else if (server.auth.type === 'apiKey' && server.auth.apiKey) {
     headers['X-API-Key'] = server.auth.apiKey
   } else if (server.auth.type === 'basic' && server.auth.username && server.auth.password) {
-    const credentials = Buffer.from(`${server.auth.username}:${server.auth.password}`).toString('base64')
+    const credentials = Buffer.from(`${server.auth.username}:${server.auth.password}`).toString(
+      'base64'
+    )
     headers.Authorization = `Basic ${credentials}`
   }
 
@@ -281,7 +325,7 @@ async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContex
       email,
       limit
     }
-  }).catch(error => {
+  }).catch((error) => {
     throw createError({ statusCode: 400, statusMessage: `Custom MCP Fehler: ${String(error)}` })
   })
 
@@ -296,18 +340,32 @@ async function fetchCustomContext(server: StoredMcpServer, email: McpEmailContex
 }
 
 function extractSearchTerms(text: string): string[] {
-  const commonTerms = ['button', 'card', 'input', 'modal', 'form', 'alert', 'badge', 'skeleton', 'component', 'ui', 'nuxt']
+  const commonTerms = [
+    'button',
+    'card',
+    'input',
+    'modal',
+    'form',
+    'alert',
+    'badge',
+    'skeleton',
+    'component',
+    'ui',
+    'nuxt'
+  ]
   const words = text.toLowerCase().split(/\s+/)
-  return commonTerms.filter(term => words.some(word => word.includes(term)))
+  return commonTerms.filter((term) => words.some((word) => word.includes(term)))
 }
 
 export async function fetchMcpContext(
   server: StoredMcpServer,
   email: McpEmailContext,
   options: {
-    limit?: number;
-    agentId?: string;
+    limit?: number
+    agentId?: string
     agentEmail?: string
+    teamId?: string
+    userId?: string
   } = {}
 ): Promise<McpContextResult | null> {
   const limit = normalizeLimit(options.limit)
@@ -330,6 +388,26 @@ export async function fetchMcpContext(
         break
       case 'nuxt-ui':
         result = await fetchNuxtUIContext(server, email, limit)
+        break
+      case 'builtin-kanban':
+        // Built-in Kanban board - requires team context
+        if (options.teamId && options.userId) {
+          const kanbanContext: KanbanMcpContext = {
+            teamId: options.teamId,
+            userId: options.userId,
+            agentId: options.agentId
+          }
+          result = await fetchKanbanContext(kanbanContext, limit)
+        } else {
+          result = {
+            serverId: server.id,
+            serverName: server.name,
+            provider: server.provider,
+            category: server.category,
+            summary: 'Kanban board requires team context',
+            details: null
+          }
+        }
         break
       default:
         result = await fetchCustomContext(server, email, limit)
@@ -413,14 +491,20 @@ export async function fetchMcpContext(
   }
 }
 
-export async function testMcpConnection(server: StoredMcpServer): Promise<{ ok: boolean; summary?: string; error?: string }> {
+export async function testMcpConnection(
+  server: StoredMcpServer
+): Promise<{ ok: boolean; summary?: string; error?: string }> {
   try {
-    const context = await fetchMcpContext(server, {
-      subject: 'Konfigurationstest',
-      text: 'Dies ist ein Testaufruf des MCP Servers.',
-      from: null,
-      receivedAt: new Date().toISOString()
-    }, { limit: 3 })
+    const context = await fetchMcpContext(
+      server,
+      {
+        subject: 'Konfigurationstest',
+        text: 'Dies ist ein Testaufruf des MCP Servers.',
+        from: null,
+        receivedAt: new Date().toISOString()
+      },
+      { limit: 3 }
+    )
 
     if (!context) {
       return { ok: false, error: 'Keine Daten vom MCP Server erhalten.' }

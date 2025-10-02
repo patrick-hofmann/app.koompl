@@ -11,6 +11,8 @@ export interface AgentRespondRequest {
   includeQuote?: boolean
   maxTokens?: number
   temperature?: number
+  teamId?: string
+  userId?: string
   mcpContexts?: Array<{
     serverId?: string
     serverName?: string
@@ -38,6 +40,8 @@ export async function generateAgentResponse(
       includeQuote = true,
       maxTokens = 700,
       temperature = 0.4,
+      teamId,
+      userId,
       mcpContexts = []
     } = payload
 
@@ -114,7 +118,9 @@ export async function generateAgentResponse(
             fetchMcpContext(server, emailContext, {
               limit: 5,
               agentId: agent.id,
-              agentEmail: agent.email
+              agentEmail: agent.email,
+              teamId,
+              userId
             })
           )
         )

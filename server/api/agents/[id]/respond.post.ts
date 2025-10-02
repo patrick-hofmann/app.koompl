@@ -7,6 +7,17 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Missing id' })
     }
 
+    // Get session for team/user context (for MCP servers like Kanban)
+    let teamId: string | undefined
+    let userId: string | undefined
+    try {
+      const session = await getUserSession(event)
+      teamId = session.team?.id
+      userId = session.user?.id
+    } catch {
+      // Session not available (e.g., when called from inbound handler)
+    }
+
     const body = await readBody<{
       subject?: string
       text?: string
@@ -49,6 +60,8 @@ export default defineEventHandler(async (event) => {
       includeQuote,
       maxTokens,
       temperature,
+      teamId,
+      userId,
       mcpContexts
     })
   } catch (e) {

@@ -3,34 +3,48 @@ import { nextTick, watch } from 'vue'
 import type { McpServer, McpProvider, McpCategory } from '~/types'
 
 type StoredMcpServer = McpServer & {
-  createdAt: string;
-  updatedAt: string;
-  lastStatus?: 'ok' | 'error' | 'unknown';
+  createdAt: string
+  updatedAt: string
+  lastStatus?: 'ok' | 'error' | 'unknown'
   lastCheckedAt?: string | null
 }
 
 type McpProviderPreset = {
-  id: McpProvider;
-  category: McpCategory;
-  defaultName: string;
-  defaultDescription: string;
-  defaultUrl?: string;
+  id: McpProvider
+  category: McpCategory
+  defaultName: string
+  defaultDescription: string
+  defaultUrl?: string
   defaultAuthType: McpServer['auth']['type']
 }
 
 type ProviderField = {
-  key: string;
-  label: string;
-  placeholder?: string;
-  type?: 'text' | 'password';
+  key: string
+  label: string
+  placeholder?: string
+  type?: 'text' | 'password'
   description?: string
 }
 
 const toast = useToast()
 
-const { data, pending, error, refresh } = await useAsyncData('mcp-servers', () =>
-  $fetch<{ servers: StoredMcpServer[]; presets: McpProviderPreset[]; templates: Array<{ id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }> }>('/api/mcp'),
-{ server: false, lazy: true }
+const { data, pending, error, refresh } = await useAsyncData(
+  'mcp-servers',
+  () =>
+    $fetch<{
+      servers: StoredMcpServer[]
+      presets: McpProviderPreset[]
+      templates: Array<{
+        id: string
+        name: string
+        description: string
+        provider: string
+        category: string
+        icon: string
+        color: string
+      }>
+    }>('/api/mcp'),
+  { server: false, lazy: true }
 )
 
 const servers = computed(() => data.value?.servers ?? [])
@@ -48,9 +62,11 @@ const errorMessage = computed(() => {
   }
 })
 
-const presetMap = computed(() => new Map(presets.value.map(preset => [preset.id, preset])))
+const presetMap = computed(() => new Map(presets.value.map((preset) => [preset.id, preset])))
 
-const providerOptions = computed(() => presets.value.map(preset => ({ label: preset.defaultName, value: preset.id })))
+const providerOptions = computed(() =>
+  presets.value.map((preset) => ({ label: preset.defaultName, value: preset.id }))
+)
 
 const showModal = ref(false)
 const showAgentModal = ref(false)
@@ -90,10 +106,15 @@ const providerFieldDefinitions: Record<McpProvider, ProviderField[]> = {
     { key: 'auth.token', label: 'Graph Access Token', placeholder: 'EwB4A...', type: 'password' },
     { key: 'metadata.mailbox', label: 'Mailbox (optional)', placeholder: 'user@domain.de' }
   ],
-  'todoist': [
-    { key: 'auth.token', label: 'Todoist Token', placeholder: 'xxxxxxxxxxxxxxxxxxxx', type: 'password' }
+  todoist: [
+    {
+      key: 'auth.token',
+      label: 'Todoist Token',
+      placeholder: 'xxxxxxxxxxxxxxxxxxxx',
+      type: 'password'
+    }
   ],
-  'trello': [
+  trello: [
     { key: 'auth.apiKey', label: 'API Key', placeholder: 'Trello API Key' },
     { key: 'auth.token', label: 'Token', placeholder: 'Trello Token', type: 'password' },
     { key: 'metadata.boardId', label: 'Board-ID', placeholder: 'abcdef1234567890' },
@@ -103,19 +124,21 @@ const providerFieldDefinitions: Record<McpProvider, ProviderField[]> = {
     { key: 'url', label: 'Documentation URL', placeholder: 'https://ui.nuxt.com' },
     { key: 'metadata.version', label: 'Nuxt UI Version (optional)', placeholder: 'latest' }
   ],
-  'custom': [
+  custom: [
     { key: 'auth.token', label: 'Bearer Token (optional)', placeholder: 'token', type: 'password' },
     { key: 'metadata.method', label: 'HTTP-Methode', placeholder: 'POST' },
     { key: 'metadata.path', label: 'Endpoint Pfad', placeholder: '/context' }
   ]
 }
 
-const providerFields = computed(() => providerFieldDefinitions[form.provider] ?? providerFieldDefinitions.custom)
+const providerFields = computed(
+  () => providerFieldDefinitions[form.provider] ?? providerFieldDefinitions.custom
+)
 
 function titleFromProvider(provider: string) {
   return provider
     .split(/[-_]/g)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
 }
 
@@ -131,7 +154,10 @@ function presetFor(provider: McpProvider): McpProviderPreset {
   }
 }
 
-function assignAuth(auth: Partial<McpServer['auth']> | undefined, fallbackType: McpServer['auth']['type']) {
+function assignAuth(
+  auth: Partial<McpServer['auth']> | undefined,
+  fallbackType: McpServer['auth']['type']
+) {
   const scope = auth?.scope
   form.auth.type = auth?.type ?? fallbackType
   form.auth.token = auth?.token ?? ''
@@ -143,7 +169,10 @@ function assignAuth(auth: Partial<McpServer['auth']> | undefined, fallbackType: 
   if (Array.isArray(scope)) {
     form.auth.scope = [...scope]
   } else if (typeof scope === 'string' && scope.trim().length > 0) {
-    form.auth.scope = scope.split(',').map(item => item.trim()).filter(Boolean)
+    form.auth.scope = scope
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
   } else {
     form.auth.scope = []
   }
@@ -192,17 +221,20 @@ function openEdit(server: StoredMcpServer) {
   })
 }
 
-watch(() => form.provider, provider => {
-  if (skipPresetSync.value) return
-  const preset = presetFor(provider)
-  form.category = preset.category
-  form.auth.type = preset.defaultAuthType
-  if (!editingId.value) {
-    form.name = preset.defaultName
-    form.description = preset.defaultDescription
-    form.url = preset.defaultUrl ?? ''
+watch(
+  () => form.provider,
+  (provider) => {
+    if (skipPresetSync.value) return
+    const preset = presetFor(provider)
+    form.category = preset.category
+    form.auth.type = preset.defaultAuthType
+    if (!editingId.value) {
+      form.name = preset.defaultName
+      form.description = preset.defaultDescription
+      form.url = preset.defaultUrl ?? ''
+    }
   }
-})
+)
 
 function getFieldValue(key: string): string {
   const [group, field] = key.split('.')
@@ -227,9 +259,12 @@ function setFieldValue(key: string, value: string) {
   if (!field) return
   if (group === 'auth') {
     if (field === 'scope') {
-      form.auth.scope = value.split(',').map(item => item.trim()).filter(Boolean)
+      form.auth.scope = value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
     } else {
-      (form.auth as Record<string, unknown>)[field] = value
+      ;(form.auth as Record<string, unknown>)[field] = value
     }
     return
   }
@@ -237,14 +272,14 @@ function setFieldValue(key: string, value: string) {
     form.metadata[field] = value
     return
   }
-  (form as Record<string, unknown>)[field] = value
+  ;(form as Record<string, unknown>)[field] = value
 }
 
 function buildPayload(): Partial<McpServer> {
   const metadataEntries = Object.entries(form.metadata)
     .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : ''])
     .filter(([, value]) => value.length > 0)
-  const scope = form.auth.scope?.map(item => item.trim()).filter(Boolean)
+  const scope = form.auth.scope?.map((item) => item.trim()).filter(Boolean)
 
   return {
     name: form.name.trim(),
@@ -268,7 +303,11 @@ function buildPayload(): Partial<McpServer> {
 
 async function saveServer() {
   if (!form.name.trim()) {
-    toast.add({ title: 'Name erforderlich', description: 'Bitte gib einen Namen für den MCP Server an.', color: 'error' })
+    toast.add({
+      title: 'Name erforderlich',
+      description: 'Bitte gib einen Namen für den MCP Server an.',
+      color: 'error'
+    })
     return
   }
 
@@ -277,15 +316,30 @@ async function saveServer() {
     const payload = buildPayload()
     if (editingId.value) {
       await $fetch(`/api/mcp/${editingId.value}`, { method: 'PATCH', body: payload })
-      toast.add({ title: 'Server aktualisiert', description: `${form.name} wurde gespeichert.`, color: 'success', icon: 'i-lucide-check' })
+      toast.add({
+        title: 'Server aktualisiert',
+        description: `${form.name} wurde gespeichert.`,
+        color: 'success',
+        icon: 'i-lucide-check'
+      })
     } else {
       await $fetch('/api/mcp', { method: 'POST', body: payload })
-      toast.add({ title: 'Server hinzugefügt', description: `${form.name} wurde erstellt.`, color: 'success', icon: 'i-lucide-check' })
+      toast.add({
+        title: 'Server hinzugefügt',
+        description: `${form.name} wurde erstellt.`,
+        color: 'success',
+        icon: 'i-lucide-check'
+      })
     }
     showModal.value = false
     await refresh()
   } catch (err) {
-    toast.add({ title: 'Speichern fehlgeschlagen', description: String(err), color: 'error', icon: 'i-lucide-alert-triangle' })
+    toast.add({
+      title: 'Speichern fehlgeschlagen',
+      description: String(err),
+      color: 'error',
+      icon: 'i-lucide-alert-triangle'
+    })
   } finally {
     isSaving.value = false
   }
@@ -293,7 +347,10 @@ async function saveServer() {
 
 async function testServer(server: StoredMcpServer) {
   try {
-    const result = await $fetch<{ ok: boolean; summary?: string; error?: string }>(`/api/mcp/${server.id}/test`, { method: 'POST' })
+    const result = await $fetch<{ ok: boolean; summary?: string; error?: string }>(
+      `/api/mcp/${server.id}/test`,
+      { method: 'POST' }
+    )
     if (result.ok) {
       toast.add({
         title: 'Verbindung erfolgreich',
@@ -311,20 +368,38 @@ async function testServer(server: StoredMcpServer) {
     }
     await refresh()
   } catch (err) {
-    toast.add({ title: 'Test fehlgeschlagen', description: String(err), color: 'error', icon: 'i-lucide-bug' })
+    toast.add({
+      title: 'Test fehlgeschlagen',
+      description: String(err),
+      color: 'error',
+      icon: 'i-lucide-bug'
+    })
   }
 }
 
 async function deleteServer(server: StoredMcpServer) {
-  if (import.meta.client && !window.confirm(`Soll der MCP Server "${server.name}" wirklich gelöscht werden?`)) {
+  if (
+    import.meta.client &&
+    !window.confirm(`Soll der MCP Server "${server.name}" wirklich gelöscht werden?`)
+  ) {
     return
   }
   try {
     await $fetch(`/api/mcp/${server.id}`, { method: 'DELETE' })
-    toast.add({ title: 'Server entfernt', description: `${server.name} wurde gelöscht.`, color: 'success', icon: 'i-lucide-trash' })
+    toast.add({
+      title: 'Server entfernt',
+      description: `${server.name} wurde gelöscht.`,
+      color: 'success',
+      icon: 'i-lucide-trash'
+    })
     await refresh()
   } catch (err) {
-    toast.add({ title: 'Löschen fehlgeschlagen', description: String(err), color: 'error', icon: 'i-lucide-alert-triangle' })
+    toast.add({
+      title: 'Löschen fehlgeschlagen',
+      description: String(err),
+      color: 'error',
+      icon: 'i-lucide-alert-triangle'
+    })
   }
 }
 
@@ -355,7 +430,15 @@ async function openTemplateModal() {
   showTemplateModal.value = true
 }
 
-async function createFromTemplate(template: { id: string; name: string; description: string; provider: string; category: string; icon: string; color: string }) {
+async function createFromTemplate(template: {
+  id: string
+  name: string
+  description: string
+  provider: string
+  category: string
+  icon: string
+  color: string
+}) {
   if (isCreatingFromTemplate.value) return
 
   isCreatingFromTemplate.value = true
@@ -396,9 +479,27 @@ async function createFromTemplate(template: { id: string; name: string; descript
         </template>
         <template #right>
           <div class="flex gap-2">
-            <UButton icon="i-lucide-brain" label="Agent erstellen" color="primary" variant="outline" @click="openAgentModal()" />
-            <UButton icon="i-lucide-layout-template" label="Aus Vorlage" color="secondary" variant="outline" @click="openTemplateModal()" />
-            <UButton icon="i-lucide-plus" label="Server hinzufügen" color="neutral" variant="outline" @click="openAdd()" />
+            <UButton
+              icon="i-lucide-brain"
+              label="Agent erstellen"
+              color="primary"
+              variant="outline"
+              @click="openAgentModal()"
+            />
+            <UButton
+              icon="i-lucide-layout-template"
+              label="Aus Vorlage"
+              color="secondary"
+              variant="outline"
+              @click="openTemplateModal()"
+            />
+            <UButton
+              icon="i-lucide-plus"
+              label="Server hinzufügen"
+              color="neutral"
+              variant="outline"
+              @click="openAdd()"
+            />
           </div>
         </template>
       </UDashboardNavbar>
@@ -406,7 +507,13 @@ async function createFromTemplate(template: { id: string; name: string; descript
 
     <template #body>
       <div class="space-y-4">
-        <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-alert-circle" title="Fehler beim Laden der MCP Server">
+        <UAlert
+          v-if="error"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-alert-circle"
+          title="Fehler beim Laden der MCP Server"
+        >
           {{ errorMessage }}
         </UAlert>
 
@@ -414,16 +521,25 @@ async function createFromTemplate(template: { id: string; name: string; descript
           <USkeleton class="h-8 w-8 rounded-full" />
         </div>
 
-        <div v-else-if="servers.length" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div
+          v-else-if="servers.length"
+          class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+        >
           <UCard v-for="server in servers" :key="server.id" class="flex flex-col gap-4">
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0 space-y-1">
                 <h3 class="font-medium text-highlighted truncate">{{ server.name }}</h3>
-                <p class="text-sm text-muted truncate">{{ server.url || 'Keine URL hinterlegt' }}</p>
+                <p class="text-sm text-muted truncate">
+                  {{ server.url || 'Keine URL hinterlegt' }}
+                </p>
               </div>
               <div class="flex flex-col items-end gap-1">
                 <UBadge variant="subtle">{{ server.provider }}</UBadge>
-                <UBadge v-if="server.lastStatus" :color="statusBadgeColor(server.lastStatus)" variant="subtle">
+                <UBadge
+                  v-if="server.lastStatus"
+                  :color="statusBadgeColor(server.lastStatus)"
+                  variant="subtle"
+                >
                   {{ statusBadgeLabel(server.lastStatus) }}
                 </UBadge>
               </div>
@@ -434,13 +550,26 @@ async function createFromTemplate(template: { id: string; name: string; descript
             </p>
 
             <div class="text-sm space-y-1">
-              <p class="flex items-center gap-2"><span class="font-medium text-highlighted">Kategorie:</span> <span class="capitalize">{{ server.category }}</span></p>
-              <p class="flex items-center gap-2"><span class="font-medium text-highlighted">Zuletzt geprüft:</span> <span>{{ formatCheckedAt(server.lastCheckedAt) }}</span></p>
+              <p class="flex items-center gap-2">
+                <span class="font-medium text-highlighted">Kategorie:</span>
+                <span class="capitalize">{{ server.category }}</span>
+              </p>
+              <p class="flex items-center gap-2">
+                <span class="font-medium text-highlighted">Zuletzt geprüft:</span>
+                <span>{{ formatCheckedAt(server.lastCheckedAt) }}</span>
+              </p>
             </div>
 
-            <div v-if="Object.keys(server.metadata || {}).length" class="bg-muted/40 rounded-md p-3 text-xs space-y-1">
+            <div
+              v-if="Object.keys(server.metadata || {}).length"
+              class="bg-muted/40 rounded-md p-3 text-xs space-y-1"
+            >
               <p class="font-medium text-highlighted text-sm">Metadaten</p>
-              <div v-for="(value, key) in server.metadata" :key="key" class="flex justify-between gap-2">
+              <div
+                v-for="(value, key) in server.metadata"
+                :key="key"
+                class="flex justify-between gap-2"
+              >
                 <span class="text-muted truncate">{{ key }}</span>
                 <span class="font-medium truncate">{{ value }}</span>
               </div>
@@ -449,13 +578,31 @@ async function createFromTemplate(template: { id: string; name: string; descript
             <USeparator />
 
             <div class="flex flex-wrap items-center gap-2">
-              <UButton size="sm" color="neutral" variant="subtle" icon="i-lucide-plug-2" @click="testServer(server)">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="subtle"
+                icon="i-lucide-plug-2"
+                @click="testServer(server)"
+              >
                 Testen
               </UButton>
-              <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-pencil" @click="openEdit(server)">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-pencil"
+                @click="openEdit(server)"
+              >
                 Bearbeiten
               </UButton>
-              <UButton size="sm" color="error" variant="ghost" icon="i-lucide-trash" @click="deleteServer(server)">
+              <UButton
+                size="sm"
+                color="error"
+                variant="ghost"
+                icon="i-lucide-trash"
+                @click="deleteServer(server)"
+              >
                 Entfernen
               </UButton>
             </div>
@@ -465,10 +612,19 @@ async function createFromTemplate(template: { id: string; name: string; descript
         <div v-else class="text-center py-12 space-y-4">
           <div class="space-y-2">
             <h3 class="text-lg font-medium text-highlighted">Noch keine MCP Server verbunden</h3>
-            <p class="text-muted">Füge Google, Microsoft, Todoist, Trello, Nuxt UI oder eigene MCP Server hinzu, damit deine Agents auf Kalender, Aufgaben und Dokumentation zugreifen können.</p>
+            <p class="text-muted">
+              Füge Google, Microsoft, Todoist, Trello, Nuxt UI oder eigene MCP Server hinzu, damit
+              deine Agents auf Kalender, Aufgaben und Dokumentation zugreifen können.
+            </p>
           </div>
           <div class="flex flex-col sm:flex-row gap-2 justify-center">
-            <UButton icon="i-lucide-layout-template" label="Aus Vorlage erstellen" color="primary" variant="outline" @click="openTemplateModal()" />
+            <UButton
+              icon="i-lucide-layout-template"
+              label="Aus Vorlage erstellen"
+              color="primary"
+              variant="outline"
+              @click="openTemplateModal()"
+            />
             <UButton icon="i-lucide-plus" label="Manuell hinzufügen" @click="openAdd()" />
           </div>
         </div>
@@ -483,7 +639,7 @@ async function createFromTemplate(template: { id: string; name: string; descript
           <UFormField label="Anbieter">
             <USelectMenu
               v-model="form.provider"
-              :options="providerOptions"
+              :items="providerOptions"
               value-attribute="value"
               option-attribute="label"
             />
@@ -535,11 +691,20 @@ async function createFromTemplate(template: { id: string; name: string; descript
   </UModal>
 
   <!-- Template Creation Modal -->
-  <UModal title="Server aus Vorlage erstellen" :open="showTemplateModal" @update:open="showTemplateModal = $event">
+  <UModal
+    title="Server aus Vorlage erstellen"
+    :open="showTemplateModal"
+    @update:open="showTemplateModal = $event"
+  >
     <template #content>
       <UCard>
         <div class="space-y-4">
-          <UAlert color="primary" variant="subtle" icon="i-lucide-layout-template" title="Server-Vorlagen">
+          <UAlert
+            color="primary"
+            variant="subtle"
+            icon="i-lucide-layout-template"
+            title="Server-Vorlagen"
+          >
             Erstelle MCP Server schnell und einfach mit vorkonfigurierten Vorlagen.
           </UAlert>
 
@@ -551,8 +716,15 @@ async function createFromTemplate(template: { id: string; name: string; descript
               @click="createFromTemplate(template)"
             >
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg flex items-center justify-center" :class="`bg-${template.color}-100`">
-                  <Icon :name="template.icon" class="w-5 h-5" :class="`text-${template.color}-600`" />
+                <div
+                  class="w-10 h-10 rounded-lg flex items-center justify-center"
+                  :class="`bg-${template.color}-100`"
+                >
+                  <Icon
+                    :name="template.icon"
+                    class="w-5 h-5"
+                    :class="`text-${template.color}-600`"
+                  />
                 </div>
                 <div class="flex-1">
                   <h5 class="font-medium">{{ template.name }}</h5>
@@ -572,7 +744,12 @@ async function createFromTemplate(template: { id: string; name: string; descript
           </div>
 
           <div class="flex items-center justify-end gap-2 pt-4">
-            <UButton color="neutral" variant="ghost" label="Abbrechen" @click="showTemplateModal = false" />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              label="Abbrechen"
+              @click="showTemplateModal = false"
+            />
           </div>
         </div>
       </UCard>
@@ -585,7 +762,8 @@ async function createFromTemplate(template: { id: string; name: string; descript
       <UCard>
         <div class="space-y-4">
           <UAlert color="primary" variant="subtle" icon="i-lucide-brain" title="AI Agents">
-            Erstelle AI Agents, die MCP Server nutzen, um intelligente E-Mail-Antworten zu generieren.
+            Erstelle AI Agents, die MCP Server nutzen, um intelligente E-Mail-Antworten zu
+            generieren.
           </UAlert>
 
           <div class="space-y-3">
@@ -610,7 +788,12 @@ async function createFromTemplate(template: { id: string; name: string; descript
           </div>
 
           <div class="flex items-center justify-end gap-2 pt-4">
-            <UButton color="neutral" variant="ghost" label="Abbrechen" @click="showAgentModal = false" />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              label="Abbrechen"
+              @click="showAgentModal = false"
+            />
           </div>
         </div>
       </UCard>

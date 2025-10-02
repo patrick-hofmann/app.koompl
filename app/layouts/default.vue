@@ -50,6 +50,14 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
       }
     },
     {
+      label: 'Kanban',
+      icon: 'i-lucide-kanban',
+      to: '/kanban',
+      onSelect: () => {
+        open.value = false
+      }
+    },
+    {
       label: 'MCP Servers',
       icon: 'i-lucide-server-cog',
       to: '/mcp',
