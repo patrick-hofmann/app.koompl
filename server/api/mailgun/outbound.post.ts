@@ -32,6 +32,15 @@ export default defineEventHandler(async (event) => {
       isAutomatic?: boolean
     }>(event)
 
+    console.log('[Outbound.post] Received payload', {
+      from: body?.from,
+      to: body?.to,
+      subject: body?.subject,
+      textLength: body?.text ? body.text.length : 0,
+      agentId: body?.agentId,
+      agentEmail: body?.agentEmail
+    })
+
     const {
       from,
       to,
@@ -179,12 +188,12 @@ export default defineEventHandler(async (event) => {
               'Message-Id': messageId,
               'message-id': messageId,
               sender: from,
-              from,
+              from: from,
               From: from,
-              subject,
+              subject: subject,
               Subject: subject,
               'stripped-text': text,
-              text,
+              text: text,
               'body-plain': text
             }
 

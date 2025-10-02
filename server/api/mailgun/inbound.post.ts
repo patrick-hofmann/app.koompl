@@ -311,7 +311,7 @@ export default defineEventHandler(async (event) => {
         })
       } else {
         const outboundPayload = {
-          from: `${agent.name || 'Agent'} <${replyFromEmail}>`,
+          from: formatEmailAddress(agent.name, replyFromEmail),
           to: replyToEmail,
           subject: replySubject,
           text: cleanBody,
@@ -361,3 +361,9 @@ export default defineEventHandler(async (event) => {
     return { ok: true }
   }
 })
+
+function formatEmailAddress(name: string | undefined, email: string): string {
+  const safeEmail = email.trim()
+  const safeName = (name || 'Agent').replace(/["<>]/g, '').trim()
+  return safeName ? `${safeName} <${safeEmail}>` : safeEmail
+}
