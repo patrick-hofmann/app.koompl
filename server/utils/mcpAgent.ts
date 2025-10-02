@@ -79,6 +79,25 @@ export class KoomplMcpAgent {
       } else if (server.provider === 'builtin-kanban') {
         console.log('[MCPAgent] Skipping built-in Kanban server - no context provided')
         continue
+      } else if (server.provider === 'builtin-calendar' && kanbanContext) {
+        console.log('[MCPAgent] Configuring built-in Calendar server with context:', {
+          teamId: kanbanContext.teamId,
+          userId: kanbanContext.userId
+        })
+        // Configure built-in Calendar as a proper MCP server
+        const serverPath = new URL('./builtinCalendarMcpServer.mjs', import.meta.url).pathname
+        serverConfigs[server.id] = {
+          command: 'node',
+          args: [serverPath],
+          env: {
+            CALENDAR_TEAM_ID: kanbanContext.teamId,
+            CALENDAR_USER_ID: kanbanContext.userId,
+            CALENDAR_AGENT_ID: kanbanContext.agentId || ''
+          }
+        }
+      } else if (server.provider === 'builtin-calendar') {
+        console.log('[MCPAgent] Skipping built-in Calendar server - no context provided')
+        continue
       } else if (server.provider === 'custom' && server.url) {
         // Custom MCP server via HTTP
         serverConfigs[server.id] = {

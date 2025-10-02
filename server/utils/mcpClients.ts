@@ -5,6 +5,7 @@ import { agentLogger } from './agentLogging'
 
 import type { McpEmailContext, McpContextResult } from '../types/mcp-clients'
 import { fetchKanbanContext, type KanbanMcpContext } from './mcpKanban'
+import { fetchCalendarContext, type CalendarMcpContext } from './mcpCalendar'
 
 const DEFAULT_LIMIT = 5
 
@@ -405,6 +406,26 @@ export async function fetchMcpContext(
             provider: server.provider,
             category: server.category,
             summary: 'Kanban board requires team context',
+            details: null
+          }
+        }
+        break
+      case 'builtin-calendar':
+        // Built-in Calendar - requires team context
+        if (options.teamId && options.userId) {
+          const calendarContext: CalendarMcpContext = {
+            teamId: options.teamId,
+            userId: options.userId,
+            agentId: options.agentId
+          }
+          result = await fetchCalendarContext(calendarContext, limit)
+        } else {
+          result = {
+            serverId: server.id,
+            serverName: server.name,
+            provider: server.provider,
+            category: server.category,
+            summary: 'Calendar requires team context',
             details: null
           }
         }

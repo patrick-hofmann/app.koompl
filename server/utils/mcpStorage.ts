@@ -13,6 +13,7 @@ const VALID_PROVIDERS: McpProvider[] = [
   'trello',
   'nuxt-ui',
   'builtin-kanban',
+  'builtin-calendar',
   'custom'
 ]
 const VALID_CATEGORIES: McpCategory[] = [
@@ -74,6 +75,13 @@ const PROVIDER_PRESETS: Record<
     defaultName: 'Team Kanban Board',
     defaultDescription:
       'Built-in Kanban board for task management. Access and manage team boards, cards, and workflows.',
+    defaultAuthType: 'bearer'
+  },
+  'builtin-calendar': {
+    category: 'calendar',
+    defaultName: 'Team Calendar',
+    defaultDescription:
+      'Built-in team calendar for event management. View and manage calendar events for all team members.',
     defaultAuthType: 'bearer'
   },
   custom: {
@@ -438,6 +446,30 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
       category: 'productivity',
       description:
         'Built-in Kanban board for task management. Access and manage team boards, cards, and workflows.',
+      auth: {
+        type: 'bearer',
+        token: 'builtin'
+      },
+      metadata: {
+        builtin: true
+      }
+    }
+  },
+  {
+    id: 'builtin-calendar-template',
+    name: 'Team Calendar',
+    description:
+      'Built-in team calendar for event management. Agents can view and manage calendar events.',
+    provider: 'builtin-calendar',
+    category: 'calendar',
+    icon: 'i-lucide-calendar-days',
+    color: 'blue',
+    defaultConfig: {
+      name: 'Team Calendar',
+      provider: 'builtin-calendar',
+      category: 'calendar',
+      description:
+        'Built-in team calendar for event management. View and manage calendar events for all team members.',
       auth: {
         type: 'bearer',
         token: 'builtin'

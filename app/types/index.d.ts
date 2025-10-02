@@ -76,6 +76,7 @@ export type McpProvider =
   | 'trello'
   | 'nuxt-ui'
   | 'builtin-kanban'
+  | 'builtin-calendar'
   | 'custom'
 
 export interface McpServer {

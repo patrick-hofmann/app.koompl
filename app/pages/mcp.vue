@@ -708,39 +708,41 @@ async function createFromTemplate(template: {
             Erstelle MCP Server schnell und einfach mit vorkonfigurierten Vorlagen.
           </UAlert>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <UCard
-              v-for="template in templates"
-              :key="template.id"
-              class="cursor-pointer hover:bg-muted/50 transition-colors"
-              @click="createFromTemplate(template)"
-            >
-              <div class="flex items-center gap-3">
-                <div
-                  class="w-10 h-10 rounded-lg flex items-center justify-center"
-                  :class="`bg-${template.color}-100`"
-                >
-                  <Icon
-                    :name="template.icon"
-                    class="w-5 h-5"
-                    :class="`text-${template.color}-600`"
-                  />
+          <div class="max-h-[60vh] overflow-y-auto pr-2">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <UCard
+                v-for="template in templates"
+                :key="template.id"
+                class="cursor-pointer hover:bg-muted/50 transition-colors"
+                @click="createFromTemplate(template)"
+              >
+                <div class="flex items-center gap-3">
+                  <div
+                    class="w-10 h-10 rounded-lg flex items-center justify-center"
+                    :class="`bg-${template.color}-100`"
+                  >
+                    <Icon
+                      :name="template.icon"
+                      class="w-5 h-5"
+                      :class="`text-${template.color}-600`"
+                    />
+                  </div>
+                  <div class="flex-1">
+                    <h5 class="font-medium">{{ template.name }}</h5>
+                    <p class="text-sm text-muted">{{ template.description }}</p>
+                  </div>
+                  <UButton
+                    :loading="isCreatingFromTemplate"
+                    :disabled="isCreatingFromTemplate"
+                    size="sm"
+                    :color="template.color"
+                    variant="outline"
+                  >
+                    Erstellen
+                  </UButton>
                 </div>
-                <div class="flex-1">
-                  <h5 class="font-medium">{{ template.name }}</h5>
-                  <p class="text-sm text-muted">{{ template.description }}</p>
-                </div>
-                <UButton
-                  :loading="isCreatingFromTemplate"
-                  :disabled="isCreatingFromTemplate"
-                  size="sm"
-                  :color="template.color"
-                  variant="outline"
-                >
-                  Erstellen
-                </UButton>
-              </div>
-            </UCard>
+              </UCard>
+            </div>
           </div>
 
           <div class="flex items-center justify-end gap-2 pt-4">

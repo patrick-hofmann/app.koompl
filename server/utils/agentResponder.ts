@@ -3,7 +3,8 @@ import { listMcpServers } from './mcpStorage'
 import { fetchMcpContext, type McpContextResult } from './mcpClients'
 import { agentLogger } from './agentLogging'
 import { createGeneralAgent } from './mcpAgent'
-import { getKanbanTools, executeKanbanTool } from './builtinMcpTools'
+import { getKanbanTools, executeKanbanTool, getCalendarTools } from './builtinMcpTools'
+import { executeCalendarTool } from './builtinCalendarTools'
 
 export interface AgentRespondRequest {
   agentId: string
@@ -109,8 +110,11 @@ export async function generateAgentResponse(
 
     // If agent has MCP servers and teamId/userId are available, use KoomplMcpAgent for tool execution
     // Note: Currently only non-builtin servers support full MCP agent execution
-    const externalServers = selectedServers.filter((s) => s.provider !== 'builtin-kanban')
+    const externalServers = selectedServers.filter(
+      (s) => s.provider !== 'builtin-kanban' && s.provider !== 'builtin-calendar'
+    )
     const hasBuiltinKanban = selectedServers.some((s) => s.provider === 'builtin-kanban')
+    const hasBuiltinCalendar = selectedServers.some((s) => s.provider === 'builtin-calendar')
 
     if (externalServers.length > 0 && teamId && userId) {
       console.log(
@@ -161,6 +165,22 @@ export async function generateAgentResponse(
     if (hasBuiltinKanban && teamId && userId && externalServers.length === 0) {
       console.log('[AgentResponder] Using direct Kanban tool executor (production-ready)')
       return await handleBuiltinKanbanWithFunctionCalling({
+        agent,
+        subject,
+        text,
+        from,
+        maxTokens,
+        temperature,
+        openaiKey,
+        teamId,
+        userId
+      })
+    }
+
+    // For builtin-calendar only: use direct function calls (no HTTP, production-ready)
+    if (hasBuiltinCalendar && teamId && userId && externalServers.length === 0) {
+      console.log('[AgentResponder] Using direct Calendar tool executor (production-ready)')
+      return await handleBuiltinCalendarWithFunctionCalling({
         agent,
         subject,
         text,
@@ -382,6 +402,146 @@ async function handleBuiltinKanbanWithFunctionCalling(params: {
       let resultContent: string
       try {
         const mcpResult = await executeKanbanTool(context, functionName, args)
+
+        // Extract text from result
+        if (mcpResult.isError) {
+          resultContent =
+            mcpResult.content[0]?.text || JSON.stringify({ error: 'Tool execution failed' })
+        } else {
+          resultContent = mcpResult.content[0]?.text || JSON.stringify({ success: true })
+        }
+      } catch (error) {
+        resultContent = JSON.stringify({
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        name: functionName,
+        content: resultContent
+      })
+    }
+  }
+
+  // If we exhausted iterations, return the last message
+  const lastMessage = messages[messages.length - 1]
+  return { ok: true, result: lastMessage.content || 'Maximum iterations reached' }
+}
+
+/**
+ * Handle builtin Calendar with OpenAI function calling (direct tool execution, production-ready)
+ */
+async function handleBuiltinCalendarWithFunctionCalling(params: {
+  agent: Agent
+  subject: string
+  text: string
+  from: string
+  maxTokens: number
+  temperature: number
+  openaiKey: string
+  teamId: string
+  userId: string
+}): Promise<AgentRespondResult> {
+  const { agent, subject, text, from, maxTokens, temperature, openaiKey, teamId, userId } = params
+
+  // Get Calendar tools (no HTTP, direct discovery)
+  const mcpTools = getCalendarTools()
+  console.log(`[BuiltinCalendar] Loaded ${mcpTools.length} tools`)
+
+  // Convert MCP tools to OpenAI function calling format
+  const tools = mcpTools.map((tool) => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema
+    }
+  }))
+
+  const context = { teamId, userId, agentId: agent.id }
+
+  // Provide current date/time context for calendar operations
+  const now = new Date()
+  const currentDateTime = now.toISOString()
+  const currentDate = now.toISOString().split('T')[0]
+  const currentTime = now.toTimeString().split(' ')[0]
+
+  let userContent = ''
+  userContent += `Current Date: ${currentDate}\n`
+  userContent += `Current Time: ${currentTime}\n`
+  userContent += `Current DateTime (ISO): ${currentDateTime}\n`
+  userContent += `User ID: ${userId}\n\n`
+  if (subject) userContent += `Subject: ${subject}\n`
+  if (from) userContent += `From: ${from}\n`
+  userContent += '\nEmail body:\n' + text
+  userContent += '\n\nTask: Process the calendar request using the available tools.'
+  userContent += '\n\nImportant guidelines:'
+  userContent += '\n- Use ISO 8601 format for dates (YYYY-MM-DDTHH:MM:SS)'
+  userContent += '\n- When calling list_events, use the User ID shown above as the userId parameter'
+  userContent +=
+    '\n- When asked to delete/modify events, FIRST use list_events to see what events exist for that user and time period'
+  userContent +=
+    '\n- "heute" = today, "morgen" = tomorrow, "Mittag" = noon (12:00), "Vormittag" = morning (9-12), "Nachmittag" = afternoon (13-17), "Abend" = evening (18-22)'
+  userContent +=
+    '\n- After listing events, identify the correct event by time/title and use its ID for delete/modify operations'
+  userContent +=
+    '\n- Always confirm what action was taken with specific details (event title, date/time)'
+
+  const messages: Array<{
+    role: string
+    content: string
+    tool_calls?: any
+    tool_call_id?: string
+    name?: string
+  }> = [
+    agent.prompt ? { role: 'system', content: String(agent.prompt) } : null,
+    { role: 'user', content: userContent }
+  ].filter(Boolean) as any
+
+  let iterations = 0
+  const maxIterations = 5
+
+  while (iterations < maxIterations) {
+    iterations++
+
+    const response: any = await $fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages,
+        tools,
+        temperature,
+        max_tokens: maxTokens
+      })
+    })
+
+    const choice = response.choices?.[0]
+    if (!choice) break
+
+    const message = choice.message
+    messages.push(message)
+
+    // If no tool calls, we're done
+    if (!message.tool_calls || message.tool_calls.length === 0) {
+      return { ok: true, result: message.content || '' }
+    }
+
+    // Execute tool calls directly (no HTTP)
+    for (const toolCall of message.tool_calls) {
+      const functionName = toolCall.function.name
+      const args = JSON.parse(toolCall.function.arguments || '{}')
+
+      console.log(`[BuiltinCalendar] Executing tool: ${functionName}`, args)
+
+      let resultContent: string
+      try {
+        const mcpResult = await executeCalendarTool(context, functionName, args)
 
         // Extract text from result
         if (mcpResult.isError) {

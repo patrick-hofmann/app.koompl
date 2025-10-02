@@ -247,7 +247,27 @@ export default defineEventHandler(async (event) => {
     // Generate AI response by delegating to shared responder utility
     let aiAnswer: string | null = null
     if (agent && isDomainAllowed) {
-      // Use agent's team context for MCP tools (userId is optional)
+      // Look up user by email to get userId for calendar/MCP context
+      let userId: string | undefined
+      if (fromEmail) {
+        try {
+          const { getIdentity } = await import('../../utils/identityStorage')
+          const identity = await getIdentity()
+          const user = identity.users.find(
+            (u) => u.email.toLowerCase().trim() === fromEmail.toLowerCase().trim()
+          )
+          if (user) {
+            userId = user.id
+            console.log(`[Inbound] Found user ID for ${fromEmail}: ${userId}`)
+          } else {
+            console.log(`[Inbound] No user found for email: ${fromEmail}`)
+          }
+        } catch (err) {
+          console.error('[Inbound] Error looking up user:', err)
+        }
+      }
+
+      // Use agent's team context for MCP tools
       const response = await generateAgentResponse({
         agentId: agent.id,
         subject: String(subject || ''),
@@ -256,7 +276,8 @@ export default defineEventHandler(async (event) => {
         includeQuote: true,
         maxTokens: 700,
         temperature: 0.4,
-        teamId: agent.teamId
+        teamId: agent.teamId,
+        userId
       })
       if (response.ok && response.result) {
         aiAnswer = response.result.trim()

@@ -182,6 +182,117 @@ export function getKanbanTools(): McpTool[] {
 }
 
 /**
+ * Get all available Calendar tools
+ */
+export function getCalendarTools(): McpTool[] {
+  return [
+    {
+      name: 'list_events',
+      description: 'List calendar events, optionally filtered by date range and/or user',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          startDate: { type: 'string', description: 'Start date in ISO 8601 format' },
+          endDate: { type: 'string', description: 'End date in ISO 8601 format' },
+          userId: { type: 'string', description: 'Filter events by user ID' }
+        },
+        required: [],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'get_event',
+      description: 'Get details of a specific calendar event by ID',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'string', description: 'Event ID to retrieve' }
+        },
+        required: ['eventId'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'create_event',
+      description: 'Create a new calendar event',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Event title' },
+          description: { type: 'string', description: 'Event description' },
+          startDate: { type: 'string', description: 'Start date and time in ISO 8601 format' },
+          endDate: { type: 'string', description: 'End date and time in ISO 8601 format' },
+          allDay: { type: 'boolean', description: 'Whether this is an all-day event' },
+          location: { type: 'string', description: 'Event location' },
+          color: { type: 'string', description: 'Event color (hex code)' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Event tags' }
+        },
+        required: ['title', 'startDate', 'endDate'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'modify_event',
+      description: 'Update an existing calendar event (only the event owner can modify)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'string', description: 'ID of the event to modify' },
+          title: { type: 'string', description: 'New event title' },
+          description: { type: 'string', description: 'New event description' },
+          startDate: { type: 'string', description: 'New start date and time' },
+          endDate: { type: 'string', description: 'New end date and time' },
+          allDay: { type: 'boolean', description: 'Whether this is an all-day event' },
+          location: { type: 'string', description: 'New event location' },
+          color: { type: 'string', description: 'New event color' }
+        },
+        required: ['eventId'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'remove_event',
+      description: 'Delete a calendar event (only the event owner can delete)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'string', description: 'ID of the event to remove' }
+        },
+        required: ['eventId'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'search_events',
+      description: 'Search for events by title, description, location, or tags',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query' },
+          userId: { type: 'string', description: 'Optional user ID to limit search' }
+        },
+        required: ['query'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'get_events_by_user',
+      description: 'Get all events for a specific user, optionally filtered by date range',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          userId: { type: 'string', description: 'User ID to get events for' },
+          startDate: { type: 'string', description: 'Start date in ISO 8601 format' },
+          endDate: { type: 'string', description: 'End date in ISO 8601 format' }
+        },
+        required: ['userId'],
+        additionalProperties: false
+      }
+    }
+  ]
+}
+
+/**
  * Execute a Kanban tool directly (no HTTP)
  */
 export async function executeKanbanTool(

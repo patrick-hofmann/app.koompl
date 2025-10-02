@@ -58,6 +58,14 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
       }
     },
     {
+      label: 'Calendar',
+      icon: 'i-lucide-calendar-days',
+      to: '/calendar',
+      onSelect: () => {
+        open.value = false
+      }
+    },
+    {
       label: 'MCP Servers',
       icon: 'i-lucide-server-cog',
       to: '/mcp',
