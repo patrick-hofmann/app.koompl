@@ -15,6 +15,8 @@ export interface InboundEmail {
   subject: string
   body: string
   receivedAt: string
+  inReplyTo?: string[]
+  references?: string[]
 }
 
 export class MessageRouter {
@@ -82,21 +84,26 @@ export class MessageRouter {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
 
+    // Construct full email from username + team domain
+    const { getAgentFullEmail } = await import('./agentEmailHelpers')
+    const fromFullEmail = await getAgentFullEmail(agent.email, agent.teamId)
+
     const toAgent = await this.getAgentByEmail(params.toEmail)
+    const toFullEmail = toAgent ? await getAgentFullEmail(toAgent.email, toAgent.teamId) : undefined
 
     const emailData = {
-      from: `${agent.name} <${agent.email}>`,
+      from: `${agent.name} <${fromFullEmail}>`,
       to: params.toEmail,
       subject: params.subject,
       text: params.body,
-      simulateInboundForAgent: toAgent?.email,
+      simulateInboundForAgent: toFullEmail,
       forceMailgun: !toAgent
     }
 
     console.log('[MessageRouter] → Dispatching email...')
     const { messageId, mailgunSent } = await this.dispatchEmail(emailData)
 
-    await this.logUserEmailActivity(params, agent, emailData, messageId, mailgunSent)
+    await this.logUserEmailActivity(params, agent, emailData, messageId, mailgunSent, fromFullEmail)
     this.logUserEmailResult(toAgent, params.toEmail)
 
     return messageId
@@ -107,12 +114,13 @@ export class MessageRouter {
     agent: any,
     emailData: any,
     messageId: string,
-    mailgunSent: boolean
+    mailgunSent: boolean,
+    fullEmail: string
   ) {
     try {
       await agentLogger.logEmailActivity({
         agentId: params.fromAgentId,
-        agentEmail: agent.email,
+        agentEmail: fullEmail, // Use full email for logging
         direction: 'outbound',
         email: {
           messageId,
@@ -198,7 +206,13 @@ export class MessageRouter {
       allowedEmails = await this.migrateAgentIds(fromAgent.multiRoundConfig)
     }
 
-    if (allowedEmails.length > 0 && !allowedEmails.includes(toEmail.toLowerCase())) {
+    // Compare by username only since storage keeps usernames
+    const toUsername = toEmail.split('@')[0].toLowerCase()
+    if (
+      allowedEmails.length > 0 &&
+      !allowedEmails.includes(toUsername) &&
+      !allowedEmails.includes(toEmail.toLowerCase())
+    ) {
       console.error('[MessageRouter] ✗ Permission denied:')
       console.error(
         `[MessageRouter]   ${fromAgent.name} is only allowed to contact: ${allowedEmails.join(', ')}`
@@ -236,15 +250,16 @@ export class MessageRouter {
     return allowedEmails
   }
 
-  private prepareEmailData(fromAgent: any, toAgent: any, params: any) {
+  private prepareEmailData(_fromAgent: any, _toAgent: any, params: any) {
     const subjectWithReqId = `[Req: ${params.requestId}] ${params.subject}`
 
+    // Use full emails provided by caller (engine) to avoid double-appending domains
     return {
-      from: `${fromAgent.name} <${fromAgent.email}>`,
-      to: toAgent.email,
+      from: params.fromAgentEmail.includes('<') ? params.fromAgentEmail : params.fromAgentEmail,
+      to: params.toAgentEmail,
       subject: subjectWithReqId,
       text: params.body,
-      simulateInboundForAgent: toAgent.email
+      simulateInboundForAgent: params.toAgentEmail
     }
   }
 
@@ -258,7 +273,7 @@ export class MessageRouter {
     try {
       await agentLogger.logEmailActivity({
         agentId: fromAgent.id,
-        agentEmail: fromAgent.email,
+        agentEmail: params.fromAgentEmail || fromAgent.email,
         direction: 'outbound',
         email: {
           messageId,
@@ -292,6 +307,13 @@ export class MessageRouter {
    * Check if incoming email is a response to THIS AGENT's active flow
    */
   async matchEmailToFlow(email: InboundEmail, agentId: string): Promise<AgentFlow | null> {
+    const waitingFlows = await agentFlowEngine.listAgentFlows(agentId, { status: ['waiting'] })
+
+    const messageMatch = this.matchEmailByMessageIds(email, waitingFlows)
+    if (messageMatch) {
+      return messageMatch
+    }
+
     const requestId = this.extractRequestId(email.subject)
     if (!requestId) {
       console.log('[MessageRouter] No request ID found in subject, not a flow response')
@@ -300,10 +322,9 @@ export class MessageRouter {
 
     console.log(`[MessageRouter] Found request ID: ${requestId}`)
 
-    const flows = await agentFlowEngine.listAgentFlows(agentId, { status: ['waiting'] })
-    console.log(`[MessageRouter] Found ${flows.length} waiting flow(s) for agent`)
+    console.log(`[MessageRouter] Found ${waitingFlows.length} waiting flow(s) for agent`)
 
-    for (const flow of flows) {
+    for (const flow of waitingFlows) {
       if (this.isFlowWaitingForRequest(flow, requestId)) {
         if (await this.validateFlowMatch(flow, email)) {
           console.log(`[MessageRouter] Matched email to flow ${flow.id}`)
@@ -313,6 +334,44 @@ export class MessageRouter {
     }
 
     console.log('[MessageRouter] No matching flow found for request ID')
+    return null
+  }
+
+  private matchEmailByMessageIds(email: InboundEmail, flows: AgentFlow[]): AgentFlow | null {
+    const referencedIds = new Set(
+      [...(email.inReplyTo || []), ...(email.references || [])]
+        .map((id) => this.normalizeMessageId(id))
+        .filter((id): id is string => !!id)
+    )
+
+    if (referencedIds.size === 0) {
+      return null
+    }
+
+    console.log(
+      `[MessageRouter] Matching by message headers. Headers: ${Array.from(referencedIds).join(', ')}`
+    )
+
+    for (const flow of flows) {
+      const waitState = flow.waitingFor
+      if (!waitState) continue
+
+      const candidateIds = new Set(
+        [waitState.messageId, ...(waitState.threadMessageIds || [])]
+          .map((id) => this.normalizeMessageId(id))
+          .filter((id): id is string => !!id)
+      )
+
+      if (candidateIds.size === 0) continue
+
+      const hasMatch = Array.from(candidateIds).some((id) => referencedIds.has(id))
+      if (hasMatch) {
+        console.log(`[MessageRouter] ✓ Message ID match found for flow ${flow.id}`)
+        return flow
+      }
+    }
+
+    console.log('[MessageRouter] No flow matched by message headers')
     return null
   }
 
@@ -329,9 +388,13 @@ export class MessageRouter {
       const senderEmail = this.extractEmail(email.from)
       const expectedAgent = await this.getExpectedAgent(flow.waitingFor.agentId)
 
-      if (expectedAgent && senderEmail !== expectedAgent.email) {
+      // Extract username from both emails for comparison
+      const senderUsername = senderEmail.split('@')[0].toLowerCase()
+      const expectedUsername = expectedAgent?.email?.split('@')[0].toLowerCase() || ''
+
+      if (expectedAgent && senderUsername !== expectedUsername) {
         console.warn(
-          `[MessageRouter] Sender ${senderEmail} does not match expected agent ${expectedAgent.email}`
+          `[MessageRouter] Sender ${senderEmail} (${senderUsername}) does not match expected agent ${expectedAgent.email} (${expectedUsername})`
         )
         return false
       }
@@ -355,6 +418,15 @@ export class MessageRouter {
     }
 
     return true
+  }
+
+  private normalizeMessageId(messageId?: string): string | undefined {
+    if (!messageId) return undefined
+    const trimmed = messageId.trim()
+    if (!trimmed) return undefined
+    const angleMatch = trimmed.match(/<([^>]+)>/)
+    const normalized = (angleMatch ? angleMatch[1] : trimmed).trim()
+    return normalized ? normalized.toLowerCase() : undefined
   }
 
   private async getExpectedAgent(agentIdOrEmail: string) {
@@ -474,13 +546,15 @@ export class MessageRouter {
   }
 
   /**
-   * Get agent by email address
+   * Get agent by email (extracts username and matches)
+   * Note: agent.email now stores username only
    */
   private async getAgentByEmail(email: string): Promise<
     | {
         id: string
         name: string
-        email: string
+        email: string // This is the username only
+        teamId?: string
         multiRoundConfig?: {
           canCommunicateWithAgents?: boolean
           allowedAgentEmails?: string[]
@@ -495,18 +569,23 @@ export class MessageRouter {
           id?: string
           name?: string
           email?: string
+          teamId?: string
           multiRoundConfig?: Record<string, unknown>
         }>
       >('agents.json')) || []
-    const normalizedEmail = email.toLowerCase().trim()
-    const agent = agents.find((a) => a?.email?.toLowerCase().trim() === normalizedEmail)
+
+    // Extract username from full email (agent.email stores username only now)
+    const username = email.split('@')[0].toLowerCase().trim()
+    const agent = agents.find((a) => a?.email?.toLowerCase().trim() === username)
+
     if (!agent || !agent.id || !agent.name || !agent.email) {
       return undefined
     }
     return {
       id: agent.id,
       name: agent.name,
-      email: agent.email,
+      email: agent.email, // Username only
+      teamId: agent.teamId,
       multiRoundConfig: agent.multiRoundConfig as {
         canCommunicateWithAgents?: boolean
         allowedAgentEmails?: string[]
@@ -516,12 +595,14 @@ export class MessageRouter {
 
   /**
    * Get agent by ID (kept for backwards compatibility)
+   * Note: agent.email now stores username only
    */
   private async getAgent(agentId: string): Promise<
     | {
         id: string
         name: string
-        email: string
+        email: string // This is the username only
+        teamId?: string
         multiRoundConfig?: {
           canCommunicateWithAgents?: boolean
           allowedAgentEmails?: string[]
@@ -536,6 +617,7 @@ export class MessageRouter {
           id?: string
           name?: string
           email?: string
+          teamId?: string
           multiRoundConfig?: Record<string, unknown>
         }>
       >('agents.json')) || []
@@ -546,7 +628,8 @@ export class MessageRouter {
     return {
       id: agent.id,
       name: agent.name,
-      email: agent.email,
+      email: agent.email, // Username only
+      teamId: agent.teamId,
       multiRoundConfig: agent.multiRoundConfig as {
         canCommunicateWithAgents?: boolean
         allowedAgentEmails?: string[]

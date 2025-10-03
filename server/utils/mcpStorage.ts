@@ -14,6 +14,7 @@ const VALID_PROVIDERS: McpProvider[] = [
   'nuxt-ui',
   'builtin-kanban',
   'builtin-calendar',
+  'builtin-agents',
   'custom'
 ]
 const VALID_CATEGORIES: McpCategory[] = [
@@ -22,6 +23,7 @@ const VALID_CATEGORIES: McpCategory[] = [
   'project',
   'documentation',
   'productivity',
+  'directory',
   'custom'
 ]
 
@@ -82,6 +84,13 @@ const PROVIDER_PRESETS: Record<
     defaultName: 'Team Calendar',
     defaultDescription:
       'Built-in team calendar for event management. View and manage calendar events for all team members.',
+    defaultAuthType: 'bearer'
+  },
+  'builtin-agents': {
+    category: 'directory',
+    defaultName: 'Agents Directory',
+    defaultDescription:
+      'Built-in directory of active agents, their specialties, and capabilities for intelligent delegation.',
     defaultAuthType: 'bearer'
   },
   custom: {
@@ -470,6 +479,30 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
       category: 'calendar',
       description:
         'Built-in team calendar for event management. View and manage calendar events for all team members.',
+      auth: {
+        type: 'bearer',
+        token: 'builtin'
+      },
+      metadata: {
+        builtin: true
+      }
+    }
+  },
+  {
+    id: 'builtin-agents-template',
+    name: 'Agents Directory',
+    description:
+      'Built-in overview of available agents, their specialties, and communication permissions.',
+    provider: 'builtin-agents',
+    category: 'directory',
+    icon: 'i-lucide-users',
+    color: 'amber',
+    defaultConfig: {
+      name: 'Agents Directory',
+      provider: 'builtin-agents',
+      category: 'directory',
+      description:
+        'Built-in directory of active agents, their capabilities, and delegation preferences.',
       auth: {
         type: 'bearer',
         token: 'builtin'

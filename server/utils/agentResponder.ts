@@ -52,6 +52,10 @@ export async function generateAgentResponse(
       return { ok: false, error: 'email_text_required' }
     }
 
+    // Ensure builtin MCP servers exist
+    const { ensureBuiltinServers } = await import('./ensureBuiltinServers')
+    await ensureBuiltinServers()
+
     const agentsStorage = useStorage('agents')
     const settingsStorage = useStorage('settings')
 
@@ -111,10 +115,18 @@ export async function generateAgentResponse(
     // If agent has MCP servers and teamId/userId are available, use KoomplMcpAgent for tool execution
     // Note: Currently only non-builtin servers support full MCP agent execution
     const externalServers = selectedServers.filter(
-      (s) => s.provider !== 'builtin-kanban' && s.provider !== 'builtin-calendar'
+      (s) =>
+        s.provider !== 'builtin-kanban' &&
+        s.provider !== 'builtin-calendar' &&
+        s.provider !== 'builtin-agents'
     )
     const hasBuiltinKanban = selectedServers.some((s) => s.provider === 'builtin-kanban')
     const hasBuiltinCalendar = selectedServers.some((s) => s.provider === 'builtin-calendar')
+    const hasBuiltinAgents = selectedServers.some((s) => s.provider === 'builtin-agents')
+
+    if (hasBuiltinAgents) {
+      console.log('[AgentResponder] Built-in Agents directory available for context')
+    }
 
     if (externalServers.length > 0 && teamId && userId) {
       console.log(

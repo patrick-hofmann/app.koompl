@@ -67,6 +67,7 @@ export type McpCategory =
   | 'project'
   | 'documentation'
   | 'productivity'
+  | 'directory'
   | 'custom'
 
 export type McpProvider =
@@ -77,6 +78,7 @@ export type McpProvider =
   | 'nuxt-ui'
   | 'builtin-kanban'
   | 'builtin-calendar'
+  | 'builtin-agents'
   | 'custom'
 
 export interface McpServer {
@@ -113,13 +115,14 @@ export interface MultiRoundConfig {
 export interface Agent {
   id: string
   name: string
-  email: string
+  email: string // Stores username only (e.g., "chris-coordinator"), domain is derived from teamId
   role: string
   prompt: string
   avatar?: AvatarProps | { src?: string; text?: string; alt?: string }
   mcpServerIds?: string[]
   multiRoundConfig?: MultiRoundConfig
   teamId?: string // Team this agent belongs to
+  isPredefined?: boolean // Whether this is a predefined Koompl
   createdAt?: string
   updatedAt?: string
 }
@@ -128,6 +131,7 @@ export interface Team {
   id: string
   name: string
   description?: string
+  domain?: string // Team's unique domain (e.g., "company.com")
   createdAt?: string
   updatedAt?: string
 }

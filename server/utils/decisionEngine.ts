@@ -7,7 +7,13 @@
 
 import type { AgentFlow, FlowDecision } from '../types/agent-flows'
 import type { DecisionContext } from '../types/decision-engine'
-import { getKanbanTools, executeKanbanTool, getCalendarTools } from './builtinMcpTools'
+import {
+  getKanbanTools,
+  executeKanbanTool,
+  getCalendarTools,
+  getAgentsDirectoryTools,
+  executeAgentsDirectoryTool
+} from './builtinMcpTools'
 import { executeCalendarTool } from './builtinCalendarTools'
 
 export class DecisionEngine {
@@ -19,7 +25,8 @@ export class DecisionEngine {
 
     // Check if agent has builtin MCP servers that support direct tool execution
     const builtinServers = await this.getBuiltinServers(agent)
-    const hasBuiltinTools = builtinServers.kanban || builtinServers.calendar
+    const hasBuiltinTools =
+      builtinServers.kanban || builtinServers.calendar || builtinServers.agents
 
     // Build context for AI
     const prompt = await this.buildDecisionPrompt(flow, agent)
@@ -108,8 +115,8 @@ export class DecisionEngine {
     // Summarize information gathered
     const informationSummary = this.summarizeInformation(flow)
 
-    // Get available agents
-    const availableAgents = await this.getAvailableAgents(agent)
+    // Get available agents (pass teamId for proper email construction)
+    const availableAgents = await this.getAvailableAgents(agent, flow.teamId)
 
     const systemPrompt = agent.prompt || 'You are a helpful AI assistant.'
 
@@ -190,7 +197,7 @@ Respond ONLY with valid JSON in this exact format:
   "reasoning": "brief explanation of why you chose this action",
   "confidence": 0.0 to 1.0,
   "target_agent": {
-    "agent_email": "agent-b@koompl.local",
+    "agent_email": "agent-username@domain.tld (use EXACT email from available agents list)",
     "question": "what specific information do you need",
     "message_subject": "subject line for the email",
     "message_body": "full email body to send"
@@ -224,15 +231,22 @@ Notes:
     prompt: string,
     agent: DecisionContext['agent'],
     flow: AgentFlow,
-    builtinServers: { kanban: boolean; calendar: boolean }
+    builtinServers: { kanban: boolean; calendar: boolean; agents: boolean }
   ): Promise<FlowDecision> {
     const openaiKey = await this.getOpenAiKey()
 
     // Collect tools from builtin servers
     const tools: any[] = []
 
-    if (builtinServers.kanban) {
-      const kanbanTools = getKanbanTools()
+    const kanbanTools = builtinServers.kanban ? getKanbanTools() : []
+    const calendarTools = builtinServers.calendar ? getCalendarTools() : []
+    const agentDirectoryTools = builtinServers.agents ? getAgentsDirectoryTools() : []
+
+    const kanbanToolNames = new Set(kanbanTools.map((tool) => tool.name))
+    const calendarToolNames = new Set(calendarTools.map((tool) => tool.name))
+    const agentDirectoryToolNames = new Set(agentDirectoryTools.map((tool) => tool.name))
+
+    if (kanbanTools.length > 0) {
       tools.push(
         ...kanbanTools.map((tool) => ({
           type: 'function',
@@ -245,10 +259,22 @@ Notes:
       )
     }
 
-    if (builtinServers.calendar) {
-      const calendarTools = getCalendarTools()
+    if (calendarTools.length > 0) {
       tools.push(
         ...calendarTools.map((tool) => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema
+          }
+        }))
+      )
+    }
+
+    if (agentDirectoryTools.length > 0) {
+      tools.push(
+        ...agentDirectoryTools.map((tool) => ({
           type: 'function',
           function: {
             name: tool.name,
@@ -358,10 +384,16 @@ AFTER USING TOOLS:
             // Determine which tool executor to use
             let mcpResult: any
 
-            if (builtinServers.calendar && functionName.includes('event')) {
+            if (calendarToolNames.has(functionName)) {
               mcpResult = await executeCalendarTool(context, functionName, args)
-            } else if (builtinServers.kanban) {
+            } else if (kanbanToolNames.has(functionName)) {
               mcpResult = await executeKanbanTool(context, functionName, args)
+            } else if (agentDirectoryToolNames.has(functionName)) {
+              mcpResult = await executeAgentsDirectoryTool(
+                { teamId: context.teamId },
+                functionName,
+                args
+              )
             } else {
               throw new Error(`Unknown tool: ${functionName}`)
             }
@@ -426,9 +458,10 @@ AFTER USING TOOLS:
   private async getBuiltinServers(agent: DecisionContext['agent']): Promise<{
     kanban: boolean
     calendar: boolean
+    agents: boolean
   }> {
     if (!agent.mcpServerIds || agent.mcpServerIds.length === 0) {
-      return { kanban: false, calendar: false }
+      return { kanban: false, calendar: false, agents: false }
     }
 
     // Load MCP server configurations
@@ -443,20 +476,22 @@ AFTER USING TOOLS:
 
     let hasKanban = false
     let hasCalendar = false
+    let hasAgents = false
 
     for (const serverId of agent.mcpServerIds) {
       const server = servers.find((s) => s.id === serverId)
       if (server) {
         if (server.provider === 'builtin-kanban') hasKanban = true
         if (server.provider === 'builtin-calendar') hasCalendar = true
+        if (server.provider === 'builtin-agents') hasAgents = true
       }
     }
 
     console.log(
-      `[DecisionEngine] Builtin servers detected: kanban=${hasKanban}, calendar=${hasCalendar}`
+      `[DecisionEngine] Builtin servers detected: kanban=${hasKanban}, calendar=${hasCalendar}, agents=${hasAgents}`
     )
 
-    return { kanban: hasKanban, calendar: hasCalendar }
+    return { kanban: hasKanban, calendar: hasCalendar, agents: hasAgents }
   }
 
   private async getOpenAiKey(): Promise<string> {
@@ -649,7 +684,10 @@ AFTER USING TOOLS:
   /**
    * Get list of available agents
    */
-  private async getAvailableAgents(agent: DecisionContext['agent']): Promise<string | null> {
+  private async getAvailableAgents(
+    agent: DecisionContext['agent'],
+    teamId?: string
+  ): Promise<string | null> {
     const multiRoundConfig = agent.multiRoundConfig
 
     if (!multiRoundConfig?.canCommunicateWithAgents) {
@@ -686,6 +724,9 @@ AFTER USING TOOLS:
       )
     }
 
+    // Helper to construct full email with team domain
+    const { getAgentFullEmail } = await import('./agentEmailHelpers')
+
     if (allowedEmails.length === 0) {
       // If no specific agents configured, load all agents except current one
       const agentsStorage = useStorage('agents')
@@ -696,6 +737,7 @@ AFTER USING TOOLS:
             name?: string
             email?: string
             role?: string
+            teamId?: string
           }>
         >('agents.json')) || []
 
@@ -707,7 +749,13 @@ AFTER USING TOOLS:
         return 'You can communicate with other agents, but no other agents are available.'
       }
 
-      return otherAgents.map((a) => `- ${a.email} (${a.name} - ${a.role || 'Agent'})`).join('\n')
+      // Construct full emails with team domain
+      const agentListPromises = otherAgents.map(async (a) => {
+        const fullEmail = await getAgentFullEmail(a.email || '', teamId || a.teamId)
+        return `- ${fullEmail} (${a.name} - ${a.role || 'Agent'})`
+      })
+      const agentList = await Promise.all(agentListPromises)
+      return agentList.join('\n')
     }
 
     // Load details for allowed agents
@@ -719,6 +767,7 @@ AFTER USING TOOLS:
           name?: string
           email?: string
           role?: string
+          teamId?: string
         }>
       >('agents.json')) || []
 
@@ -730,6 +779,12 @@ AFTER USING TOOLS:
       return 'Configured agents not found.'
     }
 
-    return allowedAgents.map((a) => `- ${a.email} (${a.name} - ${a.role || 'Agent'})`).join('\n')
+    // Construct full emails with team domain
+    const agentListPromises = allowedAgents.map(async (a) => {
+      const fullEmail = await getAgentFullEmail(a.email || '', teamId || a.teamId)
+      return `- ${fullEmail} (${a.name} - ${a.role || 'Agent'})`
+    })
+    const agentList = await Promise.all(agentListPromises)
+    return agentList.join('\n')
   }
 }

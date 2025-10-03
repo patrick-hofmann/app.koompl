@@ -44,6 +44,7 @@ export default defineEventHandler(async (event) => {
         id: targetTeam.id,
         name: targetTeam.name,
         description: targetTeam.description,
+        domain: targetTeam.domain,
         role: targetTeam.role
       },
       availableTeams: session.availableTeams || [],

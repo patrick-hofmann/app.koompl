@@ -11,6 +11,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{
     name?: string
     description?: string
+    domain?: string
   }>(event)
 
   const identity = await getIdentity()
@@ -22,6 +23,12 @@ export default defineEventHandler(async (event) => {
   const name = body?.name !== undefined ? String(body.name).trim() : existing.name
   const description =
     body?.description !== undefined ? String(body.description).trim() : existing.description
+  const domain =
+    body?.domain !== undefined
+      ? body.domain
+        ? String(body.domain).trim()
+        : undefined
+      : existing.domain
 
-  return await upsertTeam({ id, name, description })
+  return await upsertTeam({ id, name, description, domain })
 })

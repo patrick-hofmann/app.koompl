@@ -11,9 +11,7 @@ import type { Agent } from '~/types'
  */
 export function normalizeMcpServerIds(value: unknown, fallback: string[] = []): string[] {
   if (!Array.isArray(value)) return fallback
-  const ids = value
-    .map(item => typeof item === 'string' ? item.trim() : '')
-    .filter(Boolean)
+  const ids = value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
   return Array.from(new Set(ids))
 }
 
@@ -26,7 +24,14 @@ export function generateAvatar(name: string, email: string | undefined, id: stri
   const seed = encodeURIComponent(hash)
   // Use Pravatar for person-like avatars, deterministic via seed
   const src = `https://i.pravatar.cc/256?u=${seed}`
-  const text = (name.split(' ').filter(w => w).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'AG').padEnd(2, (name[0] || 'A').toUpperCase())
+  const text = (
+    name
+      .split(' ')
+      .filter((w) => w)
+      .slice(0, 2)
+      .map((w) => w[0].toUpperCase())
+      .join('') || 'AG'
+  ).padEnd(2, (name[0] || 'A').toUpperCase())
   return { src, alt: name, text }
 }
 
@@ -34,10 +39,11 @@ export function generateAvatar(name: string, email: string | undefined, id: stri
  * Generate a unique agent ID from name
  */
 export function generateAgentId(name: string, existingIds: string[]): string {
-  const baseSlug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '') || 'agent'
+  const baseSlug =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'agent'
   let id = baseSlug
   if (existingIds.includes(id)) {
     id = `${baseSlug}-${nanoid(4)}`
@@ -110,32 +116,57 @@ export function createAgentStorage() {
 }
 
 /**
+ * Extract username from email (username@domain -> username)
+ */
+export function extractUsername(email: string): string {
+  return email.split('@')[0].toLowerCase().trim()
+}
+
+/**
+ * Validate username format
+ */
+export function isValidUsername(username: string): boolean {
+  return /^[a-z0-9_-]+$/i.test(username)
+}
+
+/**
  * Create a complete agent object with defaults
+ * Note: email field now stores only the username part
  */
 export function createAgentObject(body: Partial<Agent>, existingIds: string[]): Agent {
   const name = body.name || 'Unnamed'
   const id = generateAgentId(name, existingIds)
+
+  // Extract username from email if provided (may include @domain)
+  const username = body.email ? extractUsername(body.email) : id
+
   return {
     id,
     name,
-    email: body.email || `${id}@agents.local`,
+    email: username, // Store only username, not full email
     role: body.role || 'Agent',
     prompt: body.prompt || '',
-    avatar: body.avatar || generateAvatar(name, body.email, id),
+    avatar: body.avatar || generateAvatar(name, username, id),
     mcpServerIds: normalizeMcpServerIds(body.mcpServerIds)
   }
 }
 
 /**
  * Update agent with proper normalization
+ * Note: email field now stores only the username part
  */
 export function updateAgentObject(existing: Agent, updates: Partial<Agent>): Agent {
   const name = updates.name || existing.name
+
+  // Extract username from email if it's being updated
+  const username = updates.email ? extractUsername(updates.email) : existing.email
+
   return {
     ...existing,
     ...updates,
     id: existing.id, // Never change the ID
-    avatar: updates.avatar || generateAvatar(name, updates.email, existing.id),
+    email: username, // Store only username
+    avatar: updates.avatar || generateAvatar(name, username, existing.id),
     mcpServerIds: normalizeMcpServerIds(updates.mcpServerIds, existing.mcpServerIds || [])
   }
 }

@@ -1,5 +1,10 @@
 import type { Agent } from '~/types'
-import { createAgentStorage, createAgentObject, updateAgentObject } from '../../utils/shared'
+import {
+  createAgentStorage,
+  createAgentObject,
+  updateAgentObject,
+  extractUsername
+} from '../../utils/shared'
 
 export default defineEventHandler(async (event) => {
   const agentStorage = createAgentStorage()
@@ -24,13 +29,37 @@ export default defineEventHandler(async (event) => {
     const session = await getUserSession(event)
 
     const existingAgents = await agentStorage.read()
-    const agent = createAgentObject(
-      body,
-      existingAgents.map((a) => a.id)
-    )
 
     // Auto-assign teamId from session if not provided
     const teamId = body.teamId || session?.team?.id
+
+    // For predefined agents, check if already exists and use the provided ID
+    let agent: Agent
+    if (body.isPredefined && body.id) {
+      // Check if predefined agent already exists
+      const existing = existingAgents.find((a) => a.id === body.id)
+      if (existing) {
+        throw createError({ statusCode: 409, statusMessage: 'Predefined agent already exists' })
+      }
+      // Use the provided ID and username for predefined agents
+      const username = body.email ? extractUsername(body.email) : body.id
+      agent = {
+        id: body.id,
+        name: body.name || '',
+        email: username, // Store only username
+        role: body.role || 'Agent',
+        prompt: body.prompt || '',
+        avatar: body.avatar,
+        mcpServerIds: body.mcpServerIds || [],
+        isPredefined: true
+      }
+    } else {
+      // For custom agents, generate ID and extract username
+      agent = createAgentObject(
+        body,
+        existingAgents.map((a) => a.id)
+      )
+    }
 
     return await agentStorage.create({
       ...agent,
@@ -65,6 +94,16 @@ export default defineEventHandler(async (event) => {
     if (!id) {
       throw createError({ statusCode: 400, statusMessage: 'Missing id' })
     }
+
+    // Check if agent exists
+    const agent = await agentStorage.findById(id)
+    if (!agent) {
+      throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
+    }
+
+    // Predefined agents can be deleted (they will just be "disabled")
+    // No special restriction here, as deleting a predefined agent is how we "disable" it
+
     const success = await agentStorage.delete(id)
     if (!success) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })

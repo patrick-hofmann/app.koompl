@@ -6,6 +6,7 @@ import { agentLogger } from './agentLogging'
 import type { McpEmailContext, McpContextResult } from '../types/mcp-clients'
 import { fetchKanbanContext, type KanbanMcpContext } from './mcpKanban'
 import { fetchCalendarContext, type CalendarMcpContext } from './mcpCalendar'
+import { listAgentDirectory } from './mcpAgents'
 
 const DEFAULT_LIMIT = 5
 
@@ -340,6 +341,39 @@ async function fetchCustomContext(
   }
 }
 
+async function fetchAgentsDirectoryContext(
+  server: StoredMcpServer,
+  limit: number,
+  teamId?: string
+): Promise<McpContextResult | null> {
+  const agents = await listAgentDirectory(teamId)
+  const limited = agents.slice(0, limit)
+
+  if (!limited.length) {
+    return {
+      serverId: server.id,
+      serverName: server.name,
+      provider: server.provider,
+      category: server.category,
+      summary: 'Keine Agents im Verzeichnis gefunden.',
+      details: []
+    }
+  }
+
+  const summary = limited
+    .map((agent) => `• ${agent.name} (${agent.role}) – ${agent.summary}`)
+    .join('\n')
+
+  return {
+    serverId: server.id,
+    serverName: server.name,
+    provider: server.provider,
+    category: server.category,
+    summary: `Agents-Übersicht:\n${summary}`,
+    details: limited
+  }
+}
+
 function extractSearchTerms(text: string): string[] {
   const commonTerms = [
     'button',
@@ -430,6 +464,10 @@ export async function fetchMcpContext(
           }
         }
         break
+      case 'builtin-agents': {
+        result = await fetchAgentsDirectoryContext(server, limit, options.teamId)
+        break
+      }
       default:
         result = await fetchCustomContext(server, email, limit)
     }

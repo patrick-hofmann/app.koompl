@@ -25,9 +25,15 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
 
+    // Prevent modification of predefined status
+    if (body.isPredefined !== undefined && body.isPredefined !== existing.isPredefined) {
+      throw createError({ statusCode: 400, statusMessage: 'Cannot change predefined status' })
+    }
+
     const updated = updateAgentObject(existing, body)
     return await agentStorage.update(id, {
       ...updated,
+      isPredefined: existing.isPredefined, // Preserve isPredefined flag
       teamId: body.teamId !== undefined ? body.teamId : existing.teamId,
       updatedAt: new Date().toISOString()
     })

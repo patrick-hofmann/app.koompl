@@ -44,6 +44,7 @@ export default defineEventHandler(async (event) => {
           id: team.id,
           name: team.name,
           description: team.description,
+          domain: team.domain,
           role: membership.role
         }
       })
@@ -87,6 +88,7 @@ export default defineEventHandler(async (event) => {
         id: currentTeam.id,
         name: currentTeam.name,
         description: currentTeam.description,
+        domain: currentTeam.domain,
         role: currentTeam.role
       },
       availableTeams: uniqueTeams

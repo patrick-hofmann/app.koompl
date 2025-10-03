@@ -15,6 +15,7 @@ type SessionTeam = {
   id: string
   name: string
   description?: string
+  domain?: string
   role?: string
 }
 
@@ -22,6 +23,7 @@ type AvailableTeam = {
   id: string
   name: string
   description?: string
+  domain?: string
   role?: string
 }
 
@@ -45,7 +47,8 @@ export async function setCustomUserSession(
     team: {
       id: params.team.id,
       name: params.team.name,
-      description: params.team.description
+      description: params.team.description,
+      domain: params.team.domain
     },
     availableTeams: params.availableTeams,
     loggedInAt: params.loggedInAt || new Date().toISOString()

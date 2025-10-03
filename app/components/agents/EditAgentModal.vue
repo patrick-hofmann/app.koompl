@@ -11,6 +11,18 @@ const emit = defineEmits<{
   (e: 'saved'): void
 }>()
 
+// Get team domain from session/API
+const { session } = await useUserSession()
+const { data: teamData } = await useAsyncData(
+  'team-domain-edit-modal',
+  () => $fetch<{ teamId: string; teamName: string; domain: string | null }>('/api/team/domain'),
+  { server: false, lazy: true }
+)
+
+const teamDomain = computed(
+  () => teamData.value?.domain || session.value?.team?.domain || 'agents.local'
+)
+
 const local = reactive<Partial<Agent>>({
   mcpServerIds: [],
   multiRoundConfig: {
@@ -167,6 +179,7 @@ watch(
 )
 
 const isCreating = computed(() => !props.agent?.id)
+const isPredefined = computed(() => props.agent?.isPredefined || false)
 const modalTitle = computed(() => (isCreating.value ? 'Add Koompl' : 'Edit Koompl'))
 const modalDescription = computed(() =>
   isCreating.value ? 'Add a new Koompl' : 'Edit the Koompl settings'
@@ -209,20 +222,53 @@ async function refreshAvatar() {
       <UCard>
         <div class="max-h-[70vh] overflow-y-auto px-1">
           <h3 class="font-medium text-highlighted mb-2">{{ modalTitle }}</h3>
+          <UAlert
+            v-if="isPredefined && !isCreating"
+            icon="i-lucide-info"
+            color="blue"
+            variant="soft"
+            title="Predefined Koompl"
+            description="This is a predefined Koompl. Core properties (name, email, role, prompt) cannot be modified."
+            class="mb-4"
+          />
           <UForm :state="local" @submit="save">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div class="lg:col-span-2 space-y-3">
                 <UFormField label="Name">
-                  <UInput v-model="local.name" />
+                  <UInput v-model="local.name" :disabled="isPredefined && !isCreating" />
                 </UFormField>
                 <UFormField label="Email">
-                  <UInput v-model="local.email" />
+                  <div class="flex items-center gap-2">
+                    <UInput
+                      v-model="local.email"
+                      :disabled="isPredefined && !isCreating"
+                      placeholder="username"
+                      class="flex-1"
+                    />
+                    <span class="text-muted">@</span>
+                    <UInput
+                      :model-value="teamDomain"
+                      disabled
+                      class="flex-1 opacity-70"
+                      :ui="{ base: 'cursor-not-allowed' }"
+                    />
+                  </div>
+                  <template #hint>
+                    <span class="text-xs text-muted"
+                      >Username only (domain is set by your team)</span
+                    >
+                  </template>
                 </UFormField>
                 <UFormField label="Role">
-                  <UInput v-model="local.role" />
+                  <UInput v-model="local.role" :disabled="isPredefined && !isCreating" />
                 </UFormField>
                 <UFormField label="System Prompt">
-                  <UTextarea v-model="local.prompt" :rows="4" autoresize />
+                  <UTextarea
+                    v-model="local.prompt"
+                    :rows="4"
+                    autoresize
+                    :disabled="isPredefined && !isCreating"
+                  />
                 </UFormField>
                 <UFormField
                   label="MCP Server"

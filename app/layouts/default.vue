@@ -42,9 +42,9 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
       }
     },
     {
-      label: 'Domains',
+      label: 'Domain',
       icon: 'i-lucide-globe',
-      to: '/domains',
+      to: '/domain',
       onSelect: () => {
         open.value = false
       }

@@ -15,15 +15,17 @@ export class UnifiedMailStorage {
    * Store an inbound email (from Mailgun webhook)
    */
   async storeInboundEmail(data: {
-    messageId: string;
-    from: string;
-    to: string;
-    subject: string;
-    body: string;
-    html?: string;
-    agentId?: string;
-    agentEmail?: string;
-    mcpContexts?: unknown[];
+    messageId: string
+    from: string
+    to: string
+    subject: string
+    body: string
+    html?: string
+    inReplyTo?: string[]
+    references?: string[]
+    agentId?: string
+    agentEmail?: string
+    mcpContexts?: unknown[]
     rawPayload?: Record<string, unknown>
   }): Promise<InboundEmail> {
     const id = `inbound-${data.messageId}`
@@ -38,6 +40,8 @@ export class UnifiedMailStorage {
       subject: data.subject,
       body: data.body,
       html: data.html,
+      inReplyTo: data.inReplyTo,
+      references: data.references,
       agentId: data.agentId,
       agentEmail: data.agentEmail,
       mcpContexts: data.mcpContexts,
@@ -61,7 +65,11 @@ export class UnifiedMailStorage {
       agentEmail: data.agentEmail,
       mcpServerIds: data.agentId ? await this.getAgentMcpServerIds(data.agentId) : [],
       mcpContextCount: data.mcpContexts?.length || 0,
-      metadata: { hasHtml: !!data.html, hasRawPayload: !!data.rawPayload }
+      metadata: {
+        hasHtml: !!data.html,
+        hasRawPayload: !!data.rawPayload,
+        hasThreadHeaders: Boolean(data.inReplyTo?.length || data.references?.length)
+      }
     })
 
     return inboundEmail
@@ -71,9 +79,9 @@ export class UnifiedMailStorage {
    * Update inbound email after agent resolution without creating a duplicate log entry
    */
   async updateInboundEmailContext(data: {
-    messageId: string;
-    agentId?: string;
-    agentEmail?: string;
+    messageId: string
+    agentId?: string
+    agentEmail?: string
     mcpContexts?: unknown[]
   }): Promise<void> {
     const id = `inbound-${data.messageId}`
@@ -92,14 +100,16 @@ export class UnifiedMailStorage {
 
     // Update unified log entry in-place (do not add a new one)
     const logs = await this.getAllLogs()
-    const idx = logs.findIndex(l => l.id === id && l.type === 'inbound')
+    const idx = logs.findIndex((l) => l.id === id && l.type === 'inbound')
     if (idx !== -1) {
       const entry = logs[idx]
       logs[idx] = {
         ...entry,
         agentId: data.agentId ?? entry.agentId,
         agentEmail: data.agentEmail ?? entry.agentEmail,
-        mcpContextCount: Array.isArray(data.mcpContexts) ? data.mcpContexts.length : entry.mcpContextCount
+        mcpContextCount: Array.isArray(data.mcpContexts)
+          ? data.mcpContexts.length
+          : entry.mcpContextCount
       }
       // Keep only most recent 1000 entries after update
       const sortedLogs = logs
@@ -113,17 +123,17 @@ export class UnifiedMailStorage {
    * Store an outbound email (agent response)
    */
   async storeOutboundEmail(data: {
-    messageId: string;
-    from: string;
-    to: string;
-    subject: string;
-    body: string;
-    agentId: string;
-    agentEmail: string;
-    usedOpenAI: boolean;
-    mailgunSent: boolean;
-    mcpServerIds?: string[];
-    mcpContextCount?: number;
+    messageId: string
+    from: string
+    to: string
+    subject: string
+    body: string
+    agentId: string
+    agentEmail: string
+    usedOpenAI: boolean
+    mailgunSent: boolean
+    mcpServerIds?: string[]
+    mcpContextCount?: number
     isAutomatic?: boolean // true for automatic responses, false for manual responses
   }): Promise<OutboundEmail> {
     const id = `outbound-${data.messageId}`
@@ -187,12 +197,16 @@ export class UnifiedMailStorage {
 
     for (const log of logs) {
       if (log.type === 'inbound') {
-        const inboundEmail = await this.storage.getItem<InboundEmail>(`emails/inbound/${log.id}.json`)
+        const inboundEmail = await this.storage.getItem<InboundEmail>(
+          `emails/inbound/${log.id}.json`
+        )
         if (inboundEmail) {
           incoming.push(this.formatAsMail(inboundEmail, 'inbound'))
         }
       } else if (log.type === 'outgoing') {
-        const outboundEmail = await this.storage.getItem<OutboundEmail>(`emails/outbound/${log.id}.json`)
+        const outboundEmail = await this.storage.getItem<OutboundEmail>(
+          `emails/outbound/${log.id}.json`
+        )
         if (outboundEmail) {
           outgoing.push(this.formatAsMail(outboundEmail, 'outbound'))
         }
@@ -208,7 +222,7 @@ export class UnifiedMailStorage {
   async getLogsForAgent(agentId: string, limit = 100): Promise<MailLogEntry[]> {
     const allLogs = await this.getAllLogs()
     return allLogs
-      .filter(log => log.agentId === agentId)
+      .filter((log) => log.agentId === agentId)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, limit)
   }
@@ -221,7 +235,7 @@ export class UnifiedMailStorage {
     let filteredLogs = allLogs
 
     if (type) {
-      filteredLogs = allLogs.filter(log => log.type === type)
+      filteredLogs = allLogs.filter((log) => log.type === type)
     }
 
     return filteredLogs
@@ -252,7 +266,7 @@ export class UnifiedMailStorage {
   private async getAgent(agentId: string): Promise<Agent | null> {
     const agentsStorage = useStorage('agents')
     const agents = await agentsStorage.getItem<Agent[]>('agents.json')
-    return agents?.find(a => a?.id === agentId) || null
+    return agents?.find((a) => a?.id === agentId) || null
   }
 
   private async getAgentMcpServerIds(agentId: string): Promise<string[]> {
@@ -260,10 +274,17 @@ export class UnifiedMailStorage {
     return agent?.mcpServerIds || []
   }
 
-  private formatAsMail(email: InboundEmail | OutboundEmail, direction: 'inbound' | 'outbound'): Mail {
+  private formatAsMail(
+    email: InboundEmail | OutboundEmail,
+    direction: 'inbound' | 'outbound'
+  ): Mail {
     const isInbound = direction === 'inbound'
-    const senderInfo = isInbound ? this.parseEmailHeader(email.from) : this.parseEmailHeader(email.to)
-    const _recipientInfo = isInbound ? this.parseEmailHeader(email.to) : this.parseEmailHeader(email.from)
+    const senderInfo = isInbound
+      ? this.parseEmailHeader(email.from)
+      : this.parseEmailHeader(email.to)
+    const _recipientInfo = isInbound
+      ? this.parseEmailHeader(email.to)
+      : this.parseEmailHeader(email.from)
 
     return {
       id: parseInt(email.id.replace(/[^0-9]/g, '')) || Math.random(),
@@ -309,7 +330,8 @@ export class UnifiedMailStorage {
     const agentsStorage = useStorage('agents')
 
     // Migrate existing email logs
-    const existingLogs = await agentsStorage.getItem<Array<Record<string, unknown>>>('email:log.json')
+    const existingLogs =
+      await agentsStorage.getItem<Array<Record<string, unknown>>>('email:log.json')
     if (Array.isArray(existingLogs)) {
       for (const log of existingLogs) {
         const entry: MailLogEntry = {
@@ -350,9 +372,12 @@ export class UnifiedMailStorage {
 
   private mapLogType(oldType: string): MailLogEntry['type'] {
     switch (oldType) {
-      case 'inbound_processed': return 'inbound_processed'
-      case 'agent_respond': return 'outgoing'
-      default: return 'inbound'
+      case 'inbound_processed':
+        return 'inbound_processed'
+      case 'agent_respond':
+        return 'outgoing'
+      default:
+        return 'inbound'
     }
   }
 
@@ -367,7 +392,7 @@ export class UnifiedMailStorage {
     try {
       // Get all logs to find emails for this agent
       const allLogs = await this.getAllLogs()
-      const agentLogs = allLogs.filter(log => log.agentId === agentId)
+      const agentLogs = allLogs.filter((log) => log.agentId === agentId)
 
       console.log(`[MailStorage] Found ${agentLogs.length} email logs for agent ${agentId}`)
 
@@ -386,7 +411,7 @@ export class UnifiedMailStorage {
       }
 
       // Remove logs from unified log file
-      const updatedLogs = allLogs.filter(log => log.agentId !== agentId)
+      const updatedLogs = allLogs.filter((log) => log.agentId !== agentId)
       await this.storage.setItem('logs/unified.json', updatedLogs)
 
       console.log(`[MailStorage] ✓ Cleared ${deletedCount} emails for agent ${agentId}`)
@@ -406,10 +431,10 @@ export class UnifiedMailStorage {
 
     try {
       const allLogs = await this.getAllLogs()
-      const agentLogs = allLogs.filter(log => log.agentId === agentId)
+      const agentLogs = allLogs.filter((log) => log.agentId === agentId)
 
       // Remove logs from unified log file
-      const updatedLogs = allLogs.filter(log => log.agentId !== agentId)
+      const updatedLogs = allLogs.filter((log) => log.agentId !== agentId)
       await this.storage.setItem('logs/unified.json', updatedLogs)
 
       console.log(`[MailStorage] ✓ Cleared ${agentLogs.length} logs for agent ${agentId}`)

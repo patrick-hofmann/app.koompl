@@ -37,7 +37,8 @@ const isSavingUser = ref(false)
 const editingTeamId = ref<string | null>(null)
 const teamForm = reactive({
   name: '',
-  description: ''
+  description: '',
+  domain: ''
 })
 const isSavingTeam = ref(false)
 
@@ -176,6 +177,7 @@ function resetTeamForm() {
   editingTeamId.value = null
   teamForm.name = ''
   teamForm.description = ''
+  teamForm.domain = ''
 }
 
 async function submitUser() {
@@ -231,7 +233,8 @@ async function submitTeam() {
         method: 'PATCH',
         body: {
           name: teamForm.name,
-          description: teamForm.description
+          description: teamForm.description,
+          domain: teamForm.domain || undefined
         }
       })
       toast.add({ title: 'Team updated', color: 'success' })
@@ -240,7 +243,8 @@ async function submitTeam() {
         method: 'POST',
         body: {
           name: teamForm.name,
-          description: teamForm.description
+          description: teamForm.description,
+          domain: teamForm.domain || undefined
         }
       })
       toast.add({ title: 'Team created', color: 'success' })
@@ -399,6 +403,7 @@ function startEditTeam(team: Team) {
   editingTeamId.value = team.id
   teamForm.name = team.name
   teamForm.description = team.description || ''
+  teamForm.domain = team.domain || ''
 }
 
 function formatDateTime(value?: string) {
@@ -578,8 +583,24 @@ function formatDateTime(value?: string) {
                 class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-default p-4"
               >
                 <div class="space-y-1">
-                  <h4 class="font-medium text-highlighted">{{ team.name }}</h4>
+                  <div class="flex items-center gap-2">
+                    <h4 class="font-medium text-highlighted">{{ team.name }}</h4>
+                    <UBadge
+                      v-if="team.domain"
+                      :label="team.domain"
+                      color="green"
+                      variant="subtle"
+                      size="xs"
+                    />
+                    <UBadge v-else label="No domain" color="gray" variant="subtle" size="xs" />
+                  </div>
                   <p v-if="team.description" class="text-sm text-muted">{{ team.description }}</p>
+                  <p v-if="team.domain" class="text-sm text-primary">
+                    Domain: <strong>{{ team.domain }}</strong> - Koompls will use @{{
+                      team.domain
+                    }}
+                    emails
+                  </p>
                   <p class="text-xs text-muted">Team-ID: {{ team.id }}</p>
                   <p class="text-xs text-muted">
                     Members: {{ identity.memberships.filter((m) => m.teamId === team.id).length }}
@@ -619,8 +640,15 @@ function formatDateTime(value?: string) {
               <UFormField label="Name" class="md:col-span-1">
                 <UInput v-model="teamForm.name" placeholder="Core team" required />
               </UFormField>
-              <UFormField label="Description" class="md:col-span-2">
+              <UFormField label="Description" class="md:col-span-1">
                 <UInput v-model="teamForm.description" placeholder="Optional description" />
+              </UFormField>
+              <UFormField label="Domain" class="md:col-span-1">
+                <UInput
+                  v-model="teamForm.domain"
+                  placeholder="example.com"
+                  help-text="Koompls will use emails like agent-id@domain.com"
+                />
               </UFormField>
               <div class="md:col-span-3 flex justify-end gap-2">
                 <UButton

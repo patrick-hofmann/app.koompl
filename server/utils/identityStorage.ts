@@ -15,6 +15,7 @@ export interface IdentityTeam {
   id: string
   name: string
   description?: string
+  domain?: string // Team's unique domain (e.g., "company.com")
   createdAt?: string
   updatedAt?: string
 }
@@ -211,6 +212,7 @@ export async function upsertTeam(
   const teams = data.teams || []
   const name = String(payload.name || '').trim()
   const description = payload.description ? String(payload.description).trim() : undefined
+  const domain = payload.domain ? String(payload.domain).trim().toLowerCase() : undefined
 
   if (!name) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid team payload' })
@@ -223,13 +225,23 @@ export async function upsertTeam(
     throw createError({ statusCode: 409, statusMessage: 'Team name already in use' })
   }
 
+  // Check for domain uniqueness if domain is provided
+  if (domain) {
+    const domainConflict = teams.find(
+      (team) => team.domain?.toLowerCase() === domain && team.id !== payload.id
+    )
+    if (domainConflict) {
+      throw createError({ statusCode: 409, statusMessage: 'Domain already in use by another team' })
+    }
+  }
+
   if (payload.id) {
     const idx = teams.findIndex((team) => team.id === payload.id)
     if (idx === -1) {
       throw createError({ statusCode: 404, statusMessage: 'Team not found' })
     }
     const updated = withTimestamps(
-      { ...teams[idx], name, description, id: payload.id },
+      { ...teams[idx], name, description, domain, id: payload.id },
       !teams[idx].createdAt
     )
     teams[idx] = updated
@@ -242,7 +254,8 @@ export async function upsertTeam(
     {
       id,
       name,
-      description
+      description,
+      domain
     },
     true
   )

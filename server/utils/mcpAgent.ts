@@ -98,6 +98,15 @@ export class KoomplMcpAgent {
       } else if (server.provider === 'builtin-calendar') {
         console.log('[MCPAgent] Skipping built-in Calendar server - no context provided')
         continue
+      } else if (server.provider === 'builtin-agents') {
+        const serverPath = new URL('./builtinAgentsInfoMcpServer.mjs', import.meta.url).pathname
+        serverConfigs[server.id] = {
+          command: 'node',
+          args: [serverPath],
+          env: {
+            AGENTS_TEAM_ID: kanbanContext?.teamId || ''
+          }
+        }
       } else if (server.provider === 'custom' && server.url) {
         // Custom MCP server via HTTP
         serverConfigs[server.id] = {

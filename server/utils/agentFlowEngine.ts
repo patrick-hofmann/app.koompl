@@ -38,6 +38,7 @@ export class AgentFlowEngine {
     timeoutMinutes?: number
     teamId?: string
     userId?: string
+    requester?: { name: string; email: string }
   }): Promise<AgentFlow> {
     const flowId = `flow-${params.agentId}-${nanoid(8)}`
     const now = new Date().toISOString()
@@ -48,7 +49,7 @@ export class AgentFlowEngine {
       agentId: params.agentId,
       status: 'active',
       trigger: params.trigger,
-      requester: {
+      requester: params.requester || {
         email: params.trigger.from,
         name: this.extractNameFromEmail(params.trigger.from)
       },
@@ -121,7 +122,7 @@ export class AgentFlowEngine {
 
   private async createNewRound(flow: AgentFlow): Promise<FlowRound> {
     const roundNumber = flow.currentRound + 1
-    return {
+    const round: FlowRound = {
       roundNumber,
       startedAt: new Date().toISOString(),
       decision: {
@@ -134,6 +135,20 @@ export class AgentFlowEngine {
       mcpCalls: [],
       messages: []
     }
+
+    if (roundNumber === 1) {
+      round.messages.push({
+        id: `msg-${nanoid(8)}`,
+        direction: 'received',
+        from: flow.trigger.from,
+        subject: flow.trigger.subject,
+        body: flow.trigger.body,
+        timestamp: flow.trigger.receivedAt,
+        messageId: this.normalizeMessageId(flow.trigger.messageId)
+      })
+    }
+
+    return round
   }
 
   private async processDecision(flow: AgentFlow, round: FlowRound): Promise<void> {
@@ -217,14 +232,33 @@ export class AgentFlowEngine {
     if (input.type === 'email_response' && input.email) {
       const currentRound = flow.rounds[flow.rounds.length - 1]
       if (currentRound) {
+        const normalizedMessageId = this.normalizeMessageId(input.email.messageId)
+        const inReplyIds = input.email.inReplyTo
+          ?.map((id) => this.normalizeMessageId(id))
+          .filter((id): id is string => !!id)
+        const referenceIds = input.email.references
+          ?.map((id) => this.normalizeMessageId(id))
+          .filter((id): id is string => !!id)
+
         currentRound.messages.push({
           id: `msg-${nanoid(8)}`,
           direction: 'received',
           from: input.email.from,
           subject: input.email.subject,
           body: input.email.body,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          messageId: normalizedMessageId,
+          inReplyTo: inReplyIds,
+          references: referenceIds
         })
+
+        if (flow.waitingFor) {
+          const threadIds = new Set(flow.waitingFor.threadMessageIds || [])
+          if (normalizedMessageId) threadIds.add(normalizedMessageId)
+          for (const id of inReplyIds || []) threadIds.add(id)
+          for (const id of referenceIds || []) threadIds.add(id)
+          flow.waitingFor.threadMessageIds = Array.from(threadIds)
+        }
       }
     }
 
@@ -551,9 +585,10 @@ export class AgentFlowEngine {
     flow.status = 'waiting'
     flow.waitingFor = {
       type: 'agent_response',
-      agentId: decision.targetAgent.agentId || toAgentEmail, // Store email or legacy ID
-      requestId: requestId,
-      expectedBy: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutes
+      agentId: toAgentEmail, // Store full email for proper matching
+      requestId,
+      expectedBy: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
+      threadMessageIds: []
     }
     flow.updatedAt = new Date().toISOString()
 
@@ -579,8 +614,10 @@ export class AgentFlowEngine {
     // NOW send the email
     const messageRouter = new MessageRouter()
 
+    let outboundMessageId: string | undefined
+
     try {
-      await messageRouter.sendAgentToAgentEmail({
+      outboundMessageId = await messageRouter.sendAgentToAgentEmail({
         fromAgentEmail: fromAgent.email,
         toAgentEmail: toAgentEmail,
         subject: decision.targetAgent.messageSubject,
@@ -601,6 +638,28 @@ export class AgentFlowEngine {
       `[AgentFlowEngine] ⏳ Flow ${flow.id} now waiting for response from agent ${toAgentEmail}`
     )
     console.log(`[AgentFlowEngine] ⏳ Request ID: ${requestId}`)
+
+    if (outboundMessageId) {
+      const normalizedId = this.normalizeMessageId(outboundMessageId)
+      if (normalizedId && flow.waitingFor) {
+        flow.waitingFor.messageId = normalizedId
+        const existingThread = new Set(flow.waitingFor.threadMessageIds || [])
+        existingThread.add(normalizedId)
+        flow.waitingFor.threadMessageIds = Array.from(existingThread)
+      }
+
+      if (currentRound) {
+        const lastMessage = currentRound.messages[currentRound.messages.length - 1]
+        if (lastMessage) {
+          lastMessage.messageId = normalizedId
+        }
+      }
+
+      await this.saveFlow(flow)
+      console.log(
+        `[AgentFlowEngine] 📌 Stored outbound messageId ${normalizedId} on flow ${flow.id}`
+      )
+    }
   }
 
   /**
@@ -650,15 +709,25 @@ ${trigger.body}`
       })
     }
 
-    const toAgentEmail = this.resolveTargetAgentEmail(agents, decision)
-    if (!toAgentEmail) {
+    const toAgentTarget = this.resolveTargetAgentEmail(agents, decision)
+    if (!toAgentTarget) {
       throw createError({
         statusCode: 500,
         statusMessage: 'Target agent email not specified and could not be resolved'
       })
     }
 
-    return { fromAgent, toAgentEmail }
+    // Construct full emails with team domain
+    const { getAgentFullEmail } = await import('./agentEmailHelpers')
+    const teamId = flow.context?.teamId || (flow as unknown as { teamId?: string }).teamId
+    const fromAgentEmail = await getAgentFullEmail(fromAgent.email, teamId)
+
+    // If decision already provided a full email (contains '@'), use as-is; otherwise build from username
+    const toAgentEmail = toAgentTarget.includes('@')
+      ? toAgentTarget
+      : await getAgentFullEmail(toAgentTarget, teamId)
+
+    return { fromAgent: { ...fromAgent, email: fromAgentEmail }, toAgentEmail }
   }
 
   private async loadAgents() {
@@ -777,6 +846,15 @@ ${trigger.body}`
     // Fallback to email username
     const email = emailHeader.trim()
     return email.split('@')[0]
+  }
+
+  private normalizeMessageId(messageId?: string): string | undefined {
+    if (!messageId) return undefined
+    const trimmed = messageId.trim()
+    if (!trimmed) return undefined
+    const angleMatch = trimmed.match(/<([^>]+)>/)
+    const normalized = (angleMatch ? angleMatch[1] : trimmed).trim()
+    return normalized ? normalized.toLowerCase() : undefined
   }
 }
 

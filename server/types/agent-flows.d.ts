@@ -43,6 +43,9 @@ export interface FlowWaitState {
   agentId?: string // If waiting for another agent
   webhookId?: string // If waiting for a webhook
   expectedBy?: string // Timeout deadline (ISO timestamp)
+  requestId?: string // Identifier used in subject lines (legacy support)
+  messageId?: string // Message ID we expect a reply to
+  threadMessageIds?: string[] // Additional message/thread identifiers
   metadata?: Record<string, unknown>
 }
 
@@ -109,6 +112,9 @@ export interface FlowMessage {
   subject?: string
   body: string
   timestamp: string
+  messageId?: string
+  inReplyTo?: string[]
+  references?: string[]
 }
 
 export interface FlowRound {
@@ -230,6 +236,8 @@ export interface ResumeInput {
     from: string
     subject: string
     body: string
+    inReplyTo?: string[]
+    references?: string[]
   }
   webhookPayload?: unknown
   manualInput?: string

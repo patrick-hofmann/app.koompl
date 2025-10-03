@@ -41,6 +41,32 @@ export default defineEventHandler(async (event) => {
       }
       return undefined
     }
+    function extractMessageIdList(value: unknown): string[] {
+      if (!value) return []
+      const raw = String(value)
+      if (!raw.trim()) return []
+      const angleMatches = raw.match(/<[^>]+>/g)
+      if (angleMatches && angleMatches.length > 0) {
+        return Array.from(new Set(angleMatches.map((match) => match.trim())))
+      }
+      return Array.from(
+        new Set(
+          raw
+            .split(/[\s,]+/)
+            .map((part) => part.trim())
+            .filter((part) => part.length > 0)
+        )
+      )
+    }
+
+    function normalizeMessageId(value: string | undefined): string | undefined {
+      if (!value) return undefined
+      const trimmed = value.trim()
+      if (!trimmed) return undefined
+      const angleMatch = trimmed.match(/<([^>]+)>/)
+      const normalized = (angleMatch ? angleMatch[1] : trimmed).trim().toLowerCase()
+      return normalized || undefined
+    }
     const _receivedAt = new Date().toISOString()
     const messageId = String(
       firstString(
@@ -81,6 +107,26 @@ export default defineEventHandler(async (event) => {
       payload ? (payload as Record<string, unknown>)['html'] : undefined,
       payload ? (payload as Record<string, unknown>)['body-html'] : undefined
     )
+    const inReplyToHeader = firstString(
+      payload ? (payload as Record<string, unknown>)['In-Reply-To'] : undefined,
+      payload ? (payload as Record<string, unknown>)['in-reply-to'] : undefined,
+      getPath(payload, ['headers', 'in-reply-to'])
+    )
+    const referencesHeader = firstString(
+      payload ? (payload as Record<string, unknown>)['References'] : undefined,
+      payload ? (payload as Record<string, unknown>)['references'] : undefined,
+      getPath(payload, ['headers', 'references'])
+    )
+
+    const inReplyToIds = extractMessageIdList(inReplyToHeader)
+    const referenceIds = extractMessageIdList(referencesHeader)
+    const normalizedInReplyTo = inReplyToIds
+      .map((id) => normalizeMessageId(id))
+      .filter((id): id is string => !!id)
+    const normalizedReferences = referenceIds
+      .map((id) => normalizeMessageId(id))
+      .filter((id): id is string => !!id)
+    const referencedThreadIds = new Set([...normalizedInReplyTo, ...normalizedReferences])
 
     // Store in unified mail storage system
     const _inboundEmail = await mailStorage.storeInboundEmail({
@@ -90,6 +136,8 @@ export default defineEventHandler(async (event) => {
       subject: String(subject || ''),
       body: String(text || ''),
       html: String(html || ''),
+      inReplyTo: inReplyToIds,
+      references: referenceIds,
       agentId: undefined, // Will be set below after agent resolution
       agentEmail: undefined,
       mcpContexts: [],
@@ -101,22 +149,65 @@ export default defineEventHandler(async (event) => {
     const toEmail = extractEmail(to)
     const fromEmail = extractEmail(from)
 
-    // Load agents and try to resolve the agent by recipient address
+    // Extract domain from recipient email
+    const recipientDomain = toEmail?.split('@')[1]?.toLowerCase()
+    if (!recipientDomain) {
+      console.log('[Inbound] No domain found in recipient email:', toEmail)
+      return { ok: true, error: 'Invalid recipient email' }
+    }
+
+    // Look up team by domain
+    const { getIdentity } = await import('../../utils/identityStorage')
+    const identity = await getIdentity()
+    const team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain)
+
+    if (!team) {
+      console.log('[Inbound] No team found for domain:', recipientDomain)
+      return { ok: true, error: 'Team not found for domain' }
+    }
+
+    console.log('[Inbound] Found team for domain:', {
+      teamId: team.id,
+      teamName: team.name,
+      domain: recipientDomain
+    })
+
+    // Extract username from recipient email (agent.email now stores username only)
+    const recipientUsername = toEmail?.split('@')[0]?.toLowerCase()
+    if (!recipientUsername) {
+      console.log('[Inbound] No username found in recipient email:', toEmail)
+      return { ok: true, error: 'Invalid recipient username' }
+    }
+
+    // Load agents and filter by team
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-    const agent = toEmail
-      ? agents.find((a) => String(a?.email || '').toLowerCase() === toEmail)
-      : undefined
+    const teamAgents = agents.filter((a) => a.teamId === team.id)
+
+    // Find agent by username within the team (agent.email stores username only)
+    const agent = teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername)
 
     if (!agent) {
-      console.log('[Inbound] No agent found for email:', toEmail)
+      console.log('[Inbound] No agent found for username in team:', {
+        username: recipientUsername,
+        teamId: team.id
+      })
       return { ok: true, error: 'Agent not found' }
     }
+
+    // Construct full email for logging
+    const fullAgentEmail = `${agent.email}@${recipientDomain}`
+    console.log('[Inbound] Found agent:', {
+      agentId: agent.id,
+      username: agent.email,
+      fullEmail: fullAgentEmail,
+      teamId: agent.teamId
+    })
 
     // Log inbound email activity EARLY (before any outbound processing)
     try {
       await agentLogger.logEmailActivity({
         agentId: agent.id,
-        agentEmail: agent.email,
+        agentEmail: fullAgentEmail, // Use full email for logging
         direction: 'inbound',
         email: {
           messageId: String(messageId || ''),
@@ -152,7 +243,9 @@ export default defineEventHandler(async (event) => {
         to: String(toEmail || to || ''),
         subject: String(subject || ''),
         body: String(text || ''),
-        receivedAt: new Date().toISOString()
+        receivedAt: new Date().toISOString(),
+        inReplyTo: inReplyToIds,
+        references: referenceIds
       },
       agent.id
     )
@@ -174,7 +267,9 @@ export default defineEventHandler(async (event) => {
             messageId: String(messageId || ''),
             from: String(fromEmail || from || ''),
             subject: String(subject || ''),
-            body: String(text || '')
+            body: String(text || ''),
+            inReplyTo: inReplyToIds,
+            references: referenceIds
           }
         },
         agent.id
@@ -188,6 +283,7 @@ export default defineEventHandler(async (event) => {
 
     // Look up user by email to get userId for MCP context (calendar, kanban, etc.)
     let userId: string | undefined
+    let originalRequester: { name: string; email: string } | undefined
     if (fromEmail) {
       try {
         const { getIdentity } = await import('../../utils/identityStorage')
@@ -197,14 +293,18 @@ export default defineEventHandler(async (event) => {
         )
         if (user) {
           userId = user.id
+          originalRequester = { name: user.name, email: user.email }
           console.log(`[Inbound] Found user ID for ${fromEmail}: ${userId}`)
         } else {
           console.log(`[Inbound] No user found for email: ${fromEmail}`)
 
           // Check if sender is an agent (agent-to-agent delegation)
-          const senderAgent = agents.find(
-            (a) => String(a?.email || '').toLowerCase() === fromEmail.toLowerCase()
-          )
+          const senderUsername = fromEmail.split('@')[0]?.toLowerCase()
+          const senderAgent = agents.find((a) => {
+            if (!a?.email) return false
+            const agentIdentifier = String(a.email).toLowerCase()
+            return agentIdentifier === senderUsername || agentIdentifier === fromEmail.toLowerCase()
+          })
           if (senderAgent) {
             console.log(`[Inbound] Sender is an agent: ${senderAgent.name} (${senderAgent.email})`)
             console.log('[Inbound] → Looking for delegating flow to extract user context...')
@@ -214,28 +314,51 @@ export default defineEventHandler(async (event) => {
               status: ['waiting', 'active']
             })
 
-            // Look for a flow that has this request ID in its wait state
+            let delegatingFlow = senderFlows.find((flow) => {
+              const waitState = flow.waitingFor
+              if (!waitState) return false
+              const candidateIds = new Set(
+                [waitState.messageId, ...(waitState.threadMessageIds || [])]
+                  .map((id) => normalizeMessageId(id))
+                  .filter((id): id is string => !!id)
+              )
+              if (candidateIds.size === 0) return false
+              for (const id of candidateIds) {
+                if (referencedThreadIds.has(id)) {
+                  console.log(
+                    `[Inbound] ✓ Matched delegating flow ${flow.id} by message headers (${id})`
+                  )
+                  return true
+                }
+              }
+              return false
+            })
+
             const requestId = messageRouter.extractRequestId(subject || '')
-            if (requestId) {
+            if (!delegatingFlow && requestId) {
               console.log(`[Inbound] Extracted request ID: ${requestId}`)
-              const delegatingFlow = senderFlows.find(
+              delegatingFlow = senderFlows.find(
                 (f) =>
                   f.waitingFor?.type === 'agent_response' && f.waitingFor?.requestId === requestId
               )
+            }
 
-              if (delegatingFlow && delegatingFlow.userId) {
-                userId = delegatingFlow.userId
-                console.log(
-                  `[Inbound] ✓ Found user context from delegating flow ${delegatingFlow.id}`
-                )
-                console.log(`[Inbound] ✓ Using userId: ${userId}`)
-              } else if (delegatingFlow) {
-                console.log(
-                  `[Inbound] ⚠ Delegating flow found but has no userId: ${delegatingFlow.id}`
-                )
-              } else {
-                console.log('[Inbound] ⚠ No delegating flow found for request ID')
-              }
+            if (delegatingFlow && delegatingFlow.userId) {
+              userId = delegatingFlow.userId
+              originalRequester = delegatingFlow.requester
+              console.log(
+                `[Inbound] ✓ Found user context from delegating flow ${delegatingFlow.id}`
+              )
+              console.log(`[Inbound] ✓ Using userId: ${userId}`)
+              console.log(
+                `[Inbound] ✓ Original requester: ${originalRequester.name} <${originalRequester.email}>`
+              )
+            } else if (delegatingFlow) {
+              console.log(
+                `[Inbound] ⚠ Delegating flow found but has no userId: ${delegatingFlow.id}`
+              )
+            } else if (requestId) {
+              console.log('[Inbound] ⚠ No delegating flow found for request ID')
             }
           }
         }
@@ -267,7 +390,8 @@ export default defineEventHandler(async (event) => {
       maxRounds,
       timeoutMinutes,
       teamId: agent.teamId,
-      userId
+      userId,
+      requester: originalRequester || { name: 'Unknown', email: fromEmail || 'unknown@example.com' }
     })
 
     console.log(`[Inbound] ✓ Flow created: ${flow.id}`)
