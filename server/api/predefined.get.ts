@@ -1,4 +1,4 @@
-import { getPredefinedPublic } from '../../utils/predefinedKoompls'
+import { getPredefinedPublic } from '../../server/utils/predefinedKoompls'
 
 export default defineEventHandler(async () => {
   try {

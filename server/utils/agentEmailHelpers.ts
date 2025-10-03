@@ -42,24 +42,6 @@ export function constructEmail(username: string, teamDomain?: string): string {
 }
 
 /**
- * Extracts username from email address
- * @param email - Full email or just username
- * @returns Username part only
- */
-export function extractUsername(email: string): string {
-  return email.split('@')[0]
-}
-
-/**
- * Validates username format (alphanumeric, hyphens, underscores only)
- * @param username - Username to validate
- * @returns True if valid
- */
-export function isValidUsername(username: string): boolean {
-  return /^[a-z0-9_-]+$/i.test(username)
-}
-
-/**
  * Gets agent's full email for display/sending
  * Uses agent.email (username) + agent.teamId to construct full email
  */
