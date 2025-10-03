@@ -30,8 +30,11 @@ export class DecisionEngine {
     const hasBuiltinTools =
       builtinServers.kanban || builtinServers.calendar || builtinServers.agents
 
-    // Build context for AI
-    const prompt = await this.buildDecisionPrompt(flow, agent)
+    // Build context for AI (overlay predefined agent properties at runtime)
+    const { withPredefinedOverride } = await import('./predefinedKoompls')
+    const effectiveAgent = withPredefinedOverride(agent as Agent)
+
+    const prompt = await this.buildDecisionPrompt(flow, effectiveAgent)
 
     // Call AI to make decision
     try {
@@ -42,9 +45,9 @@ export class DecisionEngine {
       // Use function calling if builtin tools are available and flow has context
       if (hasBuiltinTools && flow.teamId && flow.userId) {
         console.log(`[DecisionEngine] Using direct tool execution (builtin servers available)`)
-        decision = await this.callAIWithTools(prompt, agent, flow, builtinServers)
+        decision = await this.callAIWithTools(prompt, effectiveAgent, flow, builtinServers)
       } else {
-        decision = await this.callAI(prompt, agent)
+        decision = await this.callAI(prompt, effectiveAgent)
       }
 
       // Validate decision

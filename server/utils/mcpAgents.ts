@@ -140,13 +140,16 @@ async function loadDirectoryContext(teamId?: string): Promise<DirectoryContext> 
   }
 }
 
-function buildDirectoryEntry(agent: Agent, context: DirectoryContext): AgentDirectoryEntry {
+async function buildDirectoryEntry(
+  agent: Agent,
+  context: DirectoryContext
+): Promise<AgentDirectoryEntry> {
   const teamDomain = agent.teamId ? context.teamDomainById.get(agent.teamId) : undefined
   const fullEmail = teamDomain ? `${agent.email}@${teamDomain}` : `${agent.email}@agents.local`
 
   const { capabilities, summary } = deriveCapabilities(agent, context.serverMap)
 
-  const allowedAgents = agent.multiRoundConfig?.allowedAgentEmails
+  const _allowedAgents = agent.multiRoundConfig?.allowedAgentEmails
     ?.map((email) => {
       const trimmed = email.trim()
       if (!trimmed) return ''
@@ -171,23 +174,30 @@ function buildDirectoryEntry(agent: Agent, context: DirectoryContext): AgentDire
 
   const description = (agent.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 320)
 
-  const normalizedPolicy = normalizeMailPolicy(agent)
+  // Apply predefined overrides for consistent behavior with decision engine
+  const { withPredefinedOverride } = await import('./predefinedKoompls')
+  const effectiveAgent = withPredefinedOverride(agent)
+  const normalizedPolicy = normalizeMailPolicy(effectiveAgent)
 
   return {
-    id: agent.id,
-    name: agent.name,
-    username: agent.email,
+    id: effectiveAgent.id,
+    name: effectiveAgent.name,
+    username: effectiveAgent.email,
     fullEmail,
-    role: agent.role,
+    role: effectiveAgent.role,
     teamId: agent.teamId,
     teamDomain,
     capabilities,
     summary,
     description: description || undefined,
-    canDelegate: Boolean(agent.multiRoundConfig?.canCommunicateWithAgents),
-    allowedAgents: allowedAgents && allowedAgents.length > 0 ? allowedAgents : undefined,
+    canDelegate: Boolean(effectiveAgent.multiRoundConfig?.canCommunicateWithAgents),
+    allowedAgents:
+      effectiveAgent.multiRoundConfig?.allowedAgentEmails &&
+      effectiveAgent.multiRoundConfig.allowedAgentEmails.length > 0
+        ? effectiveAgent.multiRoundConfig.allowedAgentEmails
+        : undefined,
     mcpServers: visibleServers,
-    isPredefined: agent.isPredefined,
+    isPredefined: effectiveAgent.isPredefined,
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
     mailPolicy: {
@@ -201,7 +211,7 @@ function buildDirectoryEntry(agent: Agent, context: DirectoryContext): AgentDire
 
 export async function listAgentDirectory(teamId?: string): Promise<AgentDirectoryEntry[]> {
   const context = await loadDirectoryContext(teamId)
-  return context.agents.map((agent) => buildDirectoryEntry(agent, context))
+  return Promise.all(context.agents.map((agent) => buildDirectoryEntry(agent, context)))
 }
 
 export async function getAgentDirectoryEntry(
@@ -233,12 +243,12 @@ export async function findAgentsByCapability(
   const context = await loadDirectoryContext(teamId)
   const target = slugify(capability)
 
-  return context.agents
-    .filter((agent) => {
-      const { capabilities } = deriveCapabilities(agent, context.serverMap)
-      return capabilities.some((entry) => entry.includes(target))
-    })
-    .map((agent) => buildDirectoryEntry(agent, context))
+  const filteredAgents = context.agents.filter((agent) => {
+    const { capabilities } = deriveCapabilities(agent, context.serverMap)
+    return capabilities.some((entry) => entry.includes(target))
+  })
+
+  return Promise.all(filteredAgents.map((agent) => buildDirectoryEntry(agent, context)))
 }
 
 export async function listDirectoryCapabilities(teamId?: string): Promise<string[]> {

@@ -72,6 +72,10 @@ export async function generateAgentResponse(
       return { ok: false, error: 'missing_openai_key' }
     }
 
+    // Overlay predefined agent properties at runtime (prompt, role, servers, config)
+    const { withPredefinedOverride } = await import('./predefinedKoompls')
+    const effectiveAgent = withPredefinedOverride(agent)
+
     const normalizedContexts = Array.isArray(mcpContexts)
       ? mcpContexts
           .map((entry) => ({
@@ -108,8 +112,8 @@ export async function generateAgentResponse(
 
     // Check if agent has MCP servers configured
     const allServers = await listMcpServers()
-    const selectedServers = Array.isArray(agent.mcpServerIds)
-      ? allServers.filter((s) => agent.mcpServerIds!.includes(s.id))
+    const selectedServers = Array.isArray(effectiveAgent.mcpServerIds)
+      ? allServers.filter((s) => effectiveAgent.mcpServerIds!.includes(s.id))
       : []
 
     // If agent has MCP servers and teamId/userId are available, use KoomplMcpAgent for tool execution
@@ -149,12 +153,12 @@ export async function generateAgentResponse(
         receivedAt: new Date().toISOString()
       }
 
-      const kanbanContext = { teamId, userId, agentId: agent.id }
+      const kanbanContext = { teamId, userId, agentId: effectiveAgent.id }
 
       try {
         const response = await mcpAgent.processEmail(
           emailContext,
-          agent.prompt || 'You are a helpful AI assistant.',
+          effectiveAgent.prompt || 'You are a helpful AI assistant.',
           externalServers,
           kanbanContext
         )
@@ -177,7 +181,7 @@ export async function generateAgentResponse(
     if (hasBuiltinKanban && teamId && userId && externalServers.length === 0) {
       console.log('[AgentResponder] Using direct Kanban tool executor (production-ready)')
       return await handleBuiltinKanbanWithFunctionCalling({
-        agent,
+        agent: effectiveAgent,
         subject,
         text,
         from,
@@ -193,7 +197,7 @@ export async function generateAgentResponse(
     if (hasBuiltinCalendar && teamId && userId && externalServers.length === 0) {
       console.log('[AgentResponder] Using direct Calendar tool executor (production-ready)')
       return await handleBuiltinCalendarWithFunctionCalling({
-        agent,
+        agent: effectiveAgent,
         subject,
         text,
         from,
@@ -248,7 +252,7 @@ export async function generateAgentResponse(
     }
 
     const messages = [
-      agent.prompt ? { role: 'system', content: String(agent.prompt) } : null,
+      effectiveAgent.prompt ? { role: 'system', content: String(effectiveAgent.prompt) } : null,
       { role: 'user', content: userContent }
     ].filter(Boolean) as Array<{ role: string; content: string }>
 
