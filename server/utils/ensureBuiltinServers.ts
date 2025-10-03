@@ -80,6 +80,29 @@ export async function ensureBuiltinServers(): Promise<void> {
     modified = true
   }
 
+  // Ensure builtin-datasafe exists
+  if (!servers.find((s) => s.id === 'builtin-datasafe')) {
+    console.log('[EnsureBuiltinServers] Creating builtin-datasafe server')
+    servers.push({
+      id: 'builtin-datasafe',
+      name: 'Team Datasafe',
+      provider: 'builtin-datasafe',
+      category: 'storage',
+      description:
+        'Secure storage vault for organizing team files, email attachments, and policy-driven folders.',
+      auth: {
+        type: 'bearer',
+        token: 'builtin'
+      },
+      metadata: {
+        builtin: true
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    })
+    modified = true
+  }
+
   if (modified) {
     await mcpStorage.setItem('servers.json', servers)
     console.log('[EnsureBuiltinServers] Builtin servers initialized')

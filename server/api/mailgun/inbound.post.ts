@@ -146,7 +146,7 @@ export default defineEventHandler(async (event) => {
     })
 
     // Use shared helper to extract bare email address from header-like strings
-    const { extractEmail } = await import('../../utils/mailgunHelpers')
+    const { extractEmail, extractMailgunAttachments } = await import('../../utils/mailgunHelpers')
     const toEmail = extractEmail(to)
     const fromEmail = extractEmail(from)
 
@@ -204,6 +204,37 @@ export default defineEventHandler(async (event) => {
       teamId: agent.teamId
     })
 
+    const datasafeStored: Array<{ path: string; name: string; size: number }> = []
+    try {
+      const { ensureTeamDatasafe, storeAttachment } = await import('../../utils/datasafeStorage')
+      const attachments = extractMailgunAttachments(payload as Record<string, unknown>)
+      if (attachments.length) {
+        await ensureTeamDatasafe(team.id)
+        for (const attachment of attachments) {
+          const node = await storeAttachment(team.id, {
+            filename: attachment.filename,
+            data: attachment.data,
+            encoding: 'base64',
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+            source: 'email-attachment',
+            emailMeta: {
+              messageId: String(messageId || ''),
+              from: String(from || ''),
+              subject: String(subject || '')
+            }
+          })
+          datasafeStored.push({ path: node.path, name: node.name, size: node.size })
+        }
+        console.log(
+          '[Inbound] Stored attachments in datasafe:',
+          datasafeStored.map((item) => item.path)
+        )
+      }
+    } catch (datasafeErr) {
+      console.error('[Inbound] Failed to store attachments in datasafe', datasafeErr)
+    }
+
     // Log inbound email activity EARLY (before any outbound processing)
     try {
       await agentLogger.logEmailActivity({
@@ -220,7 +251,8 @@ export default defineEventHandler(async (event) => {
         metadata: {
           mailgunSent: false,
           isAutomatic: false,
-          mcpContextCount: 0
+          mcpContextCount: 0,
+          datasafeStoredPaths: datasafeStored.map((item) => item.path)
         }
       })
     } catch (logErr) {

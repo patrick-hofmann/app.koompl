@@ -276,7 +276,17 @@ export class AgentFlowEngine {
   /**
    * Complete a flow and send final response
    */
-  async completeFlow(flowId: string, finalResponse: string, agentId?: string): Promise<void> {
+  async completeFlow(
+    flowId: string,
+    finalResponse: string,
+    agentId?: string,
+    attachments?: Array<{
+      filename: string
+      content: string
+      mimeType: string
+      size: number
+    }>
+  ): Promise<void> {
     console.log(`[AgentFlowEngine] Completing flow ${flowId}`)
 
     const flow = await this.loadFlow(flowId, agentId)
@@ -296,7 +306,8 @@ export class AgentFlowEngine {
         toEmail: flow.requester.email,
         subject: `Re: ${flow.trigger.subject}`,
         body: formattedResponse,
-        flowId: flow.id
+        flowId: flow.id,
+        attachments: attachments
       })
     } catch (error) {
       console.error('[AgentFlowEngine] Failed to send final response:', error)
@@ -505,7 +516,8 @@ export class AgentFlowEngine {
           await this.completeFlow(
             flow.id,
             'Flow completed after reaching maximum rounds',
-            flow.agentId
+            flow.agentId,
+            undefined // No attachments for max rounds completion
           )
           return {
             decision: 'complete',
@@ -540,7 +552,12 @@ export class AgentFlowEngine {
 
       case 'complete':
         // Complete the flow
-        await this.completeFlow(flow.id, decision.finalResponse || 'Flow completed', flow.agentId)
+        await this.completeFlow(
+          flow.id,
+          decision.finalResponse || 'Flow completed',
+          flow.agentId,
+          decision.attachments
+        )
         return {
           decision: 'complete',
           reasoning: decision.reasoning,

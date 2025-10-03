@@ -15,6 +15,7 @@ const VALID_PROVIDERS: McpProvider[] = [
   'builtin-kanban',
   'builtin-calendar',
   'builtin-agents',
+  'builtin-datasafe',
   'custom'
 ]
 const VALID_CATEGORIES: McpCategory[] = [
@@ -24,6 +25,7 @@ const VALID_CATEGORIES: McpCategory[] = [
   'documentation',
   'productivity',
   'directory',
+  'storage',
   'custom'
 ]
 
@@ -91,6 +93,13 @@ const PROVIDER_PRESETS: Record<
     defaultName: 'Agents Directory',
     defaultDescription:
       'Built-in directory of active agents, their specialties, and capabilities for intelligent delegation.',
+    defaultAuthType: 'bearer'
+  },
+  'builtin-datasafe': {
+    category: 'storage',
+    defaultName: 'Team Datasafe',
+    defaultDescription:
+      'Secure team files vault with hierarchy rules, attachment capture, and MCP access to upload or organize documents.',
     defaultAuthType: 'bearer'
   },
   custom: {
@@ -503,6 +512,30 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
       category: 'directory',
       description:
         'Built-in directory of active agents, their capabilities, and delegation preferences.',
+      auth: {
+        type: 'bearer',
+        token: 'builtin'
+      },
+      metadata: {
+        builtin: true
+      }
+    }
+  },
+  {
+    id: 'builtin-datasafe-template',
+    name: 'Team Datasafe',
+    description:
+      'Built-in secure datasafe vault. Agents can organize documents, apply storage rules, and retrieve files.',
+    provider: 'builtin-datasafe',
+    category: 'storage',
+    icon: 'i-lucide-archive',
+    color: 'orange',
+    defaultConfig: {
+      name: 'Team Datasafe',
+      provider: 'builtin-datasafe',
+      category: 'storage',
+      description:
+        'Built-in datasafe vault for storing documents, organizing folders, and capturing attachments with team rules.',
       auth: {
         type: 'bearer',
         token: 'builtin'

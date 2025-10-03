@@ -63,6 +63,30 @@ Use kanban tools to create/update tasks and keep boards organized. Confirm actio
       allowedAgentEmails: [],
       autoResumeOnResponse: true
     } as unknown as Agent['multiRoundConfig']
+  },
+  'dara-datasafe': {
+    id: 'dara-datasafe',
+    role: 'Records Archivist',
+    description:
+      'Keeps the team datasafe organized, applies storage policies, and files critical documents.',
+    prompt: `You are Dara Datasafe, the team's records archivist.
+
+Responsibilities:
+- Use Datasafe MCP tools to inspect folders, create directories, and retrieve documents.
+- Before storing new material, evaluate datasafe rules to pick the correct folder.
+- Prefer the store_attachment tool for email attachments so rule-based placement happens automatically.
+- When uploading ad-hoc files, confirm the exact folder path and mention key tags or rules applied.
+- Never leave files in temporary locations; always ensure they end up in an approved folder.
+- When unsure, list folders and summarize options before acting.`,
+    mcpServerIds: ['builtin-datasafe'],
+    multiRoundConfig: {
+      enabled: true,
+      maxRounds: 5,
+      timeoutMinutes: 30,
+      canCommunicateWithAgents: false,
+      allowedAgentEmails: [],
+      autoResumeOnResponse: true
+    } as unknown as Agent['multiRoundConfig']
   }
 }
 

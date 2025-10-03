@@ -6,6 +6,7 @@ import { agentLogger } from './agentLogging'
 import type { McpEmailContext, McpContextResult } from '../types/mcp-clients'
 import { fetchKanbanContext, type KanbanMcpContext } from './mcpKanban'
 import { fetchCalendarContext, type CalendarMcpContext } from './mcpCalendar'
+import { fetchDatasafeContext, type DatasafeMcpContext } from './mcpDatasafe'
 import { listAgentDirectory } from './mcpAgents'
 
 const DEFAULT_LIMIT = 5
@@ -460,6 +461,25 @@ export async function fetchMcpContext(
             provider: server.provider,
             category: server.category,
             summary: 'Calendar requires team context',
+            details: null
+          }
+        }
+        break
+      case 'builtin-datasafe':
+        if (options.teamId && options.userId) {
+          const datasafeContext: DatasafeMcpContext = {
+            teamId: options.teamId,
+            userId: options.userId,
+            agentId: options.agentId
+          }
+          result = await fetchDatasafeContext(datasafeContext, limit)
+        } else {
+          result = {
+            serverId: server.id,
+            serverName: server.name,
+            provider: server.provider,
+            category: server.category,
+            summary: 'Datasafe requires team context',
             details: null
           }
         }

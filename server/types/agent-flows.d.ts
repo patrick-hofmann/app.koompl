@@ -73,6 +73,14 @@ export interface FlowDecision {
 
   // If type = 'complete'
   finalResponse?: string
+  attachments?: EmailAttachment[] // Files to attach to the email response
+}
+
+export interface EmailAttachment {
+  filename: string
+  content: string // Base64 encoded content
+  mimeType: string
+  size: number
 }
 
 export interface FlowAction {

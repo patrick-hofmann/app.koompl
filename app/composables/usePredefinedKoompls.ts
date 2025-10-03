@@ -77,6 +77,26 @@ export const PREDEFINED_KOOMPLS: PredefinedKoompl[] = [
       allowedAgentEmails: [],
       autoResumeOnResponse: true
     }
+  },
+  {
+    id: 'dara-datasafe',
+    name: 'Dara Datasafe',
+    email: 'dara',
+    role: 'Records Archivist',
+    description:
+      'Keeps the team datasafe organized, applies storage policies, and files critical documents.',
+    icon: 'i-lucide-archive',
+    color: 'orange',
+    prompt: '',
+    mcpServerIds: ['builtin-datasafe'],
+    multiRoundConfig: {
+      enabled: true,
+      maxRounds: 5,
+      timeoutMinutes: 30,
+      canCommunicateWithAgents: false,
+      allowedAgentEmails: [],
+      autoResumeOnResponse: true
+    }
   }
 ]
 

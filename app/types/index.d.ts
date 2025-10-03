@@ -68,6 +68,7 @@ export type McpCategory =
   | 'documentation'
   | 'productivity'
   | 'directory'
+  | 'storage'
   | 'custom'
 
 export type McpProvider =
@@ -79,6 +80,7 @@ export type McpProvider =
   | 'builtin-kanban'
   | 'builtin-calendar'
   | 'builtin-agents'
+  | 'builtin-datasafe'
   | 'custom'
 
 export interface McpServer {

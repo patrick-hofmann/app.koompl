@@ -23,6 +23,17 @@ import {
   findAgentsByCapability,
   listDirectoryCapabilities
 } from './mcpAgents'
+import {
+  listDatasafeFolder,
+  downloadDatasafeFile,
+  uploadDatasafeFile,
+  createDatasafeFolder,
+  recommendDatasafePlacement,
+  storeDatasafeAttachment,
+  listDatasafeRules,
+  getDatasafeStats,
+  type DatasafeMcpContext
+} from './mcpDatasafe'
 
 export interface McpTool {
   name: string
@@ -698,6 +709,389 @@ export async function executeAgentsDirectoryTool(
           )
         }
       ]
+    }
+  }
+}
+
+/**
+ * Get all available Datasafe tools
+ */
+export function getDatasafeTools(): McpTool[] {
+  return [
+    {
+      name: 'list_folder',
+      description: 'List contents (folders/files) of a datasafe folder path',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Optional folder path (default root)'
+          }
+        },
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'download_file',
+      description: 'Download a file from the datasafe as base64',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Full file path inside datasafe'
+          }
+        },
+        required: ['path'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'upload_file',
+      description: 'Upload or overwrite a file in the datasafe using base64 content',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Target file path (including filename)'
+          },
+          base64: {
+            type: 'string',
+            description: 'Base64 encoded file data'
+          },
+          mimeType: {
+            type: 'string',
+            description: 'MIME type of the file'
+          },
+          size: {
+            type: 'number',
+            description: 'Original file size in bytes'
+          },
+          overwrite: {
+            type: 'boolean',
+            description: 'Whether to overwrite existing files (default false)'
+          }
+        },
+        required: ['path', 'base64', 'mimeType'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'create_folder',
+      description: 'Ensure a folder (and parents) exist in the datasafe',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Folder path to create'
+          }
+        },
+        required: ['path'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'recommend_placement',
+      description:
+        'Get recommended folder placement based on datasafe rules for an attachment or document',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filename: { type: 'string' },
+          mimeType: { type: 'string' },
+          size: { type: 'number' },
+          subject: { type: 'string' },
+          from: { type: 'string' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        },
+        required: ['filename', 'mimeType'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'store_attachment',
+      description: 'Store a base64 attachment using datasafe rules (returns stored file path)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          filename: { type: 'string' },
+          base64: { type: 'string' },
+          mimeType: { type: 'string' },
+          size: { type: 'number' },
+          subject: { type: 'string' },
+          from: { type: 'string' },
+          overwrite: { type: 'boolean' }
+        },
+        required: ['filename', 'base64', 'mimeType'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'list_rules',
+      description: 'List Datasafe automation rules for the current team',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'get_stats',
+      description: 'Summarize Datasafe usage including total files, size, and recent updates',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'number',
+            description: 'Optional limit for recent items and folder summaries'
+          }
+        },
+        additionalProperties: false
+      }
+    }
+  ]
+}
+
+/**
+ * Execute a Datasafe tool directly (no HTTP)
+ */
+export async function executeDatasafeTool(
+  context: DatasafeMcpContext,
+  toolName: string,
+  args: Record<string, any>
+): Promise<McpToolResult> {
+  try {
+    let result: any
+
+    switch (toolName) {
+      case 'list_folder':
+        result = await listDatasafeFolder(context, args.path)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Listed folder contents`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'download_file':
+        result = await downloadDatasafeFile(context, args.path)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Downloaded file: ${args.path}`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'upload_file':
+        result = await uploadDatasafeFile(context, {
+          path: args.path,
+          base64: args.base64,
+          mimeType: args.mimeType,
+          size: args.size || 0,
+          overwrite: args.overwrite || false,
+          metadata: {
+            uploadedVia: 'mcp'
+          }
+        })
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Uploaded file: ${args.path}`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'create_folder':
+        result = await createDatasafeFolder(context, args.path)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Created folder: ${args.path}`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'recommend_placement':
+        result = await recommendDatasafePlacement(context, {
+          filename: args.filename,
+          mimeType: args.mimeType,
+          size: args.size || 0,
+          data: '',
+          encoding: 'base64',
+          source: 'mcp',
+          emailMeta: {
+            subject: args.subject,
+            from: args.from
+          },
+          tags: args.tags
+        })
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Recommended placement for: ${args.filename}`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'store_attachment':
+        result = await storeDatasafeAttachment(
+          context,
+          {
+            filename: args.filename,
+            data: args.base64,
+            encoding: 'base64',
+            mimeType: args.mimeType,
+            size: args.size || 0,
+            source: 'mcp',
+            emailMeta: {
+              subject: args.subject,
+              from: args.from
+            }
+          },
+          { overwrite: args.overwrite || false }
+        )
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Stored attachment: ${args.filename}`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'list_rules':
+        result = await listDatasafeRules(context)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Listed datasafe rules`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'get_stats':
+        result = await getDatasafeStats(context, args.limit)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Datasafe statistics`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      default:
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: false,
+                  error: `Unknown datasafe tool: ${toolName}`
+                },
+                null,
+                2
+              )
+            }
+          ],
+          isError: true
+        }
+    }
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            },
+            null,
+            2
+          )
+        }
+      ],
+      isError: true
     }
   }
 }

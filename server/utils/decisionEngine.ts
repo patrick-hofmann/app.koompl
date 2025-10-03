@@ -13,7 +13,9 @@ import {
   executeKanbanTool,
   getCalendarTools,
   getAgentsDirectoryTools,
-  executeAgentsDirectoryTool
+  executeAgentsDirectoryTool,
+  getDatasafeTools,
+  executeDatasafeTool
 } from './builtinMcpTools'
 import { executeCalendarTool } from './builtinCalendarTools'
 import { normalizeMailPolicy, formatMailPolicySummary } from './mailPolicy'
@@ -28,7 +30,10 @@ export class DecisionEngine {
     // Check if agent has builtin MCP servers that support direct tool execution
     const builtinServers = await this.getBuiltinServers(agent)
     const hasBuiltinTools =
-      builtinServers.kanban || builtinServers.calendar || builtinServers.agents
+      builtinServers.kanban ||
+      builtinServers.calendar ||
+      builtinServers.agents ||
+      builtinServers.datasafe
 
     // Build context for AI (overlay predefined agent properties at runtime)
     const { withPredefinedOverride } = await import('./predefinedKoompls')
@@ -240,7 +245,7 @@ Notes:
     prompt: string,
     agent: DecisionContext['agent'],
     flow: AgentFlow,
-    builtinServers: { kanban: boolean; calendar: boolean; agents: boolean }
+    builtinServers: { kanban: boolean; calendar: boolean; agents: boolean; datasafe: boolean }
   ): Promise<FlowDecision> {
     const openaiKey = await this.getOpenAiKey()
 
@@ -250,10 +255,12 @@ Notes:
     const kanbanTools = builtinServers.kanban ? getKanbanTools() : []
     const calendarTools = builtinServers.calendar ? getCalendarTools() : []
     const agentDirectoryTools = builtinServers.agents ? getAgentsDirectoryTools() : []
+    const datasafeTools = builtinServers.datasafe ? getDatasafeTools() : []
 
     const kanbanToolNames = new Set(kanbanTools.map((tool) => tool.name))
     const calendarToolNames = new Set(calendarTools.map((tool) => tool.name))
     const agentDirectoryToolNames = new Set(agentDirectoryTools.map((tool) => tool.name))
+    const datasafeToolNames = new Set(datasafeTools.map((tool) => tool.name))
 
     if (kanbanTools.length > 0) {
       tools.push(
@@ -294,6 +301,19 @@ Notes:
       )
     }
 
+    if (datasafeTools.length > 0) {
+      tools.push(
+        ...datasafeTools.map((tool) => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema
+          }
+        }))
+      )
+    }
+
     console.log(`[DecisionEngine] Loaded ${tools.length} builtin tools`)
 
     // Create context for tool execution
@@ -302,6 +322,14 @@ Notes:
       userId: flow.userId!,
       agentId: agent.id
     }
+
+    // Track downloaded files for potential email attachments
+    const downloadedFiles: Array<{
+      filename: string
+      content: string
+      mimeType: string
+      size: number
+    }> = []
 
     // Enhanced prompt with current date/time
     const now = new Date()
@@ -336,6 +364,11 @@ TOOL USAGE GUIDELINES:
 - When calling list_events, list_boards, etc., use the User ID shown above
 - Use tools multiple times if needed (e.g., list then modify)
 - After tool execution, evaluate if you have enough information
+
+FILE ATTACHMENTS:
+- If you download files using datasafe tools, they will be automatically attached to your email response
+- Downloaded files are captured when you use the 'download_file' tool
+- You can mention the attached files in your response text
 
 AFTER USING TOOLS:
 1. If the request is fulfilled → Choose "COMPLETE" with a natural response
@@ -405,6 +438,35 @@ AFTER USING TOOLS:
                 functionName,
                 args
               )
+            } else if (datasafeToolNames.has(functionName)) {
+              mcpResult = await executeDatasafeTool(context, functionName, args)
+
+              // If this is a download_file tool, capture the file for potential attachment
+              if (functionName === 'download_file' && mcpResult && !mcpResult.isError) {
+                try {
+                  const resultData = JSON.parse(mcpResult.content[0]?.text || '{}')
+                  if (resultData.success && resultData.data?.base64) {
+                    const filePath = args.path as string
+                    const filename = filePath.split('/').pop() || 'downloaded_file'
+                    const mimeType = this.guessMimeType(filename)
+
+                    downloadedFiles.push({
+                      filename,
+                      content: resultData.data.base64,
+                      mimeType,
+                      size:
+                        resultData.data.node?.size ||
+                        Buffer.from(resultData.data.base64, 'base64').length
+                    })
+
+                    console.log(
+                      `[DecisionEngine] Captured downloaded file: ${filename} (${mimeType})`
+                    )
+                  }
+                } catch (error) {
+                  console.warn('[DecisionEngine] Failed to capture downloaded file:', error)
+                }
+              }
             } else {
               throw new Error(`Unknown tool: ${functionName}`)
             }
@@ -439,16 +501,32 @@ AFTER USING TOOLS:
       // Try to parse as decision JSON
       try {
         const parsed = this.parseJsonResponse(content)
-        return this.buildDecisionFromParsed(parsed)
+        const decision = this.buildDecisionFromParsed(parsed)
+
+        // Include downloaded files as attachments if completing
+        if (decision.type === 'complete' && downloadedFiles.length > 0) {
+          decision.attachments = downloadedFiles
+          console.log(`[DecisionEngine] Including ${downloadedFiles.length} file(s) as attachments`)
+        }
+
+        return decision
       } catch {
         // If not JSON, treat as a complete response
         console.log('[DecisionEngine] AI response is not JSON, treating as completion')
-        return {
+        const decision: FlowDecision = {
           type: 'complete',
           reasoning: 'AI provided natural language response after tool execution',
           confidence: 0.8,
           finalResponse: content
         }
+
+        // Include downloaded files as attachments
+        if (downloadedFiles.length > 0) {
+          decision.attachments = downloadedFiles
+          console.log(`[DecisionEngine] Including ${downloadedFiles.length} file(s) as attachments`)
+        }
+
+        return decision
       }
     }
 
@@ -470,9 +548,10 @@ AFTER USING TOOLS:
     kanban: boolean
     calendar: boolean
     agents: boolean
+    datasafe: boolean
   }> {
     if (!agent.mcpServerIds || agent.mcpServerIds.length === 0) {
-      return { kanban: false, calendar: false, agents: false }
+      return { kanban: false, calendar: false, agents: false, datasafe: false }
     }
 
     // Load MCP server configurations
@@ -488,6 +567,7 @@ AFTER USING TOOLS:
     let hasKanban = false
     let hasCalendar = false
     let hasAgents = false
+    let hasDatasafe = false
 
     for (const serverId of agent.mcpServerIds) {
       const server = servers.find((s) => s.id === serverId)
@@ -495,14 +575,15 @@ AFTER USING TOOLS:
         if (server.provider === 'builtin-kanban') hasKanban = true
         if (server.provider === 'builtin-calendar') hasCalendar = true
         if (server.provider === 'builtin-agents') hasAgents = true
+        if (server.provider === 'builtin-datasafe') hasDatasafe = true
       }
     }
 
     console.log(
-      `[DecisionEngine] Builtin servers detected: kanban=${hasKanban}, calendar=${hasCalendar}, agents=${hasAgents}`
+      `[DecisionEngine] Builtin servers detected: kanban=${hasKanban}, calendar=${hasCalendar}, agents=${hasAgents}, datasafe=${hasDatasafe}`
     )
 
-    return { kanban: hasKanban, calendar: hasCalendar, agents: hasAgents }
+    return { kanban: hasKanban, calendar: hasCalendar, agents: hasAgents, datasafe: hasDatasafe }
   }
 
   private async getOpenAiKey(): Promise<string> {
@@ -553,6 +634,36 @@ AFTER USING TOOLS:
     }
 
     return JSON.parse(jsonMatch[0])
+  }
+
+  /**
+   * Guess MIME type from filename extension
+   */
+  private guessMimeType(filename: string): string {
+    const ext = filename.toLowerCase().split('.').pop()
+    const mimeTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      svg: 'image/svg+xml',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      txt: 'text/plain',
+      csv: 'text/csv',
+      zip: 'application/zip',
+      mp3: 'audio/mpeg',
+      mp4: 'video/mp4',
+      avi: 'video/x-msvideo',
+      mov: 'video/quicktime',
+      wav: 'audio/wav'
+    }
+    return mimeTypes[ext || ''] || 'application/octet-stream'
   }
 
   private buildDecisionFromParsed(parsed: any): FlowDecision {

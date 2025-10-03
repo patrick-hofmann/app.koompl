@@ -75,6 +75,12 @@ export class MessageRouter {
     subject: string
     body: string
     flowId?: string
+    attachments?: Array<{
+      filename: string
+      content: string // Base64 encoded content
+      mimeType: string
+      size: number
+    }>
   }): Promise<string> {
     console.log(
       `[MessageRouter] Sending email from agent ${params.fromAgentId} to user ${params.toEmail}`
@@ -106,7 +112,8 @@ export class MessageRouter {
       subject: params.subject,
       text: params.body,
       simulateInboundForAgent: toFullEmail,
-      forceMailgun: !toAgent
+      forceMailgun: !toAgent,
+      attachments: params.attachments || []
     }
 
     console.log('[MessageRouter] → Dispatching email...')
@@ -483,6 +490,12 @@ export class MessageRouter {
     text: string
     simulateInboundForAgent?: string
     forceMailgun?: boolean
+    attachments?: Array<{
+      filename: string
+      content: string // Base64 encoded content
+      mimeType: string
+      size: number
+    }>
   }): Promise<{ messageId: string; mailgunSent: boolean }> {
     const isProduction = process.env.NODE_ENV === 'production'
     const shouldSendViaMailgun = isProduction || Boolean(params.forceMailgun)
@@ -654,6 +667,12 @@ export class MessageRouter {
     to: string
     subject: string
     text: string
+    attachments?: Array<{
+      filename: string
+      content: string // Base64 encoded content
+      mimeType: string
+      size: number
+    }>
   }): Promise<string> {
     const settingsStorage = useStorage('settings')
     const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
@@ -673,6 +692,21 @@ export class MessageRouter {
       formData.append('to', params.to)
       formData.append('subject', params.subject)
       formData.append('text', params.text)
+
+      // Add attachments if any
+      if (params.attachments && params.attachments.length > 0) {
+        console.log(`[MessageRouter] Adding ${params.attachments.length} attachment(s) to email`)
+        for (const attachment of params.attachments) {
+          // Convert base64 to blob
+          const binaryString = atob(attachment.content)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          const blob = new Blob([bytes], { type: attachment.mimeType })
+          formData.append('attachment', blob, attachment.filename)
+        }
+      }
 
       const response = await $fetch<{ id: string }>(
         `https://api.mailgun.net/v3/${mailgunDomain}/messages`,

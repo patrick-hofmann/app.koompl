@@ -122,14 +122,20 @@ export async function generateAgentResponse(
       (s) =>
         s.provider !== 'builtin-kanban' &&
         s.provider !== 'builtin-calendar' &&
-        s.provider !== 'builtin-agents'
+        s.provider !== 'builtin-agents' &&
+        s.provider !== 'builtin-datasafe'
     )
     const hasBuiltinKanban = selectedServers.some((s) => s.provider === 'builtin-kanban')
     const hasBuiltinCalendar = selectedServers.some((s) => s.provider === 'builtin-calendar')
     const hasBuiltinAgents = selectedServers.some((s) => s.provider === 'builtin-agents')
+    const hasBuiltinDatasafe = selectedServers.some((s) => s.provider === 'builtin-datasafe')
 
     if (hasBuiltinAgents) {
       console.log('[AgentResponder] Built-in Agents directory available for context')
+    }
+
+    if (hasBuiltinDatasafe) {
+      console.log('[AgentResponder] Built-in Datasafe available for context')
     }
 
     if (externalServers.length > 0 && teamId && userId) {

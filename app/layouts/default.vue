@@ -74,6 +74,14 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
       }
     },
     {
+      label: 'Datasafe',
+      icon: 'i-lucide-archive',
+      to: '/datasafe',
+      onSelect: () => {
+        open.value = false
+      }
+    },
+    {
       label: 'MCP Servers',
       icon: 'i-lucide-server-cog',
       to: '/mcp',

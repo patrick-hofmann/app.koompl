@@ -98,6 +98,21 @@ export class KoomplMcpAgent {
       } else if (server.provider === 'builtin-calendar') {
         console.log('[MCPAgent] Skipping built-in Calendar server - no context provided')
         continue
+      } else if (server.provider === 'builtin-datasafe' && kanbanContext) {
+        console.log('[MCPAgent] Configuring built-in Datasafe server with context:', {
+          teamId: kanbanContext.teamId,
+          userId: kanbanContext.userId
+        })
+        const serverPath = new URL('./builtinDatasafeMcpServer.mjs', import.meta.url).pathname
+        serverConfigs[server.id] = {
+          command: 'node',
+          args: [serverPath],
+          env: {
+            DATASAFE_TEAM_ID: kanbanContext.teamId,
+            DATASAFE_USER_ID: kanbanContext.userId,
+            DATASAFE_AGENT_ID: kanbanContext.agentId || ''
+          }
+        }
       } else if (server.provider === 'builtin-agents') {
         const serverPath = new URL('./builtinAgentsInfoMcpServer.mjs', import.meta.url).pathname
         serverConfigs[server.id] = {
