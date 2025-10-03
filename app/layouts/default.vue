@@ -42,6 +42,14 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
       }
     },
     {
+      label: 'Mail Policies',
+      icon: 'i-lucide-shield',
+      to: '/agents/policies',
+      onSelect: () => {
+        open.value = false
+      }
+    },
+    {
       label: 'Domain',
       icon: 'i-lucide-globe',
       to: '/domain',

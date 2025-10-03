@@ -7,6 +7,7 @@
 import type { AgentFlow } from '../types/agent-flows'
 import { agentFlowEngine } from './agentFlowEngine'
 import { agentLogger } from './agentLogging'
+import { evaluateOutboundMail } from './mailPolicy'
 
 export interface InboundEmail {
   messageId: string
@@ -82,6 +83,14 @@ export class MessageRouter {
     const agent = await this.getAgent(params.fromAgentId)
     if (!agent) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
+    }
+
+    const outboundPolicy = await evaluateOutboundMail(agent, params.toEmail)
+    if (!outboundPolicy.allowed) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: outboundPolicy.reason || 'Outbound email blocked by policy'
+      })
     }
 
     // Construct full email from username + team domain

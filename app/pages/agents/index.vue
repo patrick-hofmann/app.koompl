@@ -77,7 +77,13 @@ function openAdd() {
       timeoutMinutes: 30, // Default 30 minutes
       canCommunicateWithAgents: false,
       allowedAgentEmails: [],
-      autoResumeOnResponse: true
+      autoResumeOnResponse: true,
+      mailPolicy: {
+        inbound: 'team_and_agents',
+        outbound: 'team_and_agents',
+        allowedInboundAddresses: [],
+        allowedOutboundAddresses: []
+      }
     }
   })
   addOpen.value = true
@@ -159,6 +165,13 @@ function getRowItems(row: Row<Agent>) {
       }
     },
     { type: 'separator' as const },
+    {
+      label: 'Mail policy',
+      icon: 'i-lucide-shield',
+      onSelect() {
+        navigateTo(`/agents/${row.original.id}/policy`)
+      }
+    },
     {
       label: 'Edit',
       icon: 'i-lucide-pencil',

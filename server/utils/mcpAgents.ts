@@ -1,6 +1,7 @@
-import type { Agent } from '~/types'
+import type { Agent, MailPolicyRule } from '~/types'
 import type { StoredMcpServer } from '../types/mcp-storage'
 import { getIdentity } from './identityStorage'
+import { normalizeMailPolicy } from './mailPolicy'
 
 interface AgentDirectoryEntry {
   id: string
@@ -24,6 +25,12 @@ interface AgentDirectoryEntry {
   isPredefined?: boolean
   createdAt?: string
   updatedAt?: string
+  mailPolicy: {
+    inbound: MailPolicyRule
+    outbound: MailPolicyRule
+    allowedInbound: string[]
+    allowedOutbound: string[]
+  }
 }
 
 interface DirectoryContext {
@@ -164,6 +171,8 @@ function buildDirectoryEntry(agent: Agent, context: DirectoryContext): AgentDire
 
   const description = (agent.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 320)
 
+  const normalizedPolicy = normalizeMailPolicy(agent)
+
   return {
     id: agent.id,
     name: agent.name,
@@ -180,7 +189,13 @@ function buildDirectoryEntry(agent: Agent, context: DirectoryContext): AgentDire
     mcpServers: visibleServers,
     isPredefined: agent.isPredefined,
     createdAt: agent.createdAt,
-    updatedAt: agent.updatedAt
+    updatedAt: agent.updatedAt,
+    mailPolicy: {
+      inbound: normalizedPolicy.inbound,
+      outbound: normalizedPolicy.outbound,
+      allowedInbound: Array.from(normalizedPolicy.allowedInbound),
+      allowedOutbound: Array.from(normalizedPolicy.allowedOutbound)
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import { mailStorage } from '../../utils/mailStorage'
 import { agentLogger } from '../../utils/agentLogging'
 import { agentFlowEngine } from '../../utils/agentFlowEngine'
 import { MessageRouter } from '../../utils/messageRouter'
+import { evaluateInboundMail } from '../../utils/mailPolicy'
 import type { Agent } from '~/types'
 
 export default defineEventHandler(async (event) => {
@@ -234,6 +235,15 @@ export default defineEventHandler(async (event) => {
     console.log(`[Inbound] Subject: ${subject}`)
     console.log(`[Inbound] Multi-round enabled: ${agent.multiRoundConfig?.enabled ? 'YES' : 'NO'}`)
     console.log('[Inbound] ════════════════════════════════════════════')
+
+    const inboundPolicy = await evaluateInboundMail(agent, String(fromEmail || from || ''), {
+      agents,
+      identity
+    })
+    if (!inboundPolicy.allowed) {
+      console.warn('[Inbound] ✗ Email blocked by inbound mail policy:', inboundPolicy.reason)
+      return { ok: true, blocked: true, reason: 'inbound_mail_policy' }
+    }
 
     const messageRouter = new MessageRouter()
     const routingResult = await messageRouter.routeInboundEmail(

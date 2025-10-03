@@ -103,6 +103,15 @@ export interface McpServer {
   lastCheckedAt?: string | null
 }
 
+export type MailPolicyRule = 'team_and_agents' | 'team_only' | 'agents_only' | 'any'
+
+export interface MailPolicyConfig {
+  inbound?: MailPolicyRule
+  outbound?: MailPolicyRule
+  allowedInboundAddresses?: string[]
+  allowedOutboundAddresses?: string[]
+}
+
 export interface MultiRoundConfig {
   enabled: boolean // Always true in unified architecture (kept for backward compatibility)
   maxRounds: number // Default: 1 for simple agents, 5-10 for coordinating agents
@@ -110,6 +119,7 @@ export interface MultiRoundConfig {
   canCommunicateWithAgents: boolean
   allowedAgentEmails?: string[]
   autoResumeOnResponse: boolean
+  mailPolicy?: MailPolicyConfig
 }
 
 export interface Agent {

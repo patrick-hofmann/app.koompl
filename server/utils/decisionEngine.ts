@@ -7,6 +7,7 @@
 
 import type { AgentFlow, FlowDecision } from '../types/agent-flows'
 import type { DecisionContext } from '../types/decision-engine'
+import type { Agent } from '~/types'
 import {
   getKanbanTools,
   executeKanbanTool,
@@ -15,6 +16,7 @@ import {
   executeAgentsDirectoryTool
 } from './builtinMcpTools'
 import { executeCalendarTool } from './builtinCalendarTools'
+import { normalizeMailPolicy, formatMailPolicySummary } from './mailPolicy'
 
 export class DecisionEngine {
   /**
@@ -161,6 +163,10 @@ DECISION GUIDELINES:
    - You have successfully executed all required actions
    - Simple requests (calendar events, status checks, etc.) should complete in round 1
    - You have everything needed for a helpful response
+
+🛡️ MAIL POLICY:
+   - You may only communicate with recipients permitted by the mail policy shown above.
+   - Never attempt to email or loop in addresses outside the allowed set.
 
 ⏸️ WAIT_FOR_AGENT if:
    - You genuinely need information only another agent has
@@ -312,6 +318,8 @@ CURRENT CONTEXT:
 - Current DateTime (ISO): ${currentDateTime}
 - User ID: ${flow.userId}
 - Team ID: ${flow.teamId}
+- Mail Policy:
+  ${formatMailPolicySummary(normalizeMailPolicy(agent as Agent)).replace(/\n/g, '\n  ')}
 
 ${isFirstRound ? '⚡ EFFICIENCY: This is round 1. Use tools to complete the request immediately if possible.\n' : ''}
 TEMPORAL CONTEXT:
