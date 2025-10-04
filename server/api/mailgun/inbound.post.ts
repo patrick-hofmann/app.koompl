@@ -90,7 +90,12 @@ export default defineEventHandler(async (event) => {
       payload ? (payload as Record<string, unknown>)['recipient'] : undefined,
       payload ? (payload as Record<string, unknown>)['to'] : undefined,
       payload ? (payload as Record<string, unknown>)['To'] : undefined,
-      getPath(payload, ['headers', 'to'])
+      payload ? (payload as Record<string, unknown>)['recipients'] : undefined,
+      payload ? (payload as Record<string, unknown>)['Recipients'] : undefined,
+      getPath(payload, ['headers', 'to']),
+      getPath(payload, ['headers', 'To']),
+      getPath(payload, ['message', 'recipients', 0]),
+      getPath(payload, ['envelope', 'to'])
     )
     const subject = firstString(
       payload ? (payload as Record<string, unknown>)['subject'] : undefined,
@@ -147,13 +152,78 @@ export default defineEventHandler(async (event) => {
 
     // Use shared helper to extract bare email address from header-like strings
     const { extractEmail } = await import('../../utils/mailgunHelpers')
-    const toEmail = extractEmail(to)
+    let toEmail = extractEmail(to)
     const fromEmail = extractEmail(from)
+
+    // Debug logging for email extraction
+    console.log('[Inbound] Email extraction debug:', {
+      rawTo: to,
+      extractedToEmail: toEmail,
+      rawFrom: from,
+      extractedFromEmail: fromEmail,
+      payloadKeys: payload ? Object.keys(payload) : 'no payload'
+    })
+
+    // Fallback: try to extract email from other fields if primary extraction failed
+    if (!toEmail && payload) {
+      console.log('[Inbound] Primary extraction failed, trying fallback methods...')
+
+      // Try different payload fields
+      const fallbackFields = [
+        'recipients',
+        'Recipients',
+        'envelope',
+        'message',
+        'X-Original-To',
+        'x-original-to',
+        'Delivered-To',
+        'delivered-to'
+      ]
+
+      for (const field of fallbackFields) {
+        const fieldValue = (payload as Record<string, unknown>)[field]
+        if (fieldValue) {
+          console.log(`[Inbound] Trying field ${field}:`, fieldValue)
+          const extracted = extractEmail(String(fieldValue))
+          if (extracted) {
+            toEmail = extracted
+            console.log(`[Inbound] Successfully extracted from ${field}:`, toEmail)
+            break
+          }
+        }
+      }
+
+      // Try array fields
+      if (!toEmail && Array.isArray((payload as Record<string, unknown>)['recipients'])) {
+        const recipients = (payload as Record<string, unknown>)['recipients'] as string[]
+        for (const recipient of recipients) {
+          const extracted = extractEmail(recipient)
+          if (extracted) {
+            toEmail = extracted
+            console.log('[Inbound] Successfully extracted from recipients array:', toEmail)
+            break
+          }
+        }
+      }
+    }
 
     // Extract domain from recipient email
     const recipientDomain = toEmail?.split('@')[1]?.toLowerCase()
     if (!recipientDomain) {
       console.log('[Inbound] No domain found in recipient email:', toEmail)
+      console.log('[Inbound] Raw recipient field:', to)
+      console.log(
+        '[Inbound] Available payload fields:',
+        payload
+          ? Object.keys(payload).filter(
+              (k) => k.toLowerCase().includes('to') || k.toLowerCase().includes('recipient')
+            )
+          : 'no payload'
+      )
+      console.log(
+        '[Inbound] Full payload structure:',
+        payload ? JSON.stringify(payload, null, 2) : 'no payload'
+      )
       return { ok: true, error: 'Invalid recipient email' }
     }
 

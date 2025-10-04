@@ -9,11 +9,27 @@
  */
 export function extractEmail(value: string | undefined | null): string | null {
   if (!value) return null
-  const v = String(value)
+  const v = String(value).trim()
+  if (!v) return null
+
+  // Handle angle bracket format: "Name <email@domain.com>"
   const angle = v.match(/<([^>]+)>/)
-  const email = (angle ? angle[1] : v).trim()
-  const first = email.split(',')[0].trim()
-  return first.toLowerCase()
+  if (angle) {
+    const email = angle[1].trim()
+    const first = email.split(',')[0].trim()
+    return first.toLowerCase()
+  }
+
+  // Handle plain email or comma-separated emails
+  const first = v.split(',')[0].trim()
+
+  // Basic email validation
+  if (first.includes('@') && first.includes('.')) {
+    return first.toLowerCase()
+  }
+
+  // If it doesn't look like an email, return null
+  return null
 }
 
 /**
