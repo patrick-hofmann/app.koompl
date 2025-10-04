@@ -92,16 +92,6 @@ export default defineEventHandler(async (event) => {
       payload ? (payload as Record<string, unknown>)['To'] : undefined,
       getPath(payload, ['headers', 'to'])
     )
-
-    // Debug logging for email parsing
-    console.log('[Inbound] Raw payload keys:', payload ? Object.keys(payload) : 'null')
-    console.log('[Inbound] Raw recipient fields:', {
-      recipient: payload ? (payload as Record<string, unknown>)['recipient'] : undefined,
-      to: payload ? (payload as Record<string, unknown>)['to'] : undefined,
-      To: payload ? (payload as Record<string, unknown>)['To'] : undefined,
-      'headers.to': getPath(payload, ['headers', 'to'])
-    })
-    console.log('[Inbound] Parsed to field:', to)
     const subject = firstString(
       payload ? (payload as Record<string, unknown>)['subject'] : undefined,
       payload ? (payload as Record<string, unknown>)['Subject'] : undefined,
@@ -157,63 +147,13 @@ export default defineEventHandler(async (event) => {
 
     // Use shared helper to extract bare email address from header-like strings
     const { extractEmail, extractMailgunAttachments } = await import('../../utils/mailgunHelpers')
-
-    // Try multiple fallback approaches for recipient email
-    let toEmail = extractEmail(to)
-    if (!toEmail && payload) {
-      // Try additional Mailgun fields
-      const additionalToFields = [
-        'recipients',
-        'recipient-address',
-        'envelope-to',
-        'delivered-to',
-        'original-recipient',
-        'message-headers',
-        'X-Original-To',
-        'X-Forwarded-To',
-        'X-Envelope-To'
-      ]
-
-      for (const field of additionalToFields) {
-        const value = (payload as Record<string, unknown>)[field]
-        if (value) {
-          toEmail = extractEmail(String(value))
-          if (toEmail) {
-            console.log(`[Inbound] Found recipient in field '${field}': ${toEmail}`)
-            break
-          }
-        }
-      }
-
-      // If still no recipient found, try to extract from message headers
-      if (!toEmail) {
-        const messageHeaders = (payload as Record<string, unknown>)['message-headers']
-        if (messageHeaders && Array.isArray(messageHeaders)) {
-          for (const header of messageHeaders) {
-            if (Array.isArray(header) && header.length >= 2) {
-              const [name, value] = header
-              if (typeof name === 'string' && typeof value === 'string') {
-                if (name.toLowerCase().includes('to') || name.toLowerCase().includes('recipient')) {
-                  toEmail = extractEmail(value)
-                  if (toEmail) {
-                    console.log(`[Inbound] Found recipient in message header '${name}': ${toEmail}`)
-                    break
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
+    const toEmail = extractEmail(to)
     const fromEmail = extractEmail(from)
 
     // Extract domain from recipient email
     const recipientDomain = toEmail?.split('@')[1]?.toLowerCase()
     if (!recipientDomain) {
       console.log('[Inbound] No domain found in recipient email:', toEmail)
-      console.log('[Inbound] Full payload for debugging:', JSON.stringify(payload, null, 2))
       return { ok: true, error: 'Invalid recipient email' }
     }
 
