@@ -14,12 +14,94 @@ export default defineEventHandler(async (event) => {
     let payload: Record<string, unknown> | null = null
     const contentType = getHeader(event, 'content-type') || ''
 
+    console.log('[Inbound] Content-Type:', contentType)
+    console.log('[Inbound] Request method:', getMethod(event))
+
     if (contentType.includes('application/json')) {
       payload = await readBody(event)
+      console.log('[Inbound] Parsed as JSON payload')
+    } else if (contentType.includes('multipart/form-data')) {
+      // Handle multipart form data properly
+      console.log('[Inbound] Parsing multipart form data...')
+      try {
+        const formData = await readMultipartFormData(event)
+        if (formData) {
+          payload = {}
+          for (const field of formData) {
+            if (field.name && field.data) {
+              // Convert Buffer to string for text fields
+              const value = field.data instanceof Buffer ? field.data.toString('utf8') : field.data
+              payload[field.name] = value
+            }
+          }
+          console.log('[Inbound] Parsed multipart form data, fields:', Object.keys(payload))
+        }
+      } catch (error) {
+        console.error('[Inbound] Failed to parse multipart form data:', error)
+        // Fallback to regular form parsing
+        const body = await readBody<Record<string, string>>(event)
+        payload = body
+      }
     } else {
       // Parse form data for typical Mailgun POSTs
+      console.log('[Inbound] Parsing as regular form data...')
       const body = await readBody<Record<string, string>>(event)
       payload = body
+    }
+
+    console.log('[Inbound] Final payload type:', typeof payload)
+    console.log(
+      '[Inbound] Final payload keys:',
+      payload ? Object.keys(payload).slice(0, 20) : 'no payload'
+    )
+
+    // Handle case where payload is still an array (fallback parsing failed)
+    if (Array.isArray(payload)) {
+      console.log('[Inbound] Payload is array with', payload.length, 'items')
+
+      // If array is too large, it's likely malformed data
+      if (payload.length > 1000) {
+        console.log('[Inbound] Array too large, likely malformed payload')
+        return { ok: true, error: 'Payload too large, likely malformed' }
+      }
+
+      console.log('[Inbound] Attempting to reconstruct from array format...')
+      const reconstructedPayload: Record<string, unknown> = {}
+
+      // Try to find common Mailgun fields in the array
+      for (let i = 0; i < Math.min(payload.length, 100); i++) {
+        const item = payload[i]
+        if (typeof item === 'string') {
+          // Look for common patterns
+          if (item.includes('@') && item.includes('.')) {
+            // Might be an email address
+            if (!reconstructedPayload['to']) {
+              reconstructedPayload['to'] = item
+            } else if (!reconstructedPayload['from']) {
+              reconstructedPayload['from'] = item
+            }
+          } else if (item.toLowerCase().includes('subject')) {
+            // Might be a subject line
+            reconstructedPayload['subject'] = item
+          } else if (item.length > 50 && item.length < 10000) {
+            // Might be email body (reasonable length)
+            if (!reconstructedPayload['text']) {
+              reconstructedPayload['text'] = item
+            }
+          }
+        }
+      }
+
+      if (Object.keys(reconstructedPayload).length > 0) {
+        console.log(
+          '[Inbound] Reconstructed payload from array:',
+          Object.keys(reconstructedPayload)
+        )
+        payload = reconstructedPayload
+      } else {
+        console.log('[Inbound] Could not reconstruct payload from array format')
+        return { ok: true, error: 'Could not parse email payload' }
+      }
     }
 
     // Basic shape we care about
