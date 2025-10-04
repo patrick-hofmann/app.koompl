@@ -161,16 +161,20 @@ function normalizeAttachment(raw: any): MailgunAttachment | null {
   }
 
   // Extract base64 data from various possible fields
-  const data =
-    typeof raw.data === 'string'
-      ? raw.data
-      : typeof raw.content === 'string'
-        ? raw.content
-        : typeof raw.base64 === 'string'
-          ? raw.base64
-          : typeof raw.body === 'string'
-            ? raw.body
-            : null
+  let data: string | null = null
+
+  if (typeof raw.data === 'string') {
+    data = raw.data
+  } else if (typeof raw.content === 'string') {
+    data = raw.content
+  } else if (typeof raw.base64 === 'string') {
+    data = raw.base64
+  } else if (typeof raw.body === 'string') {
+    data = raw.body
+  } else if (raw.data instanceof Buffer) {
+    // Handle multipart form data where data is a Buffer
+    data = raw.data.toString('base64')
+  }
 
   if (!data) return null
 

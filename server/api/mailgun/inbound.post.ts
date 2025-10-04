@@ -29,9 +29,24 @@ export default defineEventHandler(async (event) => {
           payload = {}
           for (const field of formData) {
             if (field.name && field.data) {
-              // Convert Buffer to string for text fields
-              const value = field.data instanceof Buffer ? field.data.toString('utf8') : field.data
-              payload[field.name] = value
+              // Handle different field types
+              if (field.filename) {
+                // This is a file attachment - keep as Buffer for now
+                payload[field.name] = {
+                  filename: field.filename,
+                  data: field.data,
+                  type: field.type,
+                  size: field.data.length
+                }
+                console.log(
+                  `[Inbound] Found file attachment: ${field.name} = ${field.filename} (${field.data.length} bytes)`
+                )
+              } else {
+                // This is a text field - convert Buffer to string
+                const value =
+                  field.data instanceof Buffer ? field.data.toString('utf8') : field.data
+                payload[field.name] = value
+              }
             }
           }
           console.log('[Inbound] Parsed multipart form data, fields:', Object.keys(payload))
@@ -367,6 +382,30 @@ export default defineEventHandler(async (event) => {
       const debugMode = process.env.MAILGUN_ATTACHMENT_DEBUG === 'true'
       if (debugMode) {
         debugAttachments(payload as Record<string, unknown>)
+      }
+
+      // Additional debugging for multipart attachments
+      if (payload && 'attachment-count' in payload) {
+        console.log('[Inbound] Attachment debugging:')
+        console.log('[Inbound] attachment-count:', payload['attachment-count'])
+        console.log('[Inbound] content-id-map:', payload['content-id-map'])
+
+        const attachmentCount = Number(payload['attachment-count'] || 0)
+        for (let i = 1; i <= attachmentCount; i++) {
+          const key = `attachment-${i}`
+          const attachment = payload[key]
+          console.log(`[Inbound] ${key}:`, {
+            type: typeof attachment,
+            isBuffer: attachment instanceof Buffer,
+            isString: typeof attachment === 'string',
+            length: attachment
+              ? typeof attachment === 'string'
+                ? attachment.length
+                : (attachment as Buffer).length
+              : 0,
+            preview: typeof attachment === 'string' ? attachment.substring(0, 100) : 'not a string'
+          })
+        }
       }
 
       // Get attachment statistics first
