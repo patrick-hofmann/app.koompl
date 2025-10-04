@@ -204,7 +204,7 @@ export default defineEventHandler(async (event) => {
       teamId: agent.teamId
     })
 
-    const datasafeStored: Array<{ path: string; name: string; size: number }> = []
+    const datasafeStored: Array<{ path: string; name: string; size: number; mimeType: string }> = []
     try {
       const { ensureTeamDatasafe, storeAttachment } = await import('../../utils/datasafeStorage')
       const attachments = extractMailgunAttachments(payload as Record<string, unknown>)
@@ -224,7 +224,12 @@ export default defineEventHandler(async (event) => {
               subject: String(subject || '')
             }
           })
-          datasafeStored.push({ path: node.path, name: node.name, size: node.size })
+          datasafeStored.push({
+            path: node.path,
+            name: node.name,
+            size: node.size,
+            mimeType: attachment.mimeType
+          })
         }
         console.log(
           '[Inbound] Stored attachments in datasafe:',
@@ -427,7 +432,13 @@ export default defineEventHandler(async (event) => {
         to: String(toEmail || to || ''),
         subject: String(subject || ''),
         body: String(text || ''),
-        receivedAt: new Date().toISOString()
+        receivedAt: new Date().toISOString(),
+        attachments: datasafeStored.map((attachment) => ({
+          filename: attachment.name,
+          path: attachment.path,
+          mimeType: attachment.mimeType,
+          size: attachment.size
+        }))
       },
       maxRounds,
       timeoutMinutes,

@@ -6,11 +6,18 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 const { user: sessionUser } = await useUserSession()
 
 // Initialize form with current user's name and email
-const form = reactive<{ from: string; to: string; subject: string; text: string }>({
+const form = reactive<{
+  from: string
+  to: string
+  subject: string
+  text: string
+  attachments: File[]
+}>({
   from: `${sessionUser.value?.name || 'Tester'} <${sessionUser.value?.email || 'tester@example.com'}>`,
   to: '',
   subject: 'Round-trip test',
-  text: `This is a round-trip test from ${sessionUser.value?.name || 'User'} (${sessionUser.value?.email || 'user@example.com'}).`
+  text: `This is a round-trip test from ${sessionUser.value?.name || 'User'} (${sessionUser.value?.email || 'user@example.com'}).`,
+  attachments: []
 })
 const loading = ref(false)
 const result = ref<Record<string, unknown> | null>(null)
@@ -24,11 +31,48 @@ watch(
   { immediate: true }
 )
 
+// File handling functions
+function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  if (target.files) {
+    form.attachments = Array.from(target.files)
+  }
+}
+
+function removeAttachment(index: number) {
+  form.attachments.splice(index, 1)
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 async function runRoundTrip() {
   if (!props.agentId) return
   loading.value = true
   result.value = null
   try {
+    // Convert files to base64 for transmission
+    const attachments = await Promise.all(
+      form.attachments.map(async (file) => {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.readAsDataURL(file)
+        })
+        return {
+          filename: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          size: file.size,
+          data: base64.split(',')[1] // Remove data:type;base64, prefix
+        }
+      })
+    )
+
     const res = await $fetch<{
       ok: boolean
       inboundSavedId?: string
@@ -36,7 +80,13 @@ async function runRoundTrip() {
       error?: string
     }>(`/api/agents/${props.agentId}/roundtrip`, {
       method: 'POST',
-      body: { from: form.from, to: form.to || undefined, subject: form.subject, text: form.text }
+      body: {
+        from: form.from,
+        to: form.to || undefined,
+        subject: form.subject,
+        text: form.text,
+        attachments: attachments.length > 0 ? attachments : undefined
+      }
     })
     result.value = res.ok
       ? { inboundSavedId: res.inboundSavedId, outbound: res.outbound }
@@ -69,6 +119,36 @@ async function runRoundTrip() {
             </UFormField>
             <UFormField label="Body">
               <UTextarea v-model="form.text" :rows="5" autoresize />
+            </UFormField>
+            <UFormField label="Attachments (optional)">
+              <div class="space-y-2">
+                <input
+                  type="file"
+                  multiple
+                  class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                  @change="handleFileSelect"
+                />
+                <div v-if="form.attachments.length > 0" class="space-y-1">
+                  <div
+                    v-for="(file, index) in form.attachments"
+                    :key="index"
+                    class="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                  >
+                    <div class="flex items-center space-x-2">
+                      <UIcon name="i-lucide-file" class="w-4 h-4 text-gray-500" />
+                      <span class="text-sm font-medium">{{ file.name }}</span>
+                      <span class="text-xs text-gray-500">({{ formatFileSize(file.size) }})</span>
+                    </div>
+                    <UButton
+                      icon="i-lucide-x"
+                      size="xs"
+                      variant="ghost"
+                      color="red"
+                      @click="removeAttachment(index)"
+                    />
+                  </div>
+                </div>
+              </div>
             </UFormField>
             <div class="flex items-center gap-2 justify-end">
               <UButton

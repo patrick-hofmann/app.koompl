@@ -13,6 +13,12 @@ export default defineEventHandler(async (event) => {
       subject?: string
       text?: string
       html?: string
+      attachments?: Array<{
+        filename: string
+        mimeType: string
+        size: number
+        data: string // Base64 encoded
+      }>
     }>(event)
 
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
@@ -37,6 +43,19 @@ export default defineEventHandler(async (event) => {
       Subject: String(body?.subject || 'Round-trip test'),
       'stripped-text': String(body?.text || 'This is a round-trip test.'),
       'stripped-html': String(body?.html || '')
+    }
+
+    // Add attachments if provided
+    if (body?.attachments && body.attachments.length > 0) {
+      payload['attachment-count'] = body.attachments.length.toString()
+      body.attachments.forEach((attachment, index) => {
+        payload[`attachment-${index + 1}`] = JSON.stringify({
+          filename: attachment.filename,
+          'content-type': attachment.mimeType,
+          data: attachment.data,
+          size: attachment.size
+        })
+      })
     }
 
     // Call the existing inbound handler as if Mailgun posted to it
