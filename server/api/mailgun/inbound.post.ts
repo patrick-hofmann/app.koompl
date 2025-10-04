@@ -146,7 +146,7 @@ export default defineEventHandler(async (event) => {
     })
 
     // Use shared helper to extract bare email address from header-like strings
-    const { extractEmail, extractMailgunAttachments } = await import('../../utils/mailgunHelpers')
+    const { extractEmail } = await import('../../utils/mailgunHelpers')
     const toEmail = extractEmail(to)
     const fromEmail = extractEmail(from)
 
@@ -207,32 +207,82 @@ export default defineEventHandler(async (event) => {
     const datasafeStored: Array<{ path: string; name: string; size: number }> = []
     try {
       const { ensureTeamDatasafe, storeAttachment } = await import('../../utils/datasafeStorage')
-      const attachments = extractMailgunAttachments(payload as Record<string, unknown>)
-      if (attachments.length) {
+      const { getAttachmentStats, validateAttachment, debugAttachments } = await import(
+        '../../utils/mailgunHelpers'
+      )
+
+      // Enable debug mode for attachment processing (can be controlled via environment variable)
+      const debugMode = process.env.MAILGUN_ATTACHMENT_DEBUG === 'true'
+      if (debugMode) {
+        debugAttachments(payload as Record<string, unknown>)
+      }
+
+      // Get attachment statistics first
+      const stats = getAttachmentStats(payload as Record<string, unknown>)
+      console.log(
+        `[Inbound] Attachment stats: ${stats.totalCount} attachments, ${stats.totalSize} bytes, types: ${stats.mimeTypes.join(', ')}`
+      )
+
+      if (stats.hasAttachments) {
         await ensureTeamDatasafe(team.id)
+
+        // Extract and validate attachments
+        const { extractMailgunAttachments } = await import('../../utils/mailgunHelpers')
+        const attachments = extractMailgunAttachments(payload as Record<string, unknown>)
+        const validAttachments = []
+        const invalidAttachments = []
+
         for (const attachment of attachments) {
-          const node = await storeAttachment(team.id, {
-            filename: attachment.filename,
-            data: attachment.data,
-            encoding: 'base64',
-            mimeType: attachment.mimeType,
-            size: attachment.size,
-            source: 'email-attachment',
-            emailMeta: {
-              messageId: String(messageId || ''),
-              from: String(from || ''),
-              subject: String(subject || '')
-            }
-          })
-          datasafeStored.push({ path: node.path, name: node.name, size: node.size })
+          const validation = validateAttachment(attachment)
+          if (validation.isValid) {
+            validAttachments.push(attachment)
+          } else {
+            invalidAttachments.push({ attachment, errors: validation.errors })
+            console.warn(
+              `[Inbound] Skipping invalid attachment ${attachment.filename}:`,
+              validation.errors
+            )
+          }
         }
+
         console.log(
-          '[Inbound] Stored attachments in datasafe:',
-          datasafeStored.map((item) => item.path)
+          `[Inbound] Processing ${validAttachments.length} valid attachments (${invalidAttachments.length} invalid skipped)`
         )
+
+        // Process valid attachments
+        for (const attachment of validAttachments) {
+          try {
+            const node = await storeAttachment(team.id, {
+              filename: attachment.filename,
+              data: attachment.data,
+              encoding: 'base64',
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+              source: 'email-attachment',
+              emailMeta: {
+                messageId: String(messageId || ''),
+                from: String(from || ''),
+                subject: String(subject || '')
+              }
+            })
+            datasafeStored.push({ path: node.path, name: node.name, size: node.size })
+            console.log(`[Inbound] ✓ Stored attachment: ${attachment.filename} -> ${node.path}`)
+          } catch (storeErr) {
+            console.error(`[Inbound] Failed to store attachment ${attachment.filename}:`, storeErr)
+          }
+        }
+
+        if (datasafeStored.length > 0) {
+          console.log(
+            '[Inbound] Successfully stored attachments in datasafe:',
+            datasafeStored.map((item) => `${item.name} (${item.path})`)
+          )
+        }
+      } else {
+        console.log('[Inbound] No attachments found in email')
       }
     } catch (datasafeErr) {
-      console.error('[Inbound] Failed to store attachments in datasafe', datasafeErr)
+      console.error('[Inbound] Failed to process attachments:', datasafeErr)
     }
 
     // Log inbound email activity EARLY (before any outbound processing)
