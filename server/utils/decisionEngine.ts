@@ -151,16 +151,6 @@ You are processing a request in a multi-round flow system.
 Original Request From: ${flow.requester.name} (${flow.requester.email})
 Subject: ${originalSubject}
 Body: ${originalRequest}
-${
-  flow.trigger.attachments && flow.trigger.attachments.length > 0
-    ? `
-Attachments received:
-${flow.trigger.attachments
-  .map((att) => `- ${att.filename} (${att.mimeType}, ${att.size} bytes) - stored at: ${att.path}`)
-  .join('\n')}
-`
-    : ''
-}
 
 Current Progress:
 - Round: ${currentRound + 1}/${maxRounds}
@@ -341,43 +331,6 @@ Notes:
       size: number
     }> = []
 
-    // Include original email attachments
-    if (flow.trigger.attachments && flow.trigger.attachments.length > 0) {
-      console.log(
-        `[DecisionEngine] Including ${flow.trigger.attachments.length} original email attachments`
-      )
-      for (const attachment of flow.trigger.attachments) {
-        // We need to read the file from datasafe to get the base64 content
-        try {
-          const datasafeContext = {
-            teamId: flow.teamId!,
-            userId: flow.userId!,
-            agentId: agent.id
-          }
-          const downloadResult = await executeDatasafeTool(datasafeContext, 'download_file', {
-            path: attachment.path
-          })
-          if (downloadResult && !downloadResult.isError) {
-            const resultData = JSON.parse(downloadResult.content[0]?.text || '{}')
-            if (resultData.success && resultData.data?.base64) {
-              downloadedFiles.push({
-                filename: attachment.filename,
-                content: resultData.data.base64,
-                mimeType: attachment.mimeType,
-                size: attachment.size
-              })
-              console.log(`[DecisionEngine] Included original attachment: ${attachment.filename}`)
-            }
-          }
-        } catch (error) {
-          console.warn(
-            `[DecisionEngine] Failed to include original attachment ${attachment.filename}:`,
-            error
-          )
-        }
-      }
-    }
-
     // Enhanced prompt with current date/time
     const now = new Date()
     const currentDateTime = now.toISOString()
@@ -413,8 +366,7 @@ TOOL USAGE GUIDELINES:
 - After tool execution, evaluate if you have enough information
 
 FILE ATTACHMENTS:
-- Original email attachments are available and will be included in your response
-- If you download additional files using datasafe tools, they will be automatically attached to your email response
+- If you download files using datasafe tools, they will be automatically attached to your email response
 - Downloaded files are captured when you use the 'download_file' tool
 - You can mention the attached files in your response text
 

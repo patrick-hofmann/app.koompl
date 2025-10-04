@@ -156,8 +156,7 @@ export async function generateAgentResponse(
         subject,
         text,
         from,
-        receivedAt: new Date().toISOString(),
-        attachments: [] // Attachments will be passed from the flow context
+        receivedAt: new Date().toISOString()
       }
 
       const kanbanContext = { teamId, userId, agentId: effectiveAgent.id }

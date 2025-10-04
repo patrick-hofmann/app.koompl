@@ -343,21 +343,11 @@ When using MCP servers:
    * Create user prompt from email context
    */
   private createUserPrompt(email: McpEmailContext): string {
-    const attachmentInfo =
-      email.attachments && email.attachments.length > 0
-        ? `\n\nAttachments received:\n${email.attachments
-            .map(
-              (att) =>
-                `- ${att.filename} (${att.mimeType}, ${att.size} bytes) - stored at: ${att.path}`
-            )
-            .join('\n')}`
-        : ''
-
     return `Please respond to this email:
 
 From: ${email.from || 'Unknown sender'}
 Subject: ${email.subject}
-Received: ${email.receivedAt}${attachmentInfo}
+Received: ${email.receivedAt}
 
 Email content:
 ${email.text}
