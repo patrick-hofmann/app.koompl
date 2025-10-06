@@ -17,8 +17,8 @@ import {
   searchCards,
   getCardsByAssignee,
   type KanbanMcpContext
-} from '../../utils/mcpKanban'
-import { createBoard, addColumn } from '../../utils/kanbanStorage'
+} from '../../../mcp/builtin/kanban'
+import { createBoard, addColumn } from '../../../utils/kanbanStorage'
 
 export default defineEventHandler(async (event) => {
   try {

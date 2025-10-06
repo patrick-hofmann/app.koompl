@@ -1,7 +1,7 @@
-import { createGeneralAgent } from '../../../utils/mcpAgent'
-import { listMcpServers } from '../../../utils/mcpStorage'
+import { createGeneralAgent } from '../../../mcp/agent'
+import { listMcpServers } from '../../../mcp/storage'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   try {
     const serverId = getRouterParam(event, 'id')
     if (!serverId) {
@@ -17,7 +17,7 @@ export default defineEventHandler(async event => {
 
     // Get the specific server
     const allServers = await listMcpServers()
-    const server = allServers.find(s => s.id === serverId)
+    const server = allServers.find((s) => s.id === serverId)
 
     if (!server) {
       throw createError({ statusCode: 404, statusMessage: 'MCP server not found' })
@@ -34,13 +34,10 @@ export default defineEventHandler(async event => {
       receivedAt: new Date().toISOString()
     }
 
-    const agentPrompt = 'You are a helpful AI assistant that can access various data sources through MCP servers.'
+    const agentPrompt =
+      'You are a helpful AI assistant that can access various data sources through MCP servers.'
 
-    const response = await mcpAgent.processEmail(
-      emailContext,
-      agentPrompt,
-      [server]
-    )
+    const response = await mcpAgent.processEmail(emailContext, agentPrompt, [server])
 
     // Cleanup
     await mcpAgent.cleanup()

@@ -16,7 +16,7 @@ import {
   listDatasafeRules,
   getDatasafeStats,
   type DatasafeMcpContext
-} from '../../utils/mcpDatasafe'
+} from '../../../mcp/builtin/datasafe'
 
 interface JsonRpcRequest {
   jsonrpc?: string

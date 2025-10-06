@@ -8,7 +8,7 @@ import {
   type Tool
 } from '@modelcontextprotocol/sdk/types.js'
 
-import { getAgentsDirectoryTools, executeAgentsDirectoryTool } from './builtinMcpTools'
+import { getAgentsDirectoryTools, executeAgentsDirectoryTool } from '../../tools/builtin'
 
 const server = new Server(
   {

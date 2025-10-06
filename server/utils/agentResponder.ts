@@ -1,10 +1,10 @@
 import type { Agent } from '~/types'
-import { listMcpServers } from './mcpStorage'
-import { fetchMcpContext, type McpContextResult } from './mcpClients'
+import { listMcpServers } from '../mcp/storage'
+import { fetchMcpContext, type McpContextResult } from '../mcp/clients'
 import { agentLogger } from './agentLogging'
-import { createGeneralAgent } from './mcpAgent'
-import { getKanbanTools, executeKanbanTool, getCalendarTools } from './builtinMcpTools'
-import { executeCalendarTool } from './builtinCalendarTools'
+import { createGeneralAgent } from '../mcp/agent'
+import { getKanbanTools, executeKanbanTool, getCalendarTools } from '../mcp/tools/builtin'
+import { executeCalendarTool } from '../mcp/tools/calendar'
 
 export interface AgentRespondRequest {
   agentId: string
@@ -53,7 +53,7 @@ export async function generateAgentResponse(
     }
 
     // Ensure builtin MCP servers exist
-    const { ensureBuiltinServers } = await import('./ensureBuiltinServers')
+    const { ensureBuiltinServers } = await import('../mcp/ensureBuiltinServers')
     await ensureBuiltinServers()
 
     const agentsStorage = useStorage('agents')

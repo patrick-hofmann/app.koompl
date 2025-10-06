@@ -22,18 +22,20 @@ export class KoomplMcpAgent {
     }
 
     // Initialize LLM based on provider
-    const llm =
-      this.config.llmProvider === 'anthropic'
-        ? new ChatAnthropic({
-            model: this.config.model || 'claude-3-5-sonnet-20241022',
-            temperature: this.config.temperature,
-            maxTokens: this.config.maxTokens
-          })
-        : new ChatOpenAI({
-            model: this.config.model || 'gpt-4o',
-            temperature: this.config.temperature,
-            maxTokens: this.config.maxTokens
-          })
+    let llm: ChatAnthropic | ChatOpenAI
+    if (this.config.llmProvider === 'anthropic') {
+      llm = new ChatAnthropic({
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        temperature: this.config.temperature,
+        maxTokens: this.config.maxTokens
+      })
+    } else {
+      llm = new ChatOpenAI({
+        model: this.config.model || 'gpt-4o',
+        temperature: this.config.temperature,
+        maxTokens: this.config.maxTokens
+      })
+    }
 
     // Initialize MCP client with empty config (will be populated with servers)
     this.client = new MCPClient({ mcpServers: {} })
@@ -66,7 +68,7 @@ export class KoomplMcpAgent {
           userId: kanbanContext.userId
         })
         // Configure built-in Kanban as a proper MCP server
-        const serverPath = new URL('./builtinKanbanMcpServer.mjs', import.meta.url).pathname
+        const serverPath = new URL('./builtin/kanban/server.mjs', import.meta.url).pathname
         serverConfigs[server.id] = {
           command: 'node',
           args: [serverPath],
@@ -85,7 +87,7 @@ export class KoomplMcpAgent {
           userId: kanbanContext.userId
         })
         // Configure built-in Calendar as a proper MCP server
-        const serverPath = new URL('./builtinCalendarMcpServer.mjs', import.meta.url).pathname
+        const serverPath = new URL('./builtin/calendar/server.mjs', import.meta.url).pathname
         serverConfigs[server.id] = {
           command: 'node',
           args: [serverPath],
@@ -103,7 +105,7 @@ export class KoomplMcpAgent {
           teamId: kanbanContext.teamId,
           userId: kanbanContext.userId
         })
-        const serverPath = new URL('./builtinDatasafeMcpServer.mjs', import.meta.url).pathname
+        const serverPath = new URL('./builtin/datasafe/server.mjs', import.meta.url).pathname
         serverConfigs[server.id] = {
           command: 'node',
           args: [serverPath],
@@ -114,7 +116,7 @@ export class KoomplMcpAgent {
           }
         }
       } else if (server.provider === 'builtin-agents') {
-        const serverPath = new URL('./builtinAgentsInfoMcpServer.mjs', import.meta.url).pathname
+        const serverPath = new URL('./builtin/agents/server.mjs', import.meta.url).pathname
         serverConfigs[server.id] = {
           command: 'node',
           args: [serverPath],

@@ -16,8 +16,8 @@ import {
   executeAgentsDirectoryTool,
   getDatasafeTools,
   executeDatasafeTool
-} from './builtinMcpTools'
-import { executeCalendarTool } from './builtinCalendarTools'
+} from '../mcp/tools/builtin'
+import { executeCalendarTool } from '../mcp/tools/calendar'
 import { normalizeMailPolicy, formatMailPolicySummary } from './mailPolicy'
 
 export class DecisionEngine {

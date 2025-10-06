@@ -1,4 +1,4 @@
-import { getAgentsDirectoryTools, executeAgentsDirectoryTool } from '../../utils/builtinMcpTools'
+import { getAgentsDirectoryTools, executeAgentsDirectoryTool } from '../../../mcp/tools/builtin'
 
 export default defineEventHandler(async (event) => {
   try {

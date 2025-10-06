@@ -1,13 +1,13 @@
 import { createError } from 'h3'
 import type { StoredMcpServer } from '../types/mcp-storage'
-import { getMcpProviderPreset, setMcpServerStatus } from './mcpStorage'
-import { agentLogger } from './agentLogging'
+import { getMcpProviderPreset, setMcpServerStatus } from './storage'
+import { agentLogger } from '../utils/agentLogging'
 
 import type { McpEmailContext, McpContextResult } from '../types/mcp-clients'
-import { fetchKanbanContext, type KanbanMcpContext } from './mcpKanban'
-import { fetchCalendarContext, type CalendarMcpContext } from './mcpCalendar'
-import { fetchDatasafeContext, type DatasafeMcpContext } from './mcpDatasafe'
-import { listAgentDirectory } from './mcpAgents'
+import { fetchKanbanContext, type KanbanMcpContext } from './builtin/kanban'
+import { fetchCalendarContext, type CalendarMcpContext } from './builtin/calendar'
+import { fetchDatasafeContext, type DatasafeMcpContext } from './builtin/datasafe'
+import { listAgentDirectory } from './agents'
 
 const DEFAULT_LIMIT = 5
 

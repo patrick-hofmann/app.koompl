@@ -12,12 +12,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "test:kanban:inspect": "npx @modelcontextprotocol/inspector",
-    "test:kanban": "node test-runner.js --type=integration",
-    "test:kanban:integration": "node test-kanban-integration.js",
-    "test:kanban:integration:full": "node test-kanban-integration.js --scenario=full",
-    "test:kanban:integration:perf": "node test-kanban-integration.js --scenario=integration",
-    "test:kanban:example": "node example-test-run.js"
+    "test:mcp:inspect": "npx @modelcontextprotocol/inspector --config mcp.config ",
+    "test:mcp:inspect:kanban": "npx @modelcontextprotocol/inspector --config mcp.config --server kanban",
+    "test:mcp:inspect:agents": "npx @modelcontextprotocol/inspector  --config mcp.config --server agents",
+    "test:mcp:inspect:datasafe": "npx @modelcontextprotocol/inspector --config mcp.config --server datasafe",
+    "test:mcp:inspect:calendar": "npx @modelcontextprotocol/inspector --config mcp.config --server calendar"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.68",

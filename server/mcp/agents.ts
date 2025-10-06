@@ -1,7 +1,7 @@
 import type { Agent, MailPolicyRule } from '~/types'
 import type { StoredMcpServer } from '../types/mcp-storage'
-import { getIdentity } from './identityStorage'
-import { normalizeMailPolicy } from './mailPolicy'
+import { getIdentity } from '../utils/identityStorage'
+import { normalizeMailPolicy } from '../utils/mailPolicy'
 
 interface AgentDirectoryEntry {
   id: string
@@ -175,7 +175,7 @@ async function buildDirectoryEntry(
   const description = (agent.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 320)
 
   // Apply predefined overrides for consistent behavior with decision engine
-  const { withPredefinedOverride } = await import('./predefinedKoompls')
+  const { withPredefinedOverride } = await import('../utils/predefinedKoompls')
   const effectiveAgent = withPredefinedOverride(agent)
   const normalizedPolicy = normalizeMailPolicy(effectiveAgent)
 

@@ -1,65 +1,18 @@
-/**
- * Built-in MCP Server for Kanban Board Access
- * This provides agents with the ability to interact with team Kanban boards
- */
+import {
+  getTeamBoards,
+  getBoard,
+  addCard,
+  updateCard,
+  moveCard,
+  deleteCard
+} from '../../../utils/kanbanStorage'
+import type { KanbanBoard, KanbanCard } from '../../../types/kanban'
+import type { KanbanMcpContext } from './context'
 
-import type { McpContextResult } from '../types/mcp-clients'
-import { getTeamBoards, getBoard, addCard, updateCard, moveCard, deleteCard } from './kanbanStorage'
-import type { KanbanBoard, KanbanCard } from '../types/kanban'
-
-export interface KanbanMcpContext {
-  teamId: string
-  userId: string
-  agentId?: string
-}
-
-/**
- * Get summary of all boards for context
- */
-export async function fetchKanbanContext(
-  context: KanbanMcpContext,
-  limit: number = 5
-): Promise<McpContextResult | null> {
-  const boards = await getTeamBoards(context.teamId)
-
-  if (!boards.length) {
-    return {
-      serverId: 'builtin-kanban',
-      serverName: 'Kanban Board',
-      provider: 'builtin',
-      category: 'productivity',
-      summary: 'No Kanban boards found for this team.',
-      details: []
-    }
-  }
-
-  // Summarize boards with card counts
-  const boardSummaries = boards.slice(0, limit).map((board) => {
-    const totalCards = board.columns.reduce((sum, col) => sum + col.cards.length, 0)
-    const columnInfo = board.columns.map((col) => `${col.title} (${col.cards.length})`).join(', ')
-    return `• ${board.name}: ${totalCards} cards across ${board.columns.length} columns [${columnInfo}]`
-  })
-
-  return {
-    serverId: 'builtin-kanban',
-    serverName: 'Kanban Board',
-    provider: 'builtin',
-    category: 'productivity',
-    summary: `Kanban Boards:\n${boardSummaries.join('\n')}`,
-    details: boards.slice(0, limit)
-  }
-}
-
-/**
- * List all boards with full details
- */
 export async function listBoards(context: KanbanMcpContext): Promise<KanbanBoard[]> {
   return await getTeamBoards(context.teamId)
 }
 
-/**
- * Get a specific board by ID or name
- */
 export async function getBoardByIdOrName(
   context: KanbanMcpContext,
   identifier: string
@@ -69,10 +22,8 @@ export async function getBoardByIdOrName(
   }
   const boards = await getTeamBoards(context.teamId)
 
-  // Try to find by ID first
   let board = boards.find((b) => b.id === identifier)
 
-  // If not found, try by name (case-insensitive)
   if (!board) {
     const nameToFind = String(identifier).toLowerCase()
     board = boards.find((b) => b.name?.toLowerCase() === nameToFind)
@@ -81,9 +32,6 @@ export async function getBoardByIdOrName(
   return board || null
 }
 
-/**
- * List all cards from a specific board, optionally filtered by column
- */
 export async function listCards(
   context: KanbanMcpContext,
   boardIdOrName: string,
@@ -97,7 +45,6 @@ export async function listCards(
 
   let columns = board.columns
 
-  // Filter by column if specified
   if (columnIdOrName) {
     const column = columns.find(
       (col) => col.id === columnIdOrName || col.title.toLowerCase() === columnIdOrName.toLowerCase()
@@ -118,9 +65,6 @@ export async function listCards(
   return { board, cards }
 }
 
-/**
- * Create a new card on a board
- */
 export async function createCard(
   context: KanbanMcpContext,
   boardIdOrName: string,
@@ -137,7 +81,6 @@ export async function createCard(
   const board = await getBoardByIdOrName(context, boardIdOrName)
   if (!board) return null
 
-  // Find the column
   const column = board.columns.find(
     (col) => col.id === columnIdOrName || col.title.toLowerCase() === columnIdOrName.toLowerCase()
   )
@@ -150,14 +93,10 @@ export async function createCard(
 
   if (!card) return null
 
-  // Get updated board
   const updatedBoard = await getBoard(context.teamId, board.id)
   return updatedBoard ? { board: updatedBoard, card } : null
 }
 
-/**
- * Update an existing card
- */
 export async function modifyCard(
   context: KanbanMcpContext,
   boardIdOrName: string,
@@ -175,7 +114,6 @@ export async function modifyCard(
   const board = await getBoardByIdOrName(context, boardIdOrName)
   if (!board) return null
 
-  // Find the card's current column
   let currentColumn = null
   for (const col of board.columns) {
     if (col.cards.find((c) => c.id === cardId)) {
@@ -185,7 +123,6 @@ export async function modifyCard(
   }
   if (!currentColumn) return null
 
-  // Update the card
   const card = await updateCard(context.teamId, board.id, currentColumn.id, cardId, {
     title: updates.title,
     description: updates.description,
@@ -197,86 +134,48 @@ export async function modifyCard(
 
   if (!card) return null
 
-  // Get updated board
   const updatedBoard = await getBoard(context.teamId, board.id)
   return updatedBoard ? { board: updatedBoard, card } : null
 }
 
-/**
- * Move a card to a different column
- */
 export async function moveCardToColumn(
   context: KanbanMcpContext,
   boardIdOrName: string,
   cardId: string,
-  toColumnIdOrName: string,
-  position?: number
-): Promise<{ board: KanbanBoard; success: boolean } | null> {
+  targetColumnIdOrName: string
+): Promise<{ board: KanbanBoard; card: KanbanCard } | null> {
   const board = await getBoardByIdOrName(context, boardIdOrName)
   if (!board) return null
 
-  // Find the card's current column
-  let fromColumn = null
-  for (const col of board.columns) {
-    if (col.cards.find((c) => c.id === cardId)) {
-      fromColumn = col
-      break
-    }
-  }
-  if (!fromColumn) return null
-
-  // Find the target column
-  const toColumn = board.columns.find(
+  const targetColumn = board.columns.find(
     (col) =>
-      col.id === toColumnIdOrName || col.title.toLowerCase() === toColumnIdOrName.toLowerCase()
+      col.id === targetColumnIdOrName ||
+      col.title.toLowerCase() === targetColumnIdOrName.toLowerCase()
   )
-  if (!toColumn) return null
+  if (!targetColumn) return null
 
-  const success = await moveCard(
-    context.teamId,
-    board.id,
-    cardId,
-    fromColumn.id,
-    toColumn.id,
-    position
-  )
+  const result = await moveCard(context.teamId, board.id, cardId, targetColumn.id)
+  if (!result) return null
 
-  // Get updated board
   const updatedBoard = await getBoard(context.teamId, board.id)
-  return updatedBoard ? { board: updatedBoard, success } : null
+  const updatedCard = updatedBoard?.columns
+    .flatMap((col) => col.cards)
+    .find((card) => card.id === cardId)
+
+  return updatedBoard && updatedCard ? { board: updatedBoard, card: updatedCard } : null
 }
 
-/**
- * Remove a card from a board
- */
 export async function removeCard(
   context: KanbanMcpContext,
   boardIdOrName: string,
   cardId: string
-): Promise<{ board: KanbanBoard; success: boolean } | null> {
+): Promise<boolean> {
   const board = await getBoardByIdOrName(context, boardIdOrName)
-  if (!board) return null
+  if (!board) return false
 
-  // Find the card's column
-  let column = null
-  for (const col of board.columns) {
-    if (col.cards.find((c) => c.id === cardId)) {
-      column = col
-      break
-    }
-  }
-  if (!column) return null
-
-  const success = await deleteCard(context.teamId, board.id, column.id, cardId)
-
-  // Get updated board
-  const updatedBoard = await getBoard(context.teamId, board.id)
-  return updatedBoard ? { board: updatedBoard, success } : null
+  return await deleteCard(context.teamId, board.id, cardId)
 }
 
-/**
- * Search for cards by title, description, or assignee
- */
 export async function searchCards(
   context: KanbanMcpContext,
   query: string,
@@ -284,25 +183,38 @@ export async function searchCards(
 ): Promise<
   Array<KanbanCard & { boardId: string; boardName: string; columnId: string; columnName: string }>
 > {
-  const boards = boardIdOrName
-    ? [await getBoardByIdOrName(context, boardIdOrName)].filter((b): b is KanbanBoard => b !== null)
-    : await getTeamBoards(context.teamId)
+  const boards = await getTeamBoards(context.teamId)
 
-  const results: Array<
+  const relevantBoards = boardIdOrName
+    ? boards.filter(
+        (board) =>
+          board.id === boardIdOrName || board.name?.toLowerCase() === boardIdOrName.toLowerCase()
+      )
+    : boards
+
+  const term = query.trim().toLowerCase()
+  if (!term) return []
+
+  const matches: Array<
     KanbanCard & { boardId: string; boardName: string; columnId: string; columnName: string }
   > = []
-  const queryLower = query.toLowerCase()
 
-  for (const board of boards) {
+  for (const board of relevantBoards) {
     for (const column of board.columns) {
       for (const card of column.cards) {
-        const matchesTitle = card.title.toLowerCase().includes(queryLower)
-        const matchesDescription = card.description?.toLowerCase().includes(queryLower)
-        const matchesAssignee = card.assignee?.toLowerCase().includes(queryLower)
-        const matchesTicket = card.ticket?.toLowerCase().includes(queryLower)
+        const haystack = [
+          card.title,
+          card.description,
+          card.assignee,
+          card.priority,
+          ...(card.tags || [])
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
 
-        if (matchesTitle || matchesDescription || matchesAssignee || matchesTicket) {
-          results.push({
+        if (haystack.includes(term)) {
+          matches.push({
             ...card,
             boardId: board.id,
             boardName: board.name,
@@ -314,12 +226,9 @@ export async function searchCards(
     }
   }
 
-  return results
+  return matches
 }
 
-/**
- * Get cards assigned to a specific user
- */
 export async function getCardsByAssignee(
   context: KanbanMcpContext,
   assignee: string,
@@ -327,20 +236,28 @@ export async function getCardsByAssignee(
 ): Promise<
   Array<KanbanCard & { boardId: string; boardName: string; columnId: string; columnName: string }>
 > {
-  const boards = boardIdOrName
-    ? [await getBoardByIdOrName(context, boardIdOrName)].filter((b): b is KanbanBoard => b !== null)
-    : await getTeamBoards(context.teamId)
+  const boards = await getTeamBoards(context.teamId)
 
-  const results: Array<
+  const relevantBoards = boardIdOrName
+    ? boards.filter(
+        (board) =>
+          board.id === boardIdOrName || board.name?.toLowerCase() === boardIdOrName.toLowerCase()
+      )
+    : boards
+
+  const normalizedAssignee = assignee.trim().toLowerCase()
+  if (!normalizedAssignee) return []
+
+  const matches: Array<
     KanbanCard & { boardId: string; boardName: string; columnId: string; columnName: string }
   > = []
-  const assigneeLower = assignee.toLowerCase()
 
-  for (const board of boards) {
+  for (const board of relevantBoards) {
     for (const column of board.columns) {
       for (const card of column.cards) {
-        if (card.assignee?.toLowerCase() === assigneeLower) {
-          results.push({
+        const cardAssignee = card.assignee?.toLowerCase()
+        if (cardAssignee && cardAssignee.includes(normalizedAssignee)) {
+          matches.push({
             ...card,
             boardId: board.id,
             boardName: board.name,
@@ -352,5 +269,5 @@ export async function getCardsByAssignee(
     }
   }
 
-  return results
+  return matches
 }

@@ -1,7 +1,12 @@
-import { createMcpServer, listMcpProviderPresets, listMcpServers, getMcpServerTemplates } from '../../utils/mcpStorage'
+import {
+  createMcpServer,
+  listMcpProviderPresets,
+  listMcpServers,
+  getMcpServerTemplates
+} from '../../mcp/storage'
 import type { McpServer } from '~/types'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   const method = getMethod(event)
 
   if (method === 'GET') {

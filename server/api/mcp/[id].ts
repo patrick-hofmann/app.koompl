@@ -1,7 +1,7 @@
-import { findMcpServer, removeMcpServer, updateMcpServer } from '../../utils/mcpStorage'
+import { findMcpServer, removeMcpServer, updateMcpServer } from '../../mcp/storage'
 import type { McpServer } from '~/types'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id') as string
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Missing MCP server id' })
