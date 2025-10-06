@@ -1,8 +1,13 @@
-/**
- * MCP Server Endpoint for Built-in Calendar
- *
- * Accepts MCP JSON-RPC 2.0 requests over HTTP and surfaces calendar tools.
- */
+import {
+  defineEventHandler,
+  getRequestHeaders,
+  getRequestHeader,
+  readBody,
+  setResponseHeader,
+  setResponseStatus,
+  createError
+} from 'h3'
+import type { H3Event } from 'h3'
 
 import { calendarDefinition, type CalendarMcpContext } from '../../mcp/builtin/calendar'
 import type { BuiltinToolResponse } from '../../mcp/builtin/shared'
@@ -37,10 +42,36 @@ function formatToolResponse(response: BuiltinToolResponse): string {
   )
 }
 
-export default defineEventHandler(async (event) => {
+function applyCors(event: H3Event) {
   setResponseHeader(event, 'Access-Control-Allow-Origin', '*')
   setResponseHeader(event, 'Access-Control-Allow-Methods', 'POST, OPTIONS, GET')
   setResponseHeader(event, 'Access-Control-Allow-Headers', '*')
+}
+
+export default defineEventHandler(async (event) => {
+  applyCors(event)
+
+  const method = event.node.req.method || 'GET'
+
+  if (method === 'OPTIONS') {
+    setResponseStatus(event, 204)
+    return null
+  }
+
+  if (method === 'GET') {
+    return {
+      ok: true,
+      message: 'Builtin Calendar MCP endpoint. Send JSON-RPC 2.0 requests via POST.'
+    }
+  }
+
+  if (method !== 'POST') {
+    setResponseStatus(event, 405)
+    return {
+      error: true,
+      message: `Unsupported method ${method}`
+    }
+  }
 
   const headers = getRequestHeaders(event)
   const headerTeamId = headers['x-team-id']

@@ -5,6 +5,16 @@
  */
 
 import { Buffer } from 'node:buffer'
+import {
+  defineEventHandler,
+  getRequestHeaders,
+  getRequestHeader,
+  readBody,
+  setResponseHeader,
+  setResponseStatus,
+  createError
+} from 'h3'
+import type { H3Event } from 'h3'
 
 import {
   listDatasafeFolder,
@@ -16,7 +26,7 @@ import {
   listDatasafeRules,
   getDatasafeStats,
   type DatasafeMcpContext
-} from '../../../mcp/builtin/datasafe'
+} from '../../mcp/builtin/datasafe'
 
 interface JsonRpcRequest {
   jsonrpc?: string
@@ -39,10 +49,36 @@ function formatJson(content: unknown): string {
   return JSON.stringify(content, null, 2)
 }
 
-export default defineEventHandler(async (event) => {
+function applyCors(event: H3Event) {
   setResponseHeader(event, 'Access-Control-Allow-Origin', '*')
   setResponseHeader(event, 'Access-Control-Allow-Methods', 'POST, OPTIONS, GET')
   setResponseHeader(event, 'Access-Control-Allow-Headers', '*')
+}
+
+export default defineEventHandler(async (event) => {
+  applyCors(event)
+
+  const method = event.node.req.method || 'GET'
+
+  if (method === 'OPTIONS') {
+    setResponseStatus(event, 204)
+    return null
+  }
+
+  if (method === 'GET') {
+    return {
+      ok: true,
+      message: 'Builtin Datasafe MCP endpoint. Send JSON-RPC 2.0 requests via POST.'
+    }
+  }
+
+  if (method !== 'POST') {
+    setResponseStatus(event, 405)
+    return {
+      error: true,
+      message: `Unsupported method ${method}`
+    }
+  }
 
   const headers = getRequestHeaders(event)
   const headerTeamId = headers['x-team-id']
@@ -269,9 +305,13 @@ export default defineEventHandler(async (event) => {
         const resolvedContext: DatasafeMcpContext = {
           ...baseContext,
           teamId:
-            allowOverride && typeof args.teamId === 'string' ? args.teamId : baseContext.teamId,
+            allowOverride && typeof args.teamId === 'string'
+              ? (args.teamId as string)
+              : baseContext.teamId,
           userId:
-            allowOverride && typeof args.userId === 'string' ? args.userId : baseContext.userId
+            allowOverride && typeof args.userId === 'string'
+              ? (args.userId as string)
+              : baseContext.userId
         }
 
         let toolResult: unknown
@@ -279,7 +319,9 @@ export default defineEventHandler(async (event) => {
         switch (toolName) {
           case 'list_folder': {
             const path =
-              typeof args.path === 'string' && args.path.trim().length > 0 ? args.path : undefined
+              typeof args.path === 'string' && args.path.trim().length > 0
+                ? (args.path as string)
+                : undefined
             const folder = await listDatasafeFolder(resolvedContext, path)
             toolResult = {
               content: [
@@ -313,10 +355,12 @@ export default defineEventHandler(async (event) => {
           }
 
           case 'upload_file': {
-            const path = typeof args.path === 'string' ? args.path : ''
-            const base64 = typeof args.base64 === 'string' ? args.base64 : ''
+            const path = typeof args.path === 'string' ? (args.path as string) : ''
+            const base64 = typeof args.base64 === 'string' ? (args.base64 as string) : ''
             const mimeType =
-              typeof args.mimeType === 'string' ? args.mimeType : 'application/octet-stream'
+              typeof args.mimeType === 'string'
+                ? (args.mimeType as string)
+                : 'application/octet-stream'
             if (!path || !base64) {
               throw createError({
                 statusCode: 400,
@@ -324,7 +368,9 @@ export default defineEventHandler(async (event) => {
               })
             }
             const size =
-              typeof args.size === 'number' ? args.size : Buffer.from(base64, 'base64').length
+              typeof args.size === 'number'
+                ? (args.size as number)
+                : Buffer.from(base64, 'base64').length
             const overwrite = Boolean(args.overwrite)
             const node = await uploadDatasafeFile(resolvedContext, {
               path,
@@ -366,16 +412,18 @@ export default defineEventHandler(async (event) => {
               throw createError({ statusCode: 400, statusMessage: 'Filename is required' })
             }
             const recommendation = await recommendDatasafePlacement(resolvedContext, {
-              filename: args.filename,
+              filename: args.filename as string,
               mimeType:
-                typeof args.mimeType === 'string' ? args.mimeType : 'application/octet-stream',
-              size: typeof args.size === 'number' ? args.size : 0,
+                typeof args.mimeType === 'string'
+                  ? (args.mimeType as string)
+                  : 'application/octet-stream',
+              size: typeof args.size === 'number' ? (args.size as number) : 0,
               encoding: 'base64',
               data: '',
               source: 'mcp',
               emailMeta: {
-                subject: typeof args.subject === 'string' ? args.subject : undefined,
-                from: typeof args.from === 'string' ? args.from : undefined
+                subject: typeof args.subject === 'string' ? (args.subject as string) : undefined,
+                from: typeof args.from === 'string' ? (args.from as string) : undefined
               },
               tags: Array.isArray(args.tags) ? (args.tags as string[]) : undefined
             })
@@ -400,19 +448,21 @@ export default defineEventHandler(async (event) => {
             const node = await storeDatasafeAttachment(
               resolvedContext,
               {
-                filename: args.filename,
+                filename: args.filename as string,
                 mimeType:
-                  typeof args.mimeType === 'string' ? args.mimeType : 'application/octet-stream',
+                  typeof args.mimeType === 'string'
+                    ? (args.mimeType as string)
+                    : 'application/octet-stream',
                 size:
                   typeof args.size === 'number'
-                    ? args.size
-                    : Buffer.from(args.base64, 'base64').length,
-                data: args.base64,
+                    ? (args.size as number)
+                    : Buffer.from(args.base64 as string, 'base64').length,
+                data: args.base64 as string,
                 encoding: 'base64',
                 source: 'mcp',
                 emailMeta: {
-                  subject: typeof args.subject === 'string' ? args.subject : undefined,
-                  from: typeof args.from === 'string' ? args.from : undefined
+                  subject: typeof args.subject === 'string' ? (args.subject as string) : undefined,
+                  from: typeof args.from === 'string' ? (args.from as string) : undefined
                 }
               },
               { overwrite: Boolean(args.overwrite) }
@@ -442,7 +492,7 @@ export default defineEventHandler(async (event) => {
           }
 
           case 'get_stats': {
-            const limit = typeof args.limit === 'number' ? args.limit : undefined
+            const limit = typeof args.limit === 'number' ? (args.limit as number) : undefined
             const stats = await getDatasafeStats(resolvedContext, limit)
             toolResult = {
               content: [

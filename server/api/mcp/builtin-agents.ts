@@ -1,12 +1,48 @@
-import { getAgentsDirectoryTools, executeAgentsDirectoryTool } from '../../../mcp/tools/builtin'
+import {
+  defineEventHandler,
+  getRequestHeaders,
+  getRequestHeader,
+  readBody,
+  setResponseHeader,
+  setResponseStatus,
+  createError
+} from 'h3'
+import type { H3Event } from 'h3'
+
+import { getAgentsDirectoryTools, executeAgentsDirectoryTool } from '../../mcp/tools/builtin'
+
+function applyCors(event: H3Event) {
+  setResponseHeader(event, 'Access-Control-Allow-Origin', '*')
+  setResponseHeader(event, 'Access-Control-Allow-Methods', 'POST, OPTIONS, GET')
+  setResponseHeader(event, 'Access-Control-Allow-Headers', '*')
+}
 
 export default defineEventHandler(async (event) => {
-  try {
-    // CORS for Inspector / browser clients
-    setResponseHeader(event, 'Access-Control-Allow-Origin', '*')
-    setResponseHeader(event, 'Access-Control-Allow-Methods', 'POST, OPTIONS, GET')
-    setResponseHeader(event, 'Access-Control-Allow-Headers', '*')
+  applyCors(event)
 
+  const method = event.node.req.method || 'GET'
+
+  if (method === 'OPTIONS') {
+    setResponseStatus(event, 204)
+    return null
+  }
+
+  if (method === 'GET') {
+    return {
+      ok: true,
+      message: 'Builtin Agents MCP endpoint. Send JSON-RPC 2.0 requests via POST.'
+    }
+  }
+
+  if (method !== 'POST') {
+    setResponseStatus(event, 405)
+    return {
+      error: true,
+      message: `Unsupported method ${method}`
+    }
+  }
+
+  try {
     const headers = getRequestHeaders(event)
     const headerTeamId = headers['x-team-id']
 
@@ -46,14 +82,19 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const { jsonrpc, id, method, params } = body as {
+    const {
+      jsonrpc,
+      id,
+      method: rpcMethod,
+      params
+    } = body as {
       jsonrpc?: string
       id?: string | number | null
       method?: string
       params?: any
     }
 
-    if (jsonrpc !== '2.0' || !method) {
+    if (jsonrpc !== '2.0' || !rpcMethod) {
       return {
         jsonrpc: '2.0',
         id: typeof id === 'string' || typeof id === 'number' ? id : '0',
@@ -66,7 +107,7 @@ export default defineEventHandler(async (event) => {
 
     const responseId = typeof id === 'string' || typeof id === 'number' ? id : '0'
 
-    switch (method) {
+    switch (rpcMethod) {
       case 'initialize': {
         return {
           jsonrpc: '2.0',
@@ -131,7 +172,7 @@ export default defineEventHandler(async (event) => {
           id: responseId,
           error: {
             code: -32601,
-            message: `Unknown method: ${method}`
+            message: `Unknown method: ${rpcMethod}`
           }
         }
     }
