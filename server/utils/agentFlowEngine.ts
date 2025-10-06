@@ -40,9 +40,18 @@ export class AgentFlowEngine {
     userId?: string
     requester?: { name: string; email: string }
   }): Promise<AgentFlow> {
+    console.log(`[AgentFlowEngine] Starting flow for agent ${params.agentId}`)
+    console.log(`[AgentFlowEngine] Flow params:`, {
+      agentId: params.agentId,
+      teamId: params.teamId,
+      userId: params.userId
+    })
+
     const flowId = `flow-${params.agentId}-${nanoid(8)}`
     const now = new Date().toISOString()
     const timeoutAt = new Date(Date.now() + (params.timeoutMinutes || 60) * 60 * 1000).toISOString()
+
+    console.log(`[AgentFlowEngine] Generated flowId: ${flowId}`)
 
     const flow: AgentFlow = {
       id: flowId,
@@ -68,7 +77,9 @@ export class AgentFlowEngine {
       }
     }
 
+    console.log(`[AgentFlowEngine] About to save flow to storage...`)
     await this.saveFlow(flow)
+    console.log(`[AgentFlowEngine] Flow saved to storage successfully`)
 
     console.log(`[AgentFlowEngine] Started flow ${flowId} for agent ${params.agentId}`)
     if (params.teamId) {
@@ -86,14 +97,31 @@ export class AgentFlowEngine {
   async executeRound(flowId: string, agentId?: string): Promise<RoundResult> {
     console.log(`[AgentFlowEngine] Executing round for flow ${flowId}`)
 
+    console.log(`[AgentFlowEngine] Step 1: Validating and loading flow...`)
     const flow = await this.validateAndLoadFlow(flowId, agentId)
+    console.log(`[AgentFlowEngine] Step 1 complete: Flow loaded`)
+
+    console.log(`[AgentFlowEngine] Step 2: Validating flow can execute...`)
     this.validateFlowCanExecute(flow)
+    console.log(`[AgentFlowEngine] Step 2 complete: Flow validation passed`)
 
+    console.log(`[AgentFlowEngine] Step 3: Creating new round...`)
     const round = await this.createNewRound(flow)
-    await this.processDecision(flow, round)
-    await this.updateFlowWithRound(flow, round)
+    console.log(`[AgentFlowEngine] Step 3 complete: Round created`)
 
-    return await this.handleDecision(flow, round.decision)
+    console.log(`[AgentFlowEngine] Step 4: Processing decision...`)
+    await this.processDecision(flow, round)
+    console.log(`[AgentFlowEngine] Step 4 complete: Decision processed`)
+
+    console.log(`[AgentFlowEngine] Step 5: Updating flow with round...`)
+    await this.updateFlowWithRound(flow, round)
+    console.log(`[AgentFlowEngine] Step 5 complete: Flow updated`)
+
+    console.log(`[AgentFlowEngine] Step 6: Handling decision...`)
+    const result = await this.handleDecision(flow, round.decision)
+    console.log(`[AgentFlowEngine] Step 6 complete: Decision handled`)
+
+    return result
   }
 
   private async validateAndLoadFlow(flowId: string, agentId?: string): Promise<AgentFlow> {

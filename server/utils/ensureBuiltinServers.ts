@@ -103,6 +103,30 @@ export async function ensureBuiltinServers(): Promise<void> {
     modified = true
   }
 
+  // Ensure builtin-email exists
+  if (!servers.find((s) => s.id === 'builtin-email')) {
+    console.log('[EnsureBuiltinServers] Creating builtin-email server (hidden)')
+    servers.push({
+      id: 'builtin-email',
+      name: 'Team Email Access',
+      provider: 'builtin-email',
+      category: 'communication',
+      description:
+        'Built-in email access for agents to read, search, and manage team emails with proper security controls.',
+      auth: {
+        type: 'bearer',
+        token: 'builtin'
+      },
+      metadata: {
+        builtin: true,
+        hidden: true
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    })
+    modified = true
+  }
+
   if (modified) {
     await mcpStorage.setItem('servers.json', servers)
     console.log('[EnsureBuiltinServers] Builtin servers initialized')

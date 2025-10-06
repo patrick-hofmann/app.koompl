@@ -488,6 +488,29 @@ export async function fetchMcpContext(
         result = await fetchAgentsDirectoryContext(server, limit, options.teamId)
         break
       }
+      case 'builtin-email': {
+        // Email MCP is hidden but available for attachment gathering
+        if (options.teamId && options.userId) {
+          result = {
+            serverId: server.id,
+            serverName: server.name,
+            provider: server.provider,
+            category: server.category,
+            summary: 'Email access available for attachment processing',
+            details: null
+          }
+        } else {
+          result = {
+            serverId: server.id,
+            serverName: server.name,
+            provider: server.provider,
+            category: server.category,
+            summary: 'Email access requires team context',
+            details: null
+          }
+        }
+        break
+      }
       default:
         result = await fetchCustomContext(server, email, limit)
     }

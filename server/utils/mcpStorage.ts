@@ -546,6 +546,31 @@ export const MCP_SERVER_TEMPLATES: McpServerTemplate[] = [
     }
   },
   {
+    id: 'builtin-email-template',
+    name: 'Team Email Access',
+    description:
+      'Built-in email access for agents to read, search, and manage team emails with proper security controls.',
+    provider: 'builtin-email',
+    category: 'communication',
+    icon: 'i-lucide-mail',
+    color: 'blue',
+    defaultConfig: {
+      name: 'Team Email Access',
+      provider: 'builtin-email',
+      category: 'communication',
+      description:
+        'Built-in email access for agents to read, search, and manage team emails with proper security controls.',
+      auth: {
+        type: 'bearer',
+        token: 'builtin'
+      },
+      metadata: {
+        builtin: true,
+        hidden: true
+      }
+    }
+  },
+  {
     id: 'custom-template',
     name: 'Custom MCP Server',
     description: 'Create a custom MCP server integration.',

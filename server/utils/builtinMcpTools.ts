@@ -34,6 +34,14 @@ import {
   getDatasafeStats,
   type DatasafeMcpContext
 } from './mcpDatasafe'
+import {
+  listEmails,
+  getEmail,
+  searchEmails,
+  getEmailThread,
+  getEmailAttachments,
+  type EmailMcpContext
+} from './mcpEmail'
 
 export interface McpTool {
   name: string
@@ -1077,6 +1085,273 @@ export async function executeDatasafeTool(
         }
     }
   } catch (error) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            },
+            null,
+            2
+          )
+        }
+      ],
+      isError: true
+    }
+  }
+}
+
+/**
+ * Get all available Email tools
+ */
+export function getEmailTools(): McpTool[] {
+  return [
+    {
+      name: 'list_emails',
+      description:
+        'List emails for the current user, optionally filtered by date, subject, or sender',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'number',
+            description: 'Maximum number of emails to return (default: 20)',
+            minimum: 1,
+            maximum: 100
+          },
+          offset: {
+            type: 'number',
+            description: 'Number of emails to skip (default: 0)',
+            minimum: 0
+          },
+          startDate: {
+            type: 'string',
+            description: 'Filter emails from this date (ISO 8601)'
+          },
+          endDate: {
+            type: 'string',
+            description: 'Filter emails to this date (ISO 8601)'
+          },
+          from: {
+            type: 'string',
+            description: 'Filter emails from specific sender'
+          },
+          subject: {
+            type: 'string',
+            description: 'Filter emails by subject containing text'
+          },
+          direction: {
+            type: 'string',
+            enum: ['inbound', 'outbound', 'all'],
+            description: 'Email direction filter'
+          }
+        },
+        required: [],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'get_email',
+      description: 'Get detailed content of a specific email by ID',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          emailId: {
+            type: 'string',
+            description: 'Email ID to retrieve'
+          }
+        },
+        required: ['emailId'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'search_emails',
+      description: 'Search emails by content, subject, or sender',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Search query'
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum results (default: 10)',
+            minimum: 1,
+            maximum: 50
+          }
+        },
+        required: ['query'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'get_email_thread',
+      description: 'Get all emails in a conversation thread',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          threadId: {
+            type: 'string',
+            description: 'Thread ID or message ID'
+          }
+        },
+        required: ['threadId'],
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'get_email_attachments',
+      description: 'Get attachments from a specific email',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          emailId: {
+            type: 'string',
+            description: 'Email ID to get attachments from'
+          }
+        },
+        required: ['emailId'],
+        additionalProperties: false
+      }
+    }
+  ]
+}
+
+/**
+ * Execute an Email tool directly (no HTTP)
+ */
+export async function executeEmailTool(
+  context: EmailMcpContext,
+  toolName: string,
+  args: Record<string, any>
+): Promise<McpToolResult> {
+  try {
+    let result: any
+
+    switch (toolName) {
+      case 'list_emails':
+        result = await listEmails(context, args)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Found ${result.total} email(s)`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'get_email':
+        result = await getEmail(context, args.emailId)
+        if (!result) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    success: false,
+                    error: 'Email not found'
+                  },
+                  null,
+                  2
+                )
+              }
+            ],
+            isError: true
+          }
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Email: ${result.subject}`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'search_emails':
+        result = await searchEmails(context, args.query, args.limit)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Found ${result.total} matching email(s)`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'get_email_thread':
+        result = await getEmailThread(context, args.threadId)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Thread with ${result.total} email(s)`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      case 'get_email_attachments':
+        result = await getEmailAttachments(context, args.emailId)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  data: result,
+                  summary: `Found ${result.length} attachment(s)`
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+
+      default:
+        throw new Error(`Unknown email tool: ${toolName}`)
+    }
+  } catch (error) {
+    console.error(`[BuiltinEmailTools] Error executing tool ${toolName}:`, error)
     return {
       content: [
         {

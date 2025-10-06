@@ -15,7 +15,9 @@ import {
   getAgentsDirectoryTools,
   executeAgentsDirectoryTool,
   getDatasafeTools,
-  executeDatasafeTool
+  executeDatasafeTool,
+  getEmailTools,
+  executeEmailTool
 } from './builtinMcpTools'
 import { executeCalendarTool } from './builtinCalendarTools'
 import { normalizeMailPolicy, formatMailPolicySummary } from './mailPolicy'
@@ -33,7 +35,11 @@ export class DecisionEngine {
       builtinServers.kanban ||
       builtinServers.calendar ||
       builtinServers.agents ||
-      builtinServers.datasafe
+      builtinServers.datasafe ||
+      builtinServers.email
+
+    console.log(`[DecisionEngine] Builtin tools check: hasBuiltinTools=${hasBuiltinTools}`)
+    console.log(`[DecisionEngine] Flow context: teamId=${flow.teamId}, userId=${flow.userId}`)
 
     // Build context for AI (overlay predefined agent properties at runtime)
     const { withPredefinedOverride } = await import('./predefinedKoompls')
@@ -50,9 +56,14 @@ export class DecisionEngine {
       // Use function calling if builtin tools are available and flow has context
       if (hasBuiltinTools && flow.teamId && flow.userId) {
         console.log(`[DecisionEngine] Using direct tool execution (builtin servers available)`)
+        console.log(`[DecisionEngine] About to call callAIWithTools...`)
         decision = await this.callAIWithTools(prompt, effectiveAgent, flow, builtinServers)
+        console.log(`[DecisionEngine] callAIWithTools completed`)
       } else {
+        console.log(`[DecisionEngine] Using basic AI call (no tools available)`)
+        console.log(`[DecisionEngine] About to call callAI...`)
         decision = await this.callAI(prompt, effectiveAgent)
+        console.log(`[DecisionEngine] callAI completed`)
       }
 
       // Validate decision
@@ -151,6 +162,7 @@ You are processing a request in a multi-round flow system.
 Original Request From: ${flow.requester.name} (${flow.requester.email})
 Subject: ${originalSubject}
 Body: ${originalRequest}
+${flow.trigger.attachments && flow.trigger.attachments.length > 0 ? `Attachments: ${flow.trigger.attachments.map((a) => `${a.filename} (${a.mimeType}, ${a.size} bytes, stored at ${a.storedPath})`).join(', ')}` : ''}
 
 Current Progress:
 - Round: ${currentRound + 1}/${maxRounds}
@@ -245,8 +257,19 @@ Notes:
     prompt: string,
     agent: DecisionContext['agent'],
     flow: AgentFlow,
-    builtinServers: { kanban: boolean; calendar: boolean; agents: boolean; datasafe: boolean }
+    builtinServers: {
+      kanban: boolean
+      calendar: boolean
+      agents: boolean
+      datasafe: boolean
+      email: boolean
+    }
   ): Promise<FlowDecision> {
+    console.log('[DecisionEngine] Calling AI with tools')
+    console.log('[DecisionEngine] Builtin servers:', builtinServers)
+    console.log('[DecisionEngine] Agent:', agent)
+    console.log('[DecisionEngine] Flow:', flow)
+    console.log('[DecisionEngine] Prompt:', prompt)
     const openaiKey = await this.getOpenAiKey()
 
     // Collect tools from builtin servers
@@ -256,11 +279,13 @@ Notes:
     const calendarTools = builtinServers.calendar ? getCalendarTools() : []
     const agentDirectoryTools = builtinServers.agents ? getAgentsDirectoryTools() : []
     const datasafeTools = builtinServers.datasafe ? getDatasafeTools() : []
+    const emailTools = builtinServers.email ? getEmailTools() : []
 
     const kanbanToolNames = new Set(kanbanTools.map((tool) => tool.name))
     const calendarToolNames = new Set(calendarTools.map((tool) => tool.name))
     const agentDirectoryToolNames = new Set(agentDirectoryTools.map((tool) => tool.name))
     const datasafeToolNames = new Set(datasafeTools.map((tool) => tool.name))
+    const emailToolNames = new Set(emailTools.map((tool) => tool.name))
 
     if (kanbanTools.length > 0) {
       tools.push(
@@ -304,6 +329,19 @@ Notes:
     if (datasafeTools.length > 0) {
       tools.push(
         ...datasafeTools.map((tool) => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema
+          }
+        }))
+      )
+    }
+
+    if (emailTools.length > 0) {
+      tools.push(
+        ...emailTools.map((tool) => ({
           type: 'function',
           function: {
             name: tool.name,
@@ -440,6 +478,8 @@ AFTER USING TOOLS:
               )
             } else if (datasafeToolNames.has(functionName)) {
               mcpResult = await executeDatasafeTool(context, functionName, args)
+            } else if (emailToolNames.has(functionName)) {
+              mcpResult = await executeEmailTool(context, functionName, args)
 
               // If this is a download_file tool, capture the file for potential attachment
               if (functionName === 'download_file' && mcpResult && !mcpResult.isError) {
@@ -549,9 +589,11 @@ AFTER USING TOOLS:
     calendar: boolean
     agents: boolean
     datasafe: boolean
+    email: boolean
   }> {
     if (!agent.mcpServerIds || agent.mcpServerIds.length === 0) {
-      return { kanban: false, calendar: false, agents: false, datasafe: false }
+      // Email MCP is always available as a hidden MCP for attachment gathering
+      return { kanban: false, calendar: false, agents: false, datasafe: false, email: true }
     }
 
     // Load MCP server configurations
@@ -568,6 +610,7 @@ AFTER USING TOOLS:
     let hasCalendar = false
     let hasAgents = false
     let hasDatasafe = false
+    let hasEmail = false
 
     for (const serverId of agent.mcpServerIds) {
       const server = servers.find((s) => s.id === serverId)
@@ -576,14 +619,30 @@ AFTER USING TOOLS:
         if (server.provider === 'builtin-calendar') hasCalendar = true
         if (server.provider === 'builtin-agents') hasAgents = true
         if (server.provider === 'builtin-datasafe') hasDatasafe = true
+        if (server.provider === 'builtin-email') hasEmail = true
       }
     }
 
+    // Email MCP is always available as a hidden MCP for attachment gathering
+    // This ensures all agents can access email tools for attachment processing
+    hasEmail = true
+
     console.log(
-      `[DecisionEngine] Builtin servers detected: kanban=${hasKanban}, calendar=${hasCalendar}, agents=${hasAgents}, datasafe=${hasDatasafe}`
+      `[DecisionEngine] Builtin servers detected: kanban=${hasKanban}, calendar=${hasCalendar}, agents=${hasAgents}, datasafe=${hasDatasafe}, email=${hasEmail} (hidden)`
+    )
+    console.log(`[DecisionEngine] Agent MCP server IDs:`, agent.mcpServerIds)
+    console.log(
+      `[DecisionEngine] Available MCP servers:`,
+      servers.map((s) => ({ id: s.id, provider: s.provider }))
     )
 
-    return { kanban: hasKanban, calendar: hasCalendar, agents: hasAgents, datasafe: hasDatasafe }
+    return {
+      kanban: hasKanban,
+      calendar: hasCalendar,
+      agents: hasAgents,
+      datasafe: hasDatasafe,
+      email: hasEmail
+    }
   }
 
   private async getOpenAiKey(): Promise<string> {

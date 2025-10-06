@@ -3,7 +3,13 @@ import { listMcpServers } from './mcpStorage'
 import { fetchMcpContext, type McpContextResult } from './mcpClients'
 import { agentLogger } from './agentLogging'
 import { createGeneralAgent } from './mcpAgent'
-import { getKanbanTools, executeKanbanTool, getCalendarTools } from './builtinMcpTools'
+import {
+  getKanbanTools,
+  executeKanbanTool,
+  getCalendarTools,
+  getEmailTools,
+  executeEmailTool
+} from './builtinMcpTools'
 import { executeCalendarTool } from './builtinCalendarTools'
 
 export interface AgentRespondRequest {
@@ -123,12 +129,15 @@ export async function generateAgentResponse(
         s.provider !== 'builtin-kanban' &&
         s.provider !== 'builtin-calendar' &&
         s.provider !== 'builtin-agents' &&
-        s.provider !== 'builtin-datasafe'
+        s.provider !== 'builtin-datasafe' &&
+        s.provider !== 'builtin-email'
     )
     const hasBuiltinKanban = selectedServers.some((s) => s.provider === 'builtin-kanban')
     const hasBuiltinCalendar = selectedServers.some((s) => s.provider === 'builtin-calendar')
     const hasBuiltinAgents = selectedServers.some((s) => s.provider === 'builtin-agents')
     const hasBuiltinDatasafe = selectedServers.some((s) => s.provider === 'builtin-datasafe')
+    // Email MCP is always available as a hidden MCP for attachment gathering
+    const _hasBuiltinEmail = true
 
     if (hasBuiltinAgents) {
       console.log('[AgentResponder] Built-in Agents directory available for context')
@@ -203,6 +212,22 @@ export async function generateAgentResponse(
     if (hasBuiltinCalendar && teamId && userId && externalServers.length === 0) {
       console.log('[AgentResponder] Using direct Calendar tool executor (production-ready)')
       return await handleBuiltinCalendarWithFunctionCalling({
+        agent: effectiveAgent,
+        subject,
+        text,
+        from,
+        maxTokens,
+        temperature,
+        openaiKey,
+        teamId,
+        userId
+      })
+    }
+
+    // For builtin-email only: use direct function calls (no HTTP, production-ready)
+    if (_hasBuiltinEmail && teamId && userId && externalServers.length === 0) {
+      console.log('[AgentResponder] Using direct Email tool executor (production-ready)')
+      return await handleBuiltinEmailWithFunctionCalling({
         agent: effectiveAgent,
         subject,
         text,
@@ -424,6 +449,126 @@ async function handleBuiltinKanbanWithFunctionCalling(params: {
       let resultContent: string
       try {
         const mcpResult = await executeKanbanTool(context, functionName, args)
+
+        // Extract text from result
+        if (mcpResult.isError) {
+          resultContent =
+            mcpResult.content[0]?.text || JSON.stringify({ error: 'Tool execution failed' })
+        } else {
+          resultContent = mcpResult.content[0]?.text || JSON.stringify({ success: true })
+        }
+      } catch (error) {
+        resultContent = JSON.stringify({
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        name: functionName,
+        content: resultContent
+      })
+    }
+  }
+
+  // If we exhausted iterations, return the last message
+  const lastMessage = messages[messages.length - 1]
+  return { ok: true, result: lastMessage.content || 'Maximum iterations reached' }
+}
+
+/**
+ * Handle builtin Email with OpenAI function calling (direct tool execution, production-ready)
+ */
+async function handleBuiltinEmailWithFunctionCalling(params: {
+  agent: Agent
+  subject: string
+  text: string
+  from: string
+  maxTokens: number
+  temperature: number
+  openaiKey: string
+  teamId: string
+  userId: string
+}): Promise<AgentRespondResult> {
+  const { agent, subject, text, from, maxTokens, temperature, openaiKey, teamId, userId } = params
+
+  // Get Email tools (no HTTP, direct discovery)
+  const mcpTools = getEmailTools()
+  console.log(`[BuiltinEmail] Loaded ${mcpTools.length} tools`)
+
+  // Convert MCP tools to OpenAI function calling format
+  const tools = mcpTools.map((tool) => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema
+    }
+  }))
+
+  const context = { teamId, userId, agentId: agent.id }
+
+  let userContent = ''
+  if (subject) userContent += `Subject: ${subject}\n`
+  if (from) userContent += `From: ${from}\n`
+  userContent += '\nEmail body:\n' + text
+  userContent +=
+    '\n\nTask: Process the request and use the available Email tools if needed. Provide a helpful response.'
+
+  const messages: Array<{
+    role: string
+    content: string
+    tool_calls?: any
+    tool_call_id?: string
+    name?: string
+  }> = [
+    { role: 'system', content: agent.prompt || 'You are a helpful AI assistant.' },
+    { role: 'user', content: userContent }
+  ]
+
+  const maxIterations = 5
+  let iterations = 0
+
+  while (iterations < maxIterations) {
+    iterations++
+
+    const response: any = await $fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages,
+        tools,
+        temperature,
+        max_tokens: maxTokens
+      })
+    })
+
+    const choice = response.choices?.[0]
+    if (!choice) break
+
+    const message = choice.message
+    messages.push(message)
+
+    // If no tool calls, we're done
+    if (!message.tool_calls || message.tool_calls.length === 0) {
+      return { ok: true, result: message.content || '' }
+    }
+
+    // Execute tool calls directly (no HTTP)
+    for (const toolCall of message.tool_calls) {
+      const functionName = toolCall.function.name
+      const args = JSON.parse(toolCall.function.arguments || '{}')
+
+      console.log(`[BuiltinEmail] Executing tool: ${functionName}`, args)
+
+      let resultContent: string
+      try {
+        const mcpResult = await executeEmailTool(context, functionName, args)
 
         // Extract text from result
         if (mcpResult.isError) {

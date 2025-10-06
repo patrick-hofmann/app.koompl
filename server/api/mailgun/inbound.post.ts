@@ -441,6 +441,13 @@ export default defineEventHandler(async (event) => {
         )
 
         // Process valid attachments
+        const flowAttachments: Array<{
+          filename: string
+          mimeType: string
+          size: number
+          storedPath: string
+        }> = []
+
         for (const attachment of validAttachments) {
           try {
             const node = await storeAttachment(team.id, {
@@ -458,6 +465,14 @@ export default defineEventHandler(async (event) => {
             })
             datasafeStored.push({ path: node.path, name: node.name, size: node.size })
             console.log(`[Inbound] ✓ Stored attachment: ${attachment.filename} -> ${node.path}`)
+
+            // Add to flow attachments for passing to agent
+            flowAttachments.push({
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+              storedPath: node.path
+            })
           } catch (storeErr) {
             console.error(`[Inbound] Failed to store attachment ${attachment.filename}:`, storeErr)
           }
@@ -659,7 +674,13 @@ export default defineEventHandler(async (event) => {
     console.log(`[Inbound]   Timeout: ${timeoutMinutes} minutes`)
     console.log(`[Inbound]   Context: teamId=${agent.teamId || 'none'}, userId=${userId || 'none'}`)
 
-    const flow = await agentFlowEngine.startFlow({
+    console.log(`[Inbound] About to call agentFlowEngine.startFlow...`)
+    console.log(`[Inbound] flowAttachments length:`, flowAttachments.length)
+    console.log(
+      `[Inbound] flowAttachments summary:`,
+      flowAttachments.map((a) => ({ filename: a.filename, size: a.size, mimeType: a.mimeType }))
+    )
+    console.log(`[Inbound] Flow parameters:`, {
       agentId: agent.id,
       trigger: {
         type: 'email',
@@ -668,7 +689,8 @@ export default defineEventHandler(async (event) => {
         to: String(toEmail || to || ''),
         subject: String(subject || ''),
         body: String(text || ''),
-        receivedAt: new Date().toISOString()
+        receivedAt: new Date().toISOString(),
+        attachments: flowAttachments
       },
       maxRounds,
       timeoutMinutes,
@@ -677,13 +699,63 @@ export default defineEventHandler(async (event) => {
       requester: originalRequester || { name: 'Unknown', email: fromEmail || 'unknown@example.com' }
     })
 
+    console.log(`[Inbound] About to make the actual startFlow call...`)
+    console.log(`[Inbound] Testing simple log before startFlow...`)
+
+    // Add timeout wrapper to detect hanging
+    const startTime = Date.now()
+    console.log(`[Inbound] startFlow call started at ${startTime}`)
+
+    const flow = await Promise.race([
+      agentFlowEngine.startFlow({
+        agentId: agent.id,
+        trigger: {
+          type: 'email',
+          messageId: String(messageId || ''),
+          from: String(fromEmail || from || ''),
+          to: String(toEmail || to || ''),
+          subject: String(subject || ''),
+          body: String(text || ''),
+          receivedAt: new Date().toISOString(),
+          attachments: flowAttachments
+        },
+        maxRounds,
+        timeoutMinutes,
+        teamId: agent.teamId,
+        userId,
+        requester: originalRequester || {
+          name: 'Unknown',
+          email: fromEmail || 'unknown@example.com'
+        }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('startFlow timeout after 30 seconds')), 30000)
+      )
+    ])
+
+    const endTime = Date.now()
+    console.log(`[Inbound] startFlow call completed in ${endTime - startTime}ms`)
+
     console.log(`[Inbound] ✓ Flow created: ${flow.id}`)
     console.log('[Inbound] → Executing first round...')
+    console.log('[Inbound] About to call agentFlowEngine.executeRound...')
 
     // Execute first round
-    await agentFlowEngine.executeRound(flow.id, agent.id)
-
-    console.log('[Inbound] ✓ First round executed')
+    try {
+      console.log('[Inbound] Calling executeRound with:', { flowId: flow.id, agentId: agent.id })
+      const result = await agentFlowEngine.executeRound(flow.id, agent.id)
+      console.log('[Inbound] ✓ First round executed successfully:', result)
+    } catch (error) {
+      console.error('[Inbound] ✗ First round execution failed:', error)
+      console.error(
+        '[Inbound] Error details:',
+        error instanceof Error ? error.message : String(error)
+      )
+      console.error(
+        '[Inbound] Stack trace:',
+        error instanceof Error ? error.stack : 'No stack trace'
+      )
+    }
     console.log('[Inbound] ════════════════════════════════════════════\n')
 
     return { ok: true, flowId: flow.id, newFlow: true }

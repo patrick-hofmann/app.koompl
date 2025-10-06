@@ -31,6 +31,12 @@ export interface EmailTrigger {
   subject: string
   body: string
   receivedAt: string
+  attachments?: Array<{
+    filename: string
+    mimeType: string
+    size: number
+    storedPath: string
+  }>
 }
 
 export interface FlowRequester {

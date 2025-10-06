@@ -113,6 +113,21 @@ export class KoomplMcpAgent {
             DATASAFE_AGENT_ID: kanbanContext.agentId || ''
           }
         }
+      } else if (server.provider === 'builtin-email' && kanbanContext) {
+        console.log('[MCPAgent] Configuring built-in Email server with context:', {
+          teamId: kanbanContext.teamId,
+          userId: kanbanContext.userId
+        })
+        const serverPath = new URL('./builtinEmailMcpServer.mjs', import.meta.url).pathname
+        serverConfigs[server.id] = {
+          command: 'node',
+          args: [serverPath],
+          env: {
+            EMAIL_TEAM_ID: kanbanContext.teamId,
+            EMAIL_USER_ID: kanbanContext.userId,
+            EMAIL_AGENT_ID: kanbanContext.agentId || ''
+          }
+        }
       } else if (server.provider === 'builtin-agents') {
         const serverPath = new URL('./builtinAgentsInfoMcpServer.mjs', import.meta.url).pathname
         serverConfigs[server.id] = {
