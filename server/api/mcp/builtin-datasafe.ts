@@ -102,33 +102,46 @@ export default defineEventHandler(async (event) => {
   const userId = headerUserId
   let session
 
-  // Try to get user session (for browser-based calls)
-  // If no session exists (webhook calls), use header-based auth
-  try {
-    session = await getUserSession(event)
-  } catch {
-    session = null
+  // Check if this is a webhook call (no cookies) or browser call (has cookies)
+  const hasCookies = !!getRequestHeader(event, 'cookie')
+
+  if (hasCookies) {
+    // Browser call with cookies - validate session
+    try {
+      session = await getUserSession(event)
+    } catch {
+      session = null
+    }
+
+    if (session) {
+      // Session exists - validate headers match session (browser-based call)
+      if (session.team?.id !== teamId) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'Team ID mismatch between session and header'
+        })
+      }
+
+      if (session.user?.id !== userId) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'User ID mismatch between session and header'
+        })
+      }
+      console.log('[BuiltinDatasafeMCP] Authenticated via session:', { teamId, userId })
+    } else {
+      // No valid session - fall through to header auth
+      console.log('[BuiltinDatasafeMCP] No valid session, using header auth')
+    }
   }
 
-  if (session) {
-    // Session exists - validate headers match session (browser-based call)
-    if (session.team?.id !== teamId) {
-      throw createError({
-        statusCode: 403,
-        statusMessage: 'Team ID mismatch between session and header'
-      })
-    }
-
-    if (session.user?.id !== userId) {
-      throw createError({
-        statusCode: 403,
-        statusMessage: 'User ID mismatch between session and header'
-      })
-    }
-    console.log('[BuiltinDatasafeMCP] Authenticated via session:', { teamId, userId })
-  } else {
+  if (!session) {
     // No session (webhook call) - trust headers (they're set by our own code)
-    console.log('[BuiltinDatasafeMCP] Authenticated via headers (webhook):', { teamId, userId })
+    console.log('[BuiltinDatasafeMCP] Authenticated via headers (webhook):', {
+      teamId,
+      userId,
+      hasCookies
+    })
     session = {
       user: { id: userId, name: 'Agent User', email: 'agent@system' },
       team: { id: teamId, name: 'Team' }
