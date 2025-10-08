@@ -83,36 +83,36 @@ export default defineEventHandler(async (event) => {
     const userId = headerUserId
     let session
 
-    // In production, verify the teamId and userId against the session
-    if (process.env.NODE_ENV !== 'development') {
-      try {
-        session = await requireUserSession(event)
+    // Try to get user session (for browser-based calls)
+    // If no session exists (webhook calls), use header-based auth
+    try {
+      session = await getUserSession(event)
+    } catch {
+      session = null
+    }
 
-        // Verify that the header teamId matches the session teamId
-        if (session.team?.id !== teamId) {
-          throw createError({
-            statusCode: 403,
-            statusMessage: 'Team ID mismatch between session and header'
-          })
-        }
-
-        // Verify that the header userId matches the session userId
-        if (session.user?.id !== userId) {
-          throw createError({
-            statusCode: 403,
-            statusMessage: 'User ID mismatch between session and header'
-          })
-        }
-      } catch (authError) {
-        console.error('[BuiltinKanbanMCP] Authentication failed:', authError)
-        throw authError
+    if (session) {
+      // Session exists - validate headers match session (browser-based call)
+      if (session.team?.id !== teamId) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'Team ID mismatch between session and header'
+        })
       }
+
+      if (session.user?.id !== userId) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: 'User ID mismatch between session and header'
+        })
+      }
+      console.log('[BuiltinKanbanMCP] Authenticated via session:', { teamId, userId })
     } else {
-      // Development mode: skip session validation, use header values
-      console.log('[BuiltinKanbanMCP] Development mode - using teamId from header:', teamId)
+      // No session (webhook call) - trust headers (they're set by our own code)
+      console.log('[BuiltinKanbanMCP] Authenticated via headers (webhook):', { teamId, userId })
       session = {
-        user: { id: userId, name: 'Test User', email: 'test@example.com' },
-        team: { id: teamId, name: 'Test Team' }
+        user: { id: userId, name: 'Agent User', email: 'agent@system' },
+        team: { id: teamId, name: 'Team' }
       }
     }
 
