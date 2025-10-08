@@ -333,7 +333,8 @@ export default defineEventHandler(async (event) => {
     let mcpConfigs: Record<string, { url: string }> = {}
 
     try {
-      const configResponse = await $fetch(
+      // Use event.$fetch to preserve session context
+      const configResponse = await event.$fetch(
         `/api/agent/${agent.email}@${recipientDomain}/mcp-config`,
         {
           method: 'GET'

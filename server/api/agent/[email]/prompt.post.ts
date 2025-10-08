@@ -105,8 +105,8 @@ export default defineEventHandler(async (event) => {
   let mcpConfigs: Record<string, { url: string }> = {}
 
   try {
-    // Use $fetch to call our own mcp-config endpoint
-    const configResponse = await $fetch(`/api/agent/${agentEmail}/mcp-config`, {
+    // Use event.$fetch to preserve session context
+    const configResponse = await event.$fetch(`/api/agent/${agentEmail}/mcp-config`, {
       method: 'GET'
     })
 

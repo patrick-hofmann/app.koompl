@@ -97,8 +97,8 @@ Please generate a professional and helpful email response using the reply_to_ema
     hasFiles: !!body.files && body.files.length > 0
   })
 
-  // Call the prompt endpoint to do the actual work
-  const result = await $fetch(`/api/agent/${agentEmail}/prompt`, {
+  // Call the prompt endpoint to do the actual work (use event.$fetch to preserve session)
+  const result = await event.$fetch(`/api/agent/${agentEmail}/prompt`, {
     method: 'POST',
     body: {
       userPrompt,
