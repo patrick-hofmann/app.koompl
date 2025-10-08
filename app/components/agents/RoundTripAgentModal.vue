@@ -31,7 +31,11 @@ async function runRoundTrip() {
   try {
     const res = await $fetch<{
       ok: boolean
-      inboundSavedId?: string
+      messageId?: string
+      flowId?: string
+      newFlow?: boolean
+      resumed?: boolean
+      agentEmail?: string
       outbound?: Record<string, unknown>
       error?: string
     }>(`/api/agents/${props.agentId}/roundtrip`, {
@@ -39,7 +43,15 @@ async function runRoundTrip() {
       body: { from: form.from, to: form.to || undefined, subject: form.subject, text: form.text }
     })
     result.value = res.ok
-      ? { inboundSavedId: res.inboundSavedId, outbound: res.outbound }
+      ? {
+          success: true,
+          messageId: res.messageId,
+          flowId: res.flowId,
+          newFlow: res.newFlow,
+          resumed: res.resumed,
+          agentEmail: res.agentEmail,
+          outbound: res.outbound
+        }
       : { error: res.error }
   } finally {
     loading.value = false

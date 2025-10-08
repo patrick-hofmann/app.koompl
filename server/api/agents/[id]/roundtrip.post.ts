@@ -31,20 +31,36 @@ export default defineEventHandler(async (event) => {
       return { ok: false, error: 'missing_agent_email' }
     }
 
+    // Generate a unique message-id for this test email
+    const messageId = `roundtrip-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`
+
     const payload: Record<string, unknown> = {
       recipient,
       From: String(body?.from || 'Tester <tester@example.com>'),
       Subject: String(body?.subject || 'Round-trip test'),
       'stripped-text': String(body?.text || 'This is a round-trip test.'),
-      'stripped-html': String(body?.html || '')
+      'stripped-html': String(body?.html || ''),
+      'Message-Id': messageId,
+      'message-id': messageId
     }
 
-    // Call the existing inbound handler as if Mailgun posted to it
-    // We cannot directly import event handler; instead we post to the same route
+    console.log('[RoundTrip] Generated message-id for test:', messageId)
+
+    // Call the agent-specific inbound handler (preferred for testing)
+    // This ensures we're testing the exact route that will be used in production
     const base = getRequestURL(event)
     const origin = `${base.protocol}//${base.host}`
 
-    const res = await $fetch<{ ok: boolean; id?: string }>(`${origin}/api/mailgun/inbound`, {
+    // Use agent-specific inbound route for more direct testing
+    const inboundUrl = `${origin}/api/agent/${agentFullEmail}/inbound`
+    console.log('[RoundTrip] Calling agent inbound route:', inboundUrl)
+
+    const res = await $fetch<{
+      ok: boolean
+      flowId?: string
+      newFlow?: boolean
+      resumed?: boolean
+    }>(inboundUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -53,10 +69,25 @@ export default defineEventHandler(async (event) => {
     // Read the latest outbound snapshot for convenience feedback
     const outbound = (await agentsStorage.getItem<Record<string, unknown>>('outbound.json')) || null
 
+    console.log('[RoundTrip] Inbound processing result:', res)
+
+    const typedRes = res as unknown as {
+      ok: boolean
+      flowId?: string
+      newFlow?: boolean
+      resumed?: boolean
+      error?: string
+    }
+
     return {
-      ok: Boolean((res as unknown as { ok: boolean })?.ok),
-      inboundSavedId: (res as unknown as { id?: string })?.id,
-      outbound
+      ok: Boolean(typedRes?.ok),
+      messageId,
+      flowId: typedRes?.flowId,
+      newFlow: typedRes?.newFlow,
+      resumed: typedRes?.resumed,
+      agentEmail: agentFullEmail,
+      outbound,
+      error: typedRes?.error
     }
   } catch (e) {
     return { ok: false, error: String(e) }

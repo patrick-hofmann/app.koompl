@@ -7,6 +7,7 @@ const { session } = useUserSession()
 
 const userId = computed(() => session.value?.user?.id)
 const teamId = computed(() => session.value?.team?.id)
+const teamDomain = computed(() => session.value?.team?.domain)
 
 // Initialize form with current user's name and email
 const form = reactive<{ subject: string; text: string }>({
@@ -15,26 +16,48 @@ const form = reactive<{ subject: string; text: string }>({
 })
 const loading = ref(false)
 const result = ref<string | null>(null)
+const agentEmail = ref<string | null>(null)
+
+// Load agent data when modal opens
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (isOpen && props.agentId) {
+      try {
+        const agent = await $fetch<any>(`/api/agents/${props.agentId}`)
+        if (agent && agent.email && teamDomain.value) {
+          agentEmail.value = `${agent.email}@${teamDomain.value}`
+        }
+      } catch (error) {
+        console.error('Failed to load agent:', error)
+      }
+    }
+  }
+)
 
 async function runTest() {
-  if (!props.agentId) return
+  if (!agentEmail.value) return
   loading.value = true
   result.value = null
   try {
-    const res = await $fetch<{ ok: boolean; result?: string; error?: string }>(
-      `/api/agents/${props.agentId}/test`,
-      {
-        method: 'POST',
-        body: {
-          subject: form.subject,
-          text: form.text,
-          // Help server-side MCP resolve context
-          teamId: teamId.value,
-          userId: userId.value
-        }
+    const res = await $fetch<{
+      success: boolean
+      response?: string
+      result?: string
+      error?: string
+    }>(`/api/agent/${agentEmail.value}/respond`, {
+      method: 'POST',
+      body: {
+        subject: form.subject,
+        text: form.text,
+        from: session.value?.user?.email || 'test@example.com',
+        includeQuote: false,
+        userId: userId.value
       }
-    )
-    result.value = res.ok ? res.result || '' : `Error: ${res.error}`
+    })
+    result.value = res.success ? res.response || res.result || '' : `Error: ${res.error}`
+  } catch (error: any) {
+    result.value = `Error: ${error.message || error}`
   } finally {
     loading.value = false
   }
@@ -51,6 +74,7 @@ async function runTest() {
     <template #content>
       <UCard>
         <div class="space-y-3">
+          <p class="text-sm text-muted">Agent Email: {{ agentEmail || 'Loading...' }}</p>
           <p class="text-sm text-muted">Team ID: {{ teamId }}</p>
           <p class="text-sm text-muted">User ID: {{ userId }}</p>
           <UForm :state="form" @submit="runTest">

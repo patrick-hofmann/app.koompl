@@ -33,6 +33,9 @@ function applyCors(event: H3Event) {
 }
 
 export default defineEventHandler(async (event) => {
+  console.log('builtin-kanban endpoint called')
+  console.log('Request method:', event.node.req.method)
+  console.log('Request headers:', getRequestHeaders(event))
   applyCors(event)
 
   const method = event.node.req.method || 'GET'
@@ -58,40 +61,59 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    let session
-    let teamId: string | undefined
-    let userId: string | undefined
-
     const headers = getRequestHeaders(event)
     const headerTeamId = headers['x-team-id']
     const headerUserId = headers['x-user-id']
 
-    try {
-      session = await requireUserSession(event)
-      teamId = session.team?.id
-      userId = session.user?.id
-    } catch (authError) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[MCP] Development mode: Using credentials from headers or test defaults')
-        teamId = headerTeamId || 'test-team-dev-123'
-        userId = headerUserId || 'test-user-dev-456'
-        session = {
-          user: { id: userId, name: 'Test User', email: 'test@example.com' },
-          team: { id: teamId, name: 'Test Team' }
-        }
-      } else {
-        throw authError
-      }
+    if (!headerTeamId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing x-team-id header'
+      })
     }
 
-    if (headerTeamId) teamId = headerTeamId
-    if (headerUserId) userId = headerUserId
-
-    if (!teamId || !userId) {
+    if (!headerUserId) {
       throw createError({
-        statusCode: 403,
-        statusMessage: 'Authentication required'
+        statusCode: 400,
+        statusMessage: 'Missing x-user-id header'
       })
+    }
+
+    const teamId = headerTeamId
+    const userId = headerUserId
+    let session
+
+    // In production, verify the teamId and userId against the session
+    if (process.env.NODE_ENV !== 'development') {
+      try {
+        session = await requireUserSession(event)
+
+        // Verify that the header teamId matches the session teamId
+        if (session.team?.id !== teamId) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'Team ID mismatch between session and header'
+          })
+        }
+
+        // Verify that the header userId matches the session userId
+        if (session.user?.id !== userId) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'User ID mismatch between session and header'
+          })
+        }
+      } catch (authError) {
+        console.error('[BuiltinKanbanMCP] Authentication failed:', authError)
+        throw authError
+      }
+    } else {
+      // Development mode: skip session validation, use header values
+      console.log('[BuiltinKanbanMCP] Development mode - using teamId from header:', teamId)
+      session = {
+        user: { id: userId, name: 'Test User', email: 'test@example.com' },
+        team: { id: teamId, name: 'Test Team' }
+      }
     }
 
     const body = await readBody(event)
@@ -301,6 +323,12 @@ export default defineEventHandler(async (event) => {
           }
         ]
         result = { tools }
+        break
+      }
+
+      case 'notifications/initialized': {
+        // MCP protocol notification - acknowledge and continue
+        result = { success: true }
         break
       }
 

@@ -182,6 +182,45 @@ export class UnifiedMailStorage {
   }
 
   /**
+   * Get an inbound email by message-id
+   */
+  async getInboundEmailByMessageId(messageId: string): Promise<InboundEmail | null> {
+    const id = `inbound-${messageId}`
+    const email = await this.storage.getItem<InboundEmail>(`emails/inbound/${id}.json`)
+    return email || null
+  }
+
+  /**
+   * Get an outbound email by message-id
+   */
+  async getOutboundEmailByMessageId(messageId: string): Promise<OutboundEmail | null> {
+    const id = `outbound-${messageId}`
+    const email = await this.storage.getItem<OutboundEmail>(`emails/outbound/${id}.json`)
+    return email || null
+  }
+
+  /**
+   * Get any email (inbound or outbound) by message-id
+   */
+  async getEmailByMessageId(
+    messageId: string
+  ): Promise<{ email: InboundEmail | OutboundEmail; type: 'inbound' | 'outbound' } | null> {
+    // Try inbound first
+    const inbound = await this.getInboundEmailByMessageId(messageId)
+    if (inbound) {
+      return { email: inbound, type: 'inbound' }
+    }
+
+    // Try outbound
+    const outbound = await this.getOutboundEmailByMessageId(messageId)
+    if (outbound) {
+      return { email: outbound, type: 'outbound' }
+    }
+
+    return null
+  }
+
+  /**
    * Get all emails for a specific agent
    */
   async getAgentEmails(agentId: string): Promise<{ incoming: Mail[]; outgoing: Mail[] }> {

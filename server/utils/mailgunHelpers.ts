@@ -547,3 +547,72 @@ export function debugAttachments(payload: Record<string, any> | null | undefined
 
   console.log('[Mailgun Debug] === ATTACHMENT DEBUG END ===')
 }
+
+/**
+ * Simple wrapper to send email via Mailgun with automatic configuration
+ */
+export async function sendMailgunEmail(params: {
+  from: string
+  to: string
+  subject: string
+  text: string
+  html?: string
+  inReplyTo?: string
+  references?: string
+}): Promise<MailgunSendResponse> {
+  const { from, to, subject, text, html, inReplyTo, references } = params
+
+  // Get Mailgun configuration from settings
+  const settingsStorage = useStorage('settings')
+  const settings = (await settingsStorage.getItem<Record<string, unknown>>('settings.json')) || {}
+
+  const mailgunApiKey = String(settings.mailgunApiKey || process.env.MAILGUN_KEY || '').trim()
+  const mailgunDomain = String(settings.mailgunDomain || process.env.MAILGUN_DOMAIN || '').trim()
+
+  if (!mailgunApiKey || !mailgunDomain) {
+    console.warn('[MailgunHelpers] Mailgun not configured, simulating email send for development')
+    return {
+      id: `dev-${Date.now()}`,
+      message: 'Email simulated (Mailgun not configured)'
+    }
+  }
+
+  // Build body with threading headers
+  const body = new URLSearchParams({
+    'o:tracking': 'no',
+    'o:tracking-clicks': 'no',
+    'o:tracking-opens': 'no',
+    'h:Content-Type': 'text/plain; charset=utf-8',
+    'h:MIME-Version': '1.0',
+    'h:Content-Transfer-Encoding': '8bit',
+    from,
+    to,
+    subject,
+    text
+  })
+
+  if (html) {
+    body.set('html', html)
+  }
+
+  // Add threading headers
+  if (inReplyTo) {
+    body.set('h:In-Reply-To', inReplyTo)
+  }
+
+  if (references) {
+    body.set('h:References', references)
+  }
+
+  const encodedDomain = encodeURIComponent(mailgunDomain)
+  const endpoint = `https://api.mailgun.net/v3/${encodedDomain}/messages`
+
+  return await $fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`api:${mailgunApiKey}`).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body
+  })
+}

@@ -6,6 +6,24 @@ import type { McpEmailContext } from '../types/mcp-clients'
 import type { McpAgentConfig, McpAgentResponse } from '../types/mcp-agent'
 
 // types moved to server/types/mcp-agent.d.ts
+const mcpServers = {
+  kanban: {
+    type: 'streamable-http',
+    url: 'http://localhost:3000/api/mcp/builtin-kanban'
+  },
+  agents: {
+    type: 'streamable-http',
+    url: 'http://localhost:3000/api/mcp/builtin-agents'
+  },
+  datasafe: {
+    type: 'streamable-http',
+    url: 'http://localhost:3000/api/mcp/builtin-datasafe'
+  },
+  calendar: {
+    type: 'streamable-http',
+    url: 'http://localhost:3000/api/mcp/builtin-calendar'
+  }
+}
 
 export class KoomplMcpAgent {
   private agent: MCPAgent
@@ -14,7 +32,8 @@ export class KoomplMcpAgent {
 
   constructor(config: McpAgentConfig) {
     this.config = {
-      model: 'claude-3-5-sonnet-20241022',
+      llmProvider: 'openai',
+      model: 'gpt-4o',
       maxSteps: 5,
       temperature: 0.4,
       maxTokens: 1000,
@@ -38,7 +57,8 @@ export class KoomplMcpAgent {
     }
 
     // Initialize MCP client with empty config (will be populated with servers)
-    this.client = new MCPClient({ mcpServers: {} })
+    console.log('mcpServers', mcpServers)
+    this.client = new MCPClient({ mcpServers })
 
     // Initialize MCP agent
     this.agent = new MCPAgent({
@@ -63,65 +83,59 @@ export class KoomplMcpAgent {
       console.log(`[MCPAgent] Processing server: ${server.name} (${server.provider})`)
 
       if (server.provider === 'builtin-kanban' && kanbanContext) {
-        console.log('[MCPAgent] Configuring built-in Kanban server with context:', {
+        console.log('[MCPAgent] Configuring built-in Kanban server with HTTP endpoint:', {
           teamId: kanbanContext.teamId,
           userId: kanbanContext.userId
         })
-        // Configure built-in Kanban as a proper MCP server
-        const serverPath = new URL('./builtin/kanban/server.mjs', import.meta.url).pathname
+        // Configure built-in Kanban as HTTP endpoint
         serverConfigs[server.id] = {
-          command: 'node',
-          args: [serverPath],
-          env: {
-            KANBAN_TEAM_ID: kanbanContext.teamId,
-            KANBAN_USER_ID: kanbanContext.userId,
-            KANBAN_AGENT_ID: kanbanContext.agentId || ''
+          type: 'streamable-http',
+          url: 'http://localhost:3000/api/mcp/builtin-kanban',
+          headers: {
+            'x-team-id': kanbanContext.teamId,
+            'x-user-id': kanbanContext.userId
           }
         }
       } else if (server.provider === 'builtin-kanban') {
         console.log('[MCPAgent] Skipping built-in Kanban server - no context provided')
         continue
       } else if (server.provider === 'builtin-calendar' && kanbanContext) {
-        console.log('[MCPAgent] Configuring built-in Calendar server with context:', {
+        console.log('[MCPAgent] Configuring built-in Calendar server with HTTP endpoint:', {
           teamId: kanbanContext.teamId,
           userId: kanbanContext.userId
         })
-        // Configure built-in Calendar as a proper MCP server
-        const serverPath = new URL('./builtin/calendar/server.mjs', import.meta.url).pathname
+        // Configure built-in Calendar as HTTP endpoint
         serverConfigs[server.id] = {
-          command: 'node',
-          args: [serverPath],
-          env: {
-            CALENDAR_TEAM_ID: kanbanContext.teamId,
-            CALENDAR_USER_ID: kanbanContext.userId,
-            CALENDAR_AGENT_ID: kanbanContext.agentId || ''
+          type: 'streamable-http',
+          url: 'http://localhost:3000/api/mcp/builtin-calendar',
+          headers: {
+            'x-team-id': kanbanContext.teamId,
+            'x-user-id': kanbanContext.userId
           }
         }
       } else if (server.provider === 'builtin-calendar') {
         console.log('[MCPAgent] Skipping built-in Calendar server - no context provided')
         continue
       } else if (server.provider === 'builtin-datasafe' && kanbanContext) {
-        console.log('[MCPAgent] Configuring built-in Datasafe server with context:', {
+        console.log('[MCPAgent] Configuring built-in Datasafe server with HTTP endpoint:', {
           teamId: kanbanContext.teamId,
           userId: kanbanContext.userId
         })
-        const serverPath = new URL('./builtin/datasafe/server.mjs', import.meta.url).pathname
         serverConfigs[server.id] = {
-          command: 'node',
-          args: [serverPath],
-          env: {
-            DATASAFE_TEAM_ID: kanbanContext.teamId,
-            DATASAFE_USER_ID: kanbanContext.userId,
-            DATASAFE_AGENT_ID: kanbanContext.agentId || ''
+          type: 'streamable-http',
+          url: 'http://localhost:3000/api/mcp/builtin-datasafe',
+          headers: {
+            'x-team-id': kanbanContext.teamId,
+            'x-user-id': kanbanContext.userId
           }
         }
       } else if (server.provider === 'builtin-agents') {
-        const serverPath = new URL('./builtin/agents/server.mjs', import.meta.url).pathname
+        console.log('[MCPAgent] Configuring built-in Agents server with HTTP endpoint')
         serverConfigs[server.id] = {
-          command: 'node',
-          args: [serverPath],
-          env: {
-            AGENTS_TEAM_ID: kanbanContext?.teamId || ''
+          type: 'streamable-http',
+          url: 'http://localhost:3000/api/mcp/builtin-agents',
+          headers: {
+            'x-team-id': kanbanContext?.teamId || ''
           }
         }
       } else if (server.provider === 'custom' && server.url) {
@@ -192,7 +206,15 @@ export class KoomplMcpAgent {
     console.log(`[MCPAgent] Final server configs:`, Object.keys(serverConfigs))
 
     // Update client configuration
+    console.log(
+      '[MCPAgent] Server configs before client creation:',
+      JSON.stringify(serverConfigs, null, 2)
+    )
     this.client = new MCPClient({ mcpServers: serverConfigs })
+    console.log(
+      '[MCPAgent] Client created with servers:',
+      Object.keys(this.client['mcpServers'] || {})
+    )
     this.agent = new MCPAgent({
       llm: this.agent['llm'],
       client: this.client,
@@ -247,6 +269,8 @@ export class KoomplMcpAgent {
       )
 
       // Run the agent
+      console.log('running agent with prompt:', `${systemPrompt}\n\n${userPrompt}`)
+      console.log('[MCPAgent] Available servers:', Object.keys(this.client['mcpServers'] || {}))
       const result = await this.agent.run(`${systemPrompt}\n\n${userPrompt}`)
 
       console.log(
@@ -284,6 +308,7 @@ export class KoomplMcpAgent {
       const userPrompt = this.createUserPrompt(email)
 
       // Stream the agent response
+      console.log('streaming agent with prompt:', `${systemPrompt}\n\n${userPrompt}`)
       const stream = this.agent.stream(`${systemPrompt}\n\n${userPrompt}`)
       let fullResponse = ''
       for await (const chunk of stream) {
@@ -389,8 +414,8 @@ Please provide a helpful response using the available MCP servers to gather rele
  */
 export function createGeneralAgent(config: Partial<McpAgentConfig> = {}): KoomplMcpAgent {
   return new KoomplMcpAgent({
-    llmProvider: 'anthropic',
-    model: 'claude-3-5-sonnet-20241022',
+    llmProvider: 'openai',
+    model: 'gpt-4o',
     maxSteps: 5,
     temperature: 0.4,
     maxTokens: 1000,

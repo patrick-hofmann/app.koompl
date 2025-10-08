@@ -1,7 +1,6 @@
 import {
   defineEventHandler,
   getRequestHeaders,
-  getRequestHeader,
   readBody,
   setResponseHeader,
   setResponseStatus,
@@ -45,28 +44,57 @@ export default defineEventHandler(async (event) => {
   try {
     const headers = getRequestHeaders(event)
     const headerTeamId = headers['x-team-id']
+    const headerUserId = headers['x-user-id']
 
-    let session
-    let teamId: string | undefined
-
-    try {
-      session = await requireUserSession(event)
-      teamId = session.team?.id
-    } catch (authError) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[MCP Agents] Development mode - using fallback credentials')
-        teamId = headerTeamId || 'test-team-dev-123'
-        session = {
-          user: { id: 'test-user', name: 'Test User', email: 'test@example.com' },
-          team: { id: teamId, name: 'Test Team' }
-        }
-      } else {
-        throw authError
-      }
+    if (!headerTeamId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing x-team-id header'
+      })
     }
 
-    if (headerTeamId) {
-      teamId = headerTeamId
+    if (!headerUserId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing x-user-id header'
+      })
+    }
+
+    const teamId = headerTeamId
+    const userId = headerUserId
+    let session
+
+    // In production, verify the teamId and userId against the session
+    if (process.env.NODE_ENV !== 'development') {
+      try {
+        session = await requireUserSession(event)
+
+        // Verify that the header teamId matches the session teamId
+        if (session.team?.id !== teamId) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'Team ID mismatch between session and header'
+          })
+        }
+
+        // Verify that the header userId matches the session userId
+        if (session.user?.id !== userId) {
+          throw createError({
+            statusCode: 403,
+            statusMessage: 'User ID mismatch between session and header'
+          })
+        }
+      } catch (authError) {
+        console.error('[MCP Agents] Authentication failed:', authError)
+        throw authError
+      }
+    } else {
+      // Development mode: skip session validation, use header values
+      console.log('[MCP Agents] Development mode - using teamId from header:', teamId)
+      session = {
+        user: { id: userId, name: 'Test User', email: 'test@example.com' },
+        team: { id: teamId, name: 'Test Team' }
+      }
     }
 
     const body = await readBody(event)
@@ -141,6 +169,15 @@ export default defineEventHandler(async (event) => {
         }
       }
 
+      case 'notifications/initialized': {
+        // MCP protocol notification - acknowledge and continue
+        return {
+          jsonrpc: '2.0',
+          id: responseId,
+          result: { success: true }
+        }
+      }
+
       case 'tools/call': {
         const { name, arguments: args } = params || {}
 
@@ -148,12 +185,10 @@ export default defineEventHandler(async (event) => {
           throw createError({ statusCode: 400, statusMessage: 'Missing tool name or arguments' })
         }
 
-        const allowOverride =
-          process.env.NODE_ENV === 'development' ||
-          getRequestHeader(event, 'x-mcp-allow-team-override') === '1'
-
+        // Never allow teamId override from arguments - always use header teamId
         const safeArgs = { ...args }
-        if (!allowOverride && 'teamId' in safeArgs) {
+        if ('teamId' in safeArgs) {
+          console.log('[MCP Agents] Removing teamId from arguments, using header teamId:', teamId)
           delete safeArgs.teamId
         }
 

@@ -1,33 +1,41 @@
 /**
- * Mailgun Inbound Email Handler (Simplified)
+ * Agent-Specific Inbound Email Handler (Simplified)
  *
- * Receives emails from Mailgun webhook and processes them directly with the agent.
+ * Receives emails for a specific agent and processes them directly.
  * No complex flow engine - just store, validate, and respond.
  */
 
-import { mailStorage } from '../../utils/mailStorage'
-import { agentLogger } from '../../utils/agentLogging'
-import { evaluateInboundMail } from '../../utils/mailPolicy'
-import { runMCPAgent } from '../../utils/mcpAgentHelper'
+import { mailStorage } from '../../../utils/mailStorage'
+import { agentLogger } from '../../../utils/agentLogging'
+import { evaluateInboundMail } from '../../../utils/mailPolicy'
+import { runMCPAgent } from '../../../utils/mcpAgentHelper'
 import type { Agent } from '~/types'
 
 export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens
   try {
-    const agentsStorage = useStorage('agents')
+    const agentEmail = getRouterParam(event, 'email')
 
+    if (!agentEmail) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing agent email parameter'
+      })
+    }
+
+    // Parse Mailgun payload
     let payload: Record<string, unknown> | null = null
     const contentType = getHeader(event, 'content-type') || ''
 
-    console.log('[Inbound] Content-Type:', contentType)
-    console.log('[Inbound] Request method:', getMethod(event))
+    console.log('[AgentInbound] Content-Type:', contentType)
+    console.log('[AgentInbound] Request method:', getMethod(event))
 
     // Parse payload (multipart, JSON, or form data)
     if (contentType.includes('application/json')) {
       payload = await readBody(event)
-      console.log('[Inbound] Parsed as JSON payload')
+      console.log('[AgentInbound] Parsed as JSON payload')
     } else if (contentType.includes('multipart/form-data')) {
-      console.log('[Inbound] Parsing multipart form data...')
+      console.log('[AgentInbound] Parsing multipart form data...')
       try {
         const formData = await readMultipartFormData(event)
         if (formData) {
@@ -42,7 +50,7 @@ export default defineEventHandler(async (event) => {
                   size: field.data.length
                 }
                 console.log(
-                  `[Inbound] Found file attachment: ${field.name} = ${field.filename} (${field.data.length} bytes)`
+                  `[AgentInbound] Found file attachment: ${field.name} = ${field.filename} (${field.data.length} bytes)`
                 )
               } else {
                 const value =
@@ -51,22 +59,22 @@ export default defineEventHandler(async (event) => {
               }
             }
           }
-          console.log('[Inbound] Parsed multipart form data, fields:', Object.keys(payload))
+          console.log('[AgentInbound] Parsed multipart form data, fields:', Object.keys(payload))
         }
       } catch (error) {
-        console.error('[Inbound] Failed to parse multipart form data:', error)
+        console.error('[AgentInbound] Failed to parse multipart form data:', error)
         const body = await readBody<Record<string, string>>(event)
         payload = body
       }
     } else {
-      console.log('[Inbound] Parsing as regular form data...')
+      console.log('[AgentInbound] Parsing as regular form data...')
       const body = await readBody<Record<string, string>>(event)
       payload = body
     }
 
-    console.log('[Inbound] Final payload type:', typeof payload)
+    console.log('[AgentInbound] Final payload type:', typeof payload)
     console.log(
-      '[Inbound] Final payload keys:',
+      '[AgentInbound] Final payload keys:',
       payload ? Object.keys(payload).slice(0, 20) : 'no payload'
     )
 
@@ -141,7 +149,7 @@ export default defineEventHandler(async (event) => {
     // ═══════════════════════════════════════════════════════════════════
     // STORE EMAIL IN NITRO STORAGE BEFORE AI PROCESSING
     // ═══════════════════════════════════════════════════════════════════
-    console.log(`[Inbound] 💾 Storing email: message-id=${messageId}`)
+    console.log(`[AgentInbound] 💾 Storing email: message-id=${messageId}`)
 
     const storedEmail = await mailStorage.storeInboundEmail({
       messageId: String(messageId || ''),
@@ -158,50 +166,63 @@ export default defineEventHandler(async (event) => {
       rawPayload: payload
     })
 
-    console.log(`[Inbound] ✓ Email stored: ${storedEmail.id}`)
+    console.log(`[AgentInbound] ✓ Email stored: ${storedEmail.id}`)
 
     // Extract bare email addresses
-    const { extractEmail } = await import('../../utils/mailgunHelpers')
-    const toEmail = extractEmail(to)
+    const { extractEmail } = await import('../../../utils/mailgunHelpers')
+    const toEmail = extractEmail(to) || agentEmail
     const fromEmail = extractEmail(from)
 
-    // Extract domain from recipient
-    const recipientDomain = toEmail?.split('@')[1]?.toLowerCase()
-    if (!recipientDomain) {
-      console.log('[Inbound] No domain found in recipient email:', toEmail)
-      return { ok: true, error: 'Invalid recipient email' }
+    console.log('[AgentInbound] Email extraction:', {
+      rawTo: to,
+      extractedToEmail: toEmail,
+      rawFrom: from,
+      extractedFromEmail: fromEmail,
+      agentEmail
+    })
+
+    // Extract domain and username from agent email
+    const emailParts = agentEmail.split('@')
+    if (emailParts.length !== 2) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Invalid email format. Expected: username@domain.com'
+      })
     }
 
+    const recipientUsername = emailParts[0].toLowerCase()
+    const recipientDomain = emailParts[1].toLowerCase()
+
+    console.log('[AgentInbound] Looking up agent:', {
+      email: agentEmail,
+      username: recipientUsername,
+      domain: recipientDomain
+    })
+
     // Look up team by domain
-    const { getIdentity } = await import('../../utils/identityStorage')
+    const { getIdentity } = await import('../../../utils/identityStorage')
     const identity = await getIdentity()
     const team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain)
 
     if (!team) {
-      console.log('[Inbound] No team found for domain:', recipientDomain)
+      console.log('[AgentInbound] No team found for domain:', recipientDomain)
       return { ok: true, error: 'Team not found for domain' }
     }
 
-    console.log('[Inbound] Found team:', {
+    console.log('[AgentInbound] Found team:', {
       teamId: team.id,
       teamName: team.name,
       domain: recipientDomain
     })
 
-    // Extract username from recipient email
-    const recipientUsername = toEmail?.split('@')[0]?.toLowerCase()
-    if (!recipientUsername) {
-      console.log('[Inbound] No username found in recipient email:', toEmail)
-      return { ok: true, error: 'Invalid recipient username' }
-    }
-
     // Load agents and find the agent
+    const agentsStorage = useStorage('agents')
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
     const teamAgents = agents.filter((a) => a.teamId === team.id)
     const agent = teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername)
 
     if (!agent) {
-      console.log('[Inbound] No agent found for username in team:', {
+      console.log('[AgentInbound] No agent found for username in team:', {
         username: recipientUsername,
         teamId: team.id
       })
@@ -209,7 +230,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const fullAgentEmail = `${agent.email}@${recipientDomain}`
-    console.log('[Inbound] Found agent:', {
+    console.log('[AgentInbound] Found agent:', {
       agentId: agent.id,
       username: agent.email,
       fullEmail: fullAgentEmail,
@@ -219,14 +240,14 @@ export default defineEventHandler(async (event) => {
     // Process attachments to datasafe
     const datasafeStored: Array<{ path: string; name: string; size: number }> = []
     try {
-      const { ensureTeamDatasafe, storeAttachment } = await import('../../utils/datasafeStorage')
+      const { ensureTeamDatasafe, storeAttachment } = await import('../../../utils/datasafeStorage')
       const { getAttachmentStats, validateAttachment, extractMailgunAttachments } = await import(
-        '../../utils/mailgunHelpers'
+        '../../../utils/mailgunHelpers'
       )
 
       const stats = getAttachmentStats(payload as Record<string, unknown>)
       console.log(
-        `[Inbound] Attachment stats: ${stats.totalCount} attachments, ${stats.totalSize} bytes`
+        `[AgentInbound] Attachment stats: ${stats.totalCount} attachments, ${stats.totalSize} bytes`
       )
 
       if (stats.hasAttachments) {
@@ -240,13 +261,13 @@ export default defineEventHandler(async (event) => {
             validAttachments.push(attachment)
           } else {
             console.warn(
-              `[Inbound] Skipping invalid attachment ${attachment.filename}:`,
+              `[AgentInbound] Skipping invalid attachment ${attachment.filename}:`,
               validation.errors
             )
           }
         }
 
-        console.log(`[Inbound] Processing ${validAttachments.length} valid attachments`)
+        console.log(`[AgentInbound] Processing ${validAttachments.length} valid attachments`)
 
         for (const attachment of validAttachments) {
           try {
@@ -264,14 +285,19 @@ export default defineEventHandler(async (event) => {
               }
             })
             datasafeStored.push({ path: node.path, name: node.name, size: node.size })
-            console.log(`[Inbound] ✓ Stored attachment: ${attachment.filename} -> ${node.path}`)
+            console.log(
+              `[AgentInbound] ✓ Stored attachment: ${attachment.filename} -> ${node.path}`
+            )
           } catch (storeErr) {
-            console.error(`[Inbound] Failed to store attachment ${attachment.filename}:`, storeErr)
+            console.error(
+              `[AgentInbound] Failed to store attachment ${attachment.filename}:`,
+              storeErr
+            )
           }
         }
       }
     } catch (datasafeErr) {
-      console.error('[Inbound] Failed to process attachments:', datasafeErr)
+      console.error('[AgentInbound] Failed to process attachments:', datasafeErr)
     }
 
     // Log inbound email activity
@@ -295,15 +321,15 @@ export default defineEventHandler(async (event) => {
         }
       })
     } catch (logErr) {
-      console.error('[Inbound] Failed to log email activity:', logErr)
+      console.error('[AgentInbound] Failed to log email activity:', logErr)
     }
 
-    console.log('\n[Inbound] ════════════════════════════════════════════')
-    console.log('[Inbound] 📨 PROCESSING INBOUND EMAIL')
-    console.log(`[Inbound] Agent: ${agent.name} (${agent.email})`)
-    console.log(`[Inbound] From: ${fromEmail || from}`)
-    console.log(`[Inbound] Subject: ${subject}`)
-    console.log('[Inbound] ════════════════════════════════════════════')
+    console.log('\n[AgentInbound] ════════════════════════════════════════════')
+    console.log('[AgentInbound] 📨 PROCESSING INBOUND EMAIL')
+    console.log(`[AgentInbound] Agent: ${agent.name} (${agent.email})`)
+    console.log(`[AgentInbound] From: ${fromEmail || from}`)
+    console.log(`[AgentInbound] Subject: ${subject}`)
+    console.log('[AgentInbound] ════════════════════════════════════════════')
 
     // Check mail policy
     const inboundPolicy = await evaluateInboundMail(agent, String(fromEmail || from || ''), {
@@ -311,7 +337,7 @@ export default defineEventHandler(async (event) => {
       identity
     })
     if (!inboundPolicy.allowed) {
-      console.warn('[Inbound] ✗ Email blocked by inbound mail policy:', inboundPolicy.reason)
+      console.warn('[AgentInbound] ✗ Email blocked by mail policy:', inboundPolicy.reason)
       return { ok: true, blocked: true, reason: 'inbound_mail_policy' }
     }
 
@@ -323,9 +349,9 @@ export default defineEventHandler(async (event) => {
       )
       if (user) {
         userId = user.id
-        console.log(`[Inbound] Found user ID for ${fromEmail}: ${userId}`)
+        console.log(`[AgentInbound] Found user ID for ${fromEmail}: ${userId}`)
       } else {
-        console.log(`[Inbound] No user found for email: ${fromEmail}`)
+        console.log(`[AgentInbound] No user found for email: ${fromEmail}`)
       }
     }
 
@@ -333,27 +359,24 @@ export default defineEventHandler(async (event) => {
     let mcpConfigs: Record<string, { url: string }> = {}
 
     try {
-      const configResponse = await $fetch(
-        `/api/agent/${agent.email}@${recipientDomain}/mcp-config`,
-        {
-          method: 'GET'
-        }
-      )
+      const configResponse = await $fetch(`/api/agent/${agentEmail}/mcp-config`, {
+        method: 'GET'
+      })
       mcpConfigs = configResponse.mcpConfigs
-      console.log('[Inbound] Loaded MCP config:', {
+      console.log('[AgentInbound] Loaded MCP config:', {
         serverIds: configResponse.serverIds,
         configuredServers: Object.keys(mcpConfigs)
       })
     } catch (error) {
-      console.error('[Inbound] Failed to load MCP config:', error)
+      console.error('[AgentInbound] Failed to load MCP config:', error)
       mcpConfigs = {}
     }
 
     // Apply predefined agent overrides
-    const { withPredefinedOverride } = await import('../../utils/predefinedKoompls')
+    const { withPredefinedOverride } = await import('../../../utils/predefinedKoompls')
     const effectiveAgent = withPredefinedOverride(agent)
 
-    console.log('[Inbound] Using agent prompt:', {
+    console.log('[AgentInbound] Using agent prompt:', {
       hasPrompt: !!effectiveAgent.prompt,
       promptPreview: effectiveAgent.prompt
         ? effectiveAgent.prompt.substring(0, 100) + '...'
@@ -386,7 +409,7 @@ MESSAGE-ID: ${messageId}
 
 Please process this email and reply using the reply_to_email tool.`
 
-    console.log('[Inbound] → Calling agent...')
+    console.log('[AgentInbound] → Calling agent...')
 
     // Call agent directly (no flow engine)
     const result = await runMCPAgent({
@@ -398,13 +421,13 @@ Please process this email and reply using the reply_to_email tool.`
       event
     })
 
-    console.log('[Inbound] ✓ Agent execution complete')
-    console.log('[Inbound] Result preview:', result?.substring(0, 100))
-    console.log('[Inbound] ════════════════════════════════════════════\n')
+    console.log('[AgentInbound] ✓ Agent execution complete')
+    console.log('[AgentInbound] Result preview:', result?.substring(0, 100))
+    console.log('[AgentInbound] ════════════════════════════════════════════\n')
 
     return { ok: true, messageId, result }
   } catch (error) {
-    console.error('[Inbound] Error:', error)
+    console.error('[AgentInbound] Error:', error)
     return { ok: true } // Always return ok to Mailgun
   }
 })
