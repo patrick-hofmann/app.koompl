@@ -118,7 +118,7 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     model: 'gpt-4o',
     modelSettings: {
       temperature: 0.3,
-      maxTokens: 2000
+      maxTokens: 16000 // Increased to handle large attachments in function calls
     },
     name: 'MCP Assistant',
     instructions: systemPrompt,

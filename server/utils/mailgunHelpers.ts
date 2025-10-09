@@ -559,8 +559,9 @@ export async function sendMailgunEmail(params: {
   html?: string
   inReplyTo?: string
   references?: string
+  attachments?: MailgunAttachment[]
 }): Promise<MailgunSendResponse> {
-  const { from, to, subject, text, html, inReplyTo, references } = params
+  const { from, to, subject, text, html, inReplyTo, references, attachments } = params
 
   // Get Mailgun configuration from settings
   const settingsStorage = useStorage('settings')
@@ -577,42 +578,107 @@ export async function sendMailgunEmail(params: {
     }
   }
 
-  // Build body with threading headers
-  const body = new URLSearchParams({
-    'o:tracking': 'no',
-    'o:tracking-clicks': 'no',
-    'o:tracking-opens': 'no',
-    'h:Content-Type': 'text/plain; charset=utf-8',
-    'h:MIME-Version': '1.0',
-    'h:Content-Transfer-Encoding': '8bit',
-    from,
-    to,
-    subject,
-    text
-  })
-
-  if (html) {
-    body.set('html', html)
-  }
-
-  // Add threading headers
-  if (inReplyTo) {
-    body.set('h:In-Reply-To', inReplyTo)
-  }
-
-  if (references) {
-    body.set('h:References', references)
-  }
-
   const encodedDomain = encodeURIComponent(mailgunDomain)
   const endpoint = `https://api.mailgun.net/v3/${encodedDomain}/messages`
 
-  return await $fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${Buffer.from(`api:${mailgunApiKey}`).toString('base64')}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body
-  })
+  // If we have attachments, use multipart/form-data, otherwise use URL-encoded
+  if (attachments && attachments.length > 0) {
+    // Use FormData for attachments (available globally in Node.js 18+)
+    const formData = new FormData()
+
+    // Add standard fields
+    formData.append('from', from)
+    formData.append('to', to)
+    formData.append('subject', subject)
+    formData.append('text', text)
+
+    if (html) {
+      formData.append('html', html)
+    }
+
+    // Add tracking options
+    formData.append('o:tracking', 'no')
+    formData.append('o:tracking-clicks', 'no')
+    formData.append('o:tracking-opens', 'no')
+
+    // Add threading headers
+    if (inReplyTo) {
+      formData.append('h:In-Reply-To', inReplyTo)
+    }
+
+    if (references) {
+      formData.append('h:References', references)
+    }
+
+    // Add attachments
+    for (const attachment of attachments) {
+      const validation = validateAttachment(attachment)
+      if (!validation.isValid) {
+        console.warn(
+          `[MailgunHelpers] Skipping invalid attachment: ${validation.errors.join(', ')}`
+        )
+        continue
+      }
+
+      // Convert base64 to buffer
+      const buffer = Buffer.from(attachment.data, 'base64')
+
+      // Create a Blob-like object for FormData
+      const blob = new Blob([buffer], { type: attachment.mimeType })
+
+      // Append to form data
+      if (attachment.isInline && attachment.contentId) {
+        formData.append('inline', blob, attachment.filename)
+      } else {
+        formData.append('attachment', blob, attachment.filename)
+      }
+    }
+
+    console.log(`[MailgunHelpers] Sending email with ${attachments.length} attachment(s)`)
+
+    return await $fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`api:${mailgunApiKey}`).toString('base64')}`
+        // Don't set Content-Type - fetch will set it with boundary for multipart/form-data
+      },
+      body: formData
+    })
+  } else {
+    // No attachments - use URL-encoded (original implementation)
+    const body = new URLSearchParams({
+      'o:tracking': 'no',
+      'o:tracking-clicks': 'no',
+      'o:tracking-opens': 'no',
+      'h:Content-Type': 'text/plain; charset=utf-8',
+      'h:MIME-Version': '1.0',
+      'h:Content-Transfer-Encoding': '8bit',
+      from,
+      to,
+      subject,
+      text
+    })
+
+    if (html) {
+      body.set('html', html)
+    }
+
+    // Add threading headers
+    if (inReplyTo) {
+      body.set('h:In-Reply-To', inReplyTo)
+    }
+
+    if (references) {
+      body.set('h:References', references)
+    }
+
+    return await $fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`api:${mailgunApiKey}`).toString('base64')}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body
+    })
+  }
 }

@@ -365,7 +365,7 @@ export default defineEventHandler(async (event) => {
     const baseEmailGuidelines = `
 Email Communication Guidelines:
 - You have access to reply_to_email and forward_email tools
-- To reply, use: reply_to_email with message_id="${messageId}"
+- To reply, use reply_to_email with the message_id from the email
 - The system automatically quotes and formats emails
 - Always be professional and concise
 `
@@ -374,18 +374,26 @@ Email Communication Guidelines:
 
 ${baseEmailGuidelines}`
 
-    // Build user prompt
+    // Build user prompt with attachment info
+    let attachmentInfo = ''
+    if (datasafeStored.length > 0) {
+      attachmentInfo = `\n\nATTACHMENTS AUTOMATICALLY STORED TO DATASAFE:
+${datasafeStored.map((att) => `- ${att.name} → ${att.path} (${att.size} bytes)`).join('\n')}
+
+These files are now available in your datasafe and can be accessed using the datasafe tools.`
+    }
+
     const userPrompt = `You received an email:
 
 From: ${fromEmail || from}
 Subject: ${subject || 'No Subject'}
 
 Message:
-${text || 'No message body'}
+${text || 'No message body'}${attachmentInfo}
 
 MESSAGE-ID: ${messageId}
 
-Please process this email and reply using the reply_to_email tool.`
+IMPORTANT: You MUST reply to this email using the reply_to_email tool with the message_id above.`
 
     console.log('[Inbound] → Calling agent...')
 

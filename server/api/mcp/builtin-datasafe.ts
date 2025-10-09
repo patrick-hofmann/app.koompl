@@ -173,6 +173,7 @@ export default defineEventHandler(async (event) => {
 
     switch (body.method) {
       case 'initialize': {
+        console.log('[BuiltinDatasafeMCP] Method: initialize')
         result = {
           protocolVersion: '2024-11-05',
           capabilities: {
@@ -187,6 +188,7 @@ export default defineEventHandler(async (event) => {
       }
 
       case 'tools/list': {
+        console.log('[BuiltinDatasafeMCP] Method: tools/list')
         result = {
           tools: [
             {
@@ -338,6 +340,21 @@ export default defineEventHandler(async (event) => {
           throw createError({ statusCode: 400, statusMessage: 'Tool name is required' })
         }
 
+        console.log(`[BuiltinDatasafeMCP] Tool called: ${toolName}`, {
+          args: Object.keys(args).reduce(
+            (acc, key) => {
+              // Truncate base64 data for logging
+              if (key === 'base64' && typeof args[key] === 'string') {
+                acc[key] = `<base64 data: ${args[key].length} chars>`
+              } else {
+                acc[key] = args[key]
+              }
+              return acc
+            },
+            {} as Record<string, unknown>
+          )
+        })
+
         const allowOverride =
           process.env.NODE_ENV === 'development' ||
           getRequestHeader(event, 'x-mcp-allow-team-override') === '1'
@@ -357,189 +374,321 @@ export default defineEventHandler(async (event) => {
 
         switch (toolName) {
           case 'list_folder': {
-            const path =
-              typeof args.path === 'string' && args.path.trim().length > 0
-                ? (args.path as string)
-                : undefined
-            const folder = await listDatasafeFolder(resolvedContext, path)
-            toolResult = {
-              content: [
-                {
-                  type: 'text',
-                  text: formatJson({
-                    ok: true,
-                    summary: `Found ${folder.children.length} items in ${path || '/'} `,
-                    data: folder
-                  })
-                }
-              ]
+            try {
+              const path =
+                typeof args.path === 'string' && args.path.trim().length > 0
+                  ? (args.path as string)
+                  : undefined
+              const folder = await listDatasafeFolder(resolvedContext, path)
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: true,
+                      summary: `Found ${folder.children.length} items in ${path || '/'} `,
+                      data: folder
+                    })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to list folder',
+                      path: args.path
+                    })
+                  }
+                ],
+                isError: true
+              }
             }
             break
           }
 
           case 'download_file': {
-            if (typeof args.path !== 'string' || !args.path) {
-              throw createError({ statusCode: 400, statusMessage: 'File path is required' })
-            }
-            const { base64, node } = await downloadDatasafeFile(resolvedContext, args.path)
-            toolResult = {
-              content: [
-                {
-                  type: 'text',
-                  text: formatJson({ ok: true, data: { base64, node } })
-                }
-              ]
+            try {
+              if (typeof args.path !== 'string' || !args.path) {
+                throw new Error('File path is required')
+              }
+              const { base64, node } = await downloadDatasafeFile(resolvedContext, args.path)
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, data: { base64, node } })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to download file',
+                      path: args.path
+                    })
+                  }
+                ],
+                isError: true
+              }
             }
             break
           }
 
           case 'upload_file': {
-            const path = typeof args.path === 'string' ? (args.path as string) : ''
-            const base64 = typeof args.base64 === 'string' ? (args.base64 as string) : ''
-            const mimeType =
-              typeof args.mimeType === 'string'
-                ? (args.mimeType as string)
-                : 'application/octet-stream'
-            if (!path || !base64) {
-              throw createError({
-                statusCode: 400,
-                statusMessage: 'Path and base64 payload are required'
+            try {
+              const path = typeof args.path === 'string' ? (args.path as string) : ''
+              const base64 = typeof args.base64 === 'string' ? (args.base64 as string) : ''
+              const mimeType =
+                typeof args.mimeType === 'string'
+                  ? (args.mimeType as string)
+                  : 'application/octet-stream'
+              if (!path || !base64) {
+                throw new Error('Path and base64 payload are required')
+              }
+              const size =
+                typeof args.size === 'number'
+                  ? (args.size as number)
+                  : Buffer.from(base64, 'base64').length
+              const overwrite = Boolean(args.overwrite)
+              const node = await uploadDatasafeFile(resolvedContext, {
+                path,
+                base64,
+                mimeType,
+                size,
+                overwrite,
+                metadata: { uploadedVia: 'mcp-http' }
               })
-            }
-            const size =
-              typeof args.size === 'number'
-                ? (args.size as number)
-                : Buffer.from(base64, 'base64').length
-            const overwrite = Boolean(args.overwrite)
-            const node = await uploadDatasafeFile(resolvedContext, {
-              path,
-              base64,
-              mimeType,
-              size,
-              overwrite,
-              metadata: { uploadedVia: 'mcp-http' }
-            })
-            toolResult = {
-              content: [
-                {
-                  type: 'text',
-                  text: formatJson({ ok: true, data: node })
-                }
-              ]
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, data: node })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to upload file',
+                      path: args.path
+                    })
+                  }
+                ],
+                isError: true
+              }
             }
             break
           }
 
           case 'create_folder': {
-            if (typeof args.path !== 'string' || !args.path) {
-              throw createError({ statusCode: 400, statusMessage: 'Folder path is required' })
-            }
-            const folder = await createDatasafeFolder(resolvedContext, args.path)
-            toolResult = {
-              content: [
-                {
-                  type: 'text',
-                  text: formatJson({ ok: true, data: folder })
-                }
-              ]
+            try {
+              if (typeof args.path !== 'string' || !args.path) {
+                throw new Error('Folder path is required')
+              }
+              const folder = await createDatasafeFolder(resolvedContext, args.path)
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, data: folder })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to create folder',
+                      path: args.path
+                    })
+                  }
+                ],
+                isError: true
+              }
             }
             break
           }
 
           case 'recommend_placement': {
-            if (typeof args.filename !== 'string' || !args.filename) {
-              throw createError({ statusCode: 400, statusMessage: 'Filename is required' })
-            }
-            const recommendation = await recommendDatasafePlacement(resolvedContext, {
-              filename: args.filename as string,
-              mimeType:
-                typeof args.mimeType === 'string'
-                  ? (args.mimeType as string)
-                  : 'application/octet-stream',
-              size: typeof args.size === 'number' ? (args.size as number) : 0,
-              encoding: 'base64',
-              data: '',
-              source: 'mcp',
-              emailMeta: {
-                subject: typeof args.subject === 'string' ? (args.subject as string) : undefined,
-                from: typeof args.from === 'string' ? (args.from as string) : undefined
-              },
-              tags: Array.isArray(args.tags) ? (args.tags as string[]) : undefined
-            })
-            toolResult = {
-              content: [
-                {
-                  type: 'text',
-                  text: formatJson({ ok: true, data: recommendation })
-                }
-              ]
-            }
-            break
-          }
-
-          case 'store_attachment': {
-            if (typeof args.filename !== 'string' || !args.filename) {
-              throw createError({ statusCode: 400, statusMessage: 'Filename is required' })
-            }
-            if (typeof args.base64 !== 'string' || !args.base64) {
-              throw createError({ statusCode: 400, statusMessage: 'Base64 payload is required' })
-            }
-            const node = await storeDatasafeAttachment(
-              resolvedContext,
-              {
+            try {
+              if (typeof args.filename !== 'string' || !args.filename) {
+                throw new Error('Filename is required')
+              }
+              const recommendation = await recommendDatasafePlacement(resolvedContext, {
                 filename: args.filename as string,
                 mimeType:
                   typeof args.mimeType === 'string'
                     ? (args.mimeType as string)
                     : 'application/octet-stream',
-                size:
-                  typeof args.size === 'number'
-                    ? (args.size as number)
-                    : Buffer.from(args.base64 as string, 'base64').length,
-                data: args.base64 as string,
+                size: typeof args.size === 'number' ? (args.size as number) : 0,
                 encoding: 'base64',
+                data: '',
                 source: 'mcp',
                 emailMeta: {
                   subject: typeof args.subject === 'string' ? (args.subject as string) : undefined,
                   from: typeof args.from === 'string' ? (args.from as string) : undefined
-                }
-              },
-              { overwrite: Boolean(args.overwrite) }
-            )
-            toolResult = {
-              content: [
+                },
+                tags: Array.isArray(args.tags) ? (args.tags as string[]) : undefined
+              })
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, data: recommendation })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to recommend placement',
+                      filename: args.filename
+                    })
+                  }
+                ],
+                isError: true
+              }
+            }
+            break
+          }
+
+          case 'store_attachment': {
+            try {
+              if (typeof args.filename !== 'string' || !args.filename) {
+                throw new Error('Filename is required')
+              }
+              if (typeof args.base64 !== 'string' || !args.base64) {
+                throw new Error('Base64 payload is required')
+              }
+              const node = await storeDatasafeAttachment(
+                resolvedContext,
                 {
-                  type: 'text',
-                  text: formatJson({ ok: true, data: node })
-                }
-              ]
+                  filename: args.filename as string,
+                  mimeType:
+                    typeof args.mimeType === 'string'
+                      ? (args.mimeType as string)
+                      : 'application/octet-stream',
+                  size:
+                    typeof args.size === 'number'
+                      ? (args.size as number)
+                      : Buffer.from(args.base64 as string, 'base64').length,
+                  data: args.base64 as string,
+                  encoding: 'base64',
+                  source: 'mcp',
+                  emailMeta: {
+                    subject:
+                      typeof args.subject === 'string' ? (args.subject as string) : undefined,
+                    from: typeof args.from === 'string' ? (args.from as string) : undefined
+                  }
+                },
+                { overwrite: Boolean(args.overwrite) }
+              )
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, data: node })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to store attachment',
+                      filename: args.filename
+                    })
+                  }
+                ],
+                isError: true
+              }
             }
             break
           }
 
           case 'list_rules': {
-            const rules = await listDatasafeRules(resolvedContext)
-            toolResult = {
-              content: [
-                {
-                  type: 'text',
-                  text: formatJson({ ok: true, count: rules.length, data: rules })
-                }
-              ]
+            try {
+              const rules = await listDatasafeRules(resolvedContext)
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, count: rules.length, data: rules })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to list rules'
+                    })
+                  }
+                ],
+                isError: true
+              }
             }
             break
           }
 
           case 'get_stats': {
-            const limit = typeof args.limit === 'number' ? (args.limit as number) : undefined
-            const stats = await getDatasafeStats(resolvedContext, limit)
-            toolResult = {
-              content: [
-                {
-                  type: 'text',
-                  text: formatJson({ ok: true, data: stats })
-                }
-              ]
+            try {
+              const limit = typeof args.limit === 'number' ? (args.limit as number) : undefined
+              const stats = await getDatasafeStats(resolvedContext, limit)
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, data: stats })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to get stats'
+                    })
+                  }
+                ],
+                isError: true
+              }
             }
             break
           }
