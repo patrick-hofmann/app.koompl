@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
   })
 
   // Look up team by domain
-  const { getIdentity } = await import('../../../utils/identityStorage')
+  const { getIdentity } = await import('../../../features/team/storage')
   const identity = await getIdentity()
   const team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain)
 

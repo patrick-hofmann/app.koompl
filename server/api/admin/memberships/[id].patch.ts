@@ -1,4 +1,4 @@
-import { getIdentity, upsertMembership } from '../../../utils/identityStorage'
+import { listMemberships, saveMembership } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -14,8 +14,8 @@ export default defineEventHandler(async (event) => {
     role?: 'admin' | 'user'
   }>(event)
 
-  const identity = await getIdentity()
-  const existing = identity.memberships.find((membership) => membership.id === id)
+  const memberships = await listMemberships()
+  const existing = memberships.find((membership) => membership.id === id)
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Membership not found' })
   }
@@ -24,5 +24,5 @@ export default defineEventHandler(async (event) => {
   const teamId = body?.teamId !== undefined ? String(body.teamId).trim() : existing.teamId
   const role = body?.role !== undefined ? body.role : existing.role
 
-  return await upsertMembership({ id, userId, teamId, role })
+  return await saveMembership({ id, userId, teamId, role })
 })

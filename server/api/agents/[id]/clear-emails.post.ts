@@ -3,14 +3,14 @@
  * This will remove all inbound and outbound emails for the agent
  */
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   try {
     const agentId = getRouterParam(event, 'id')
     if (!agentId) {
       throw createError({ statusCode: 400, statusMessage: 'Agent ID is required' })
     }
 
-    const { mailStorage } = await import('../../../utils/mailStorage')
+    const { mailStorage } = await import('../../../features/mail/storage')
 
     // Clear all emails for this agent
     const result = await mailStorage.clearAgentEmails(agentId)

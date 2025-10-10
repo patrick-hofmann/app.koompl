@@ -1,4 +1,4 @@
-import { moveCard } from '../../../../../utils/kanbanStorage'
+import { moveCard } from '../../../../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -33,8 +33,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const context = { teamId, userId: session.user?.id }
   const success = await moveCard(
-    teamId,
+    context,
     boardId,
     body.cardId,
     body.fromColumnId,

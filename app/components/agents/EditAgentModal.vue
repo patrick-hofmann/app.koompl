@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Agent, McpServer } from '~/types'
+import type { Agent } from '~/types'
 
 interface Props {
   open: boolean
@@ -35,23 +35,44 @@ const local = reactive<Partial<Agent>>({
   }
 })
 
-type StoredMcpServer = McpServer & {
-  createdAt: string
-  updatedAt: string
-}
-
-const {
-  data: mcpResponse,
-  pending: mcpPending,
-  refresh: refreshMcp
-} = await useAsyncData(
-  'mcp-servers-lite',
-  async () => {
-    const result = await $fetch<{ servers: StoredMcpServer[] }>('/api/mcp')
-    return result.servers
+// Builtin MCP servers (hardcoded - no custom servers)
+const BUILTIN_MCP_SERVERS = [
+  {
+    id: 'builtin-kanban',
+    name: 'Team Kanban Board',
+    provider: 'builtin-kanban',
+    category: 'productivity',
+    description: 'Built-in Kanban board for task management'
   },
-  { server: false, lazy: true }
-)
+  {
+    id: 'builtin-datasafe',
+    name: 'Team Datasafe',
+    provider: 'builtin-datasafe',
+    category: 'storage',
+    description: 'Secure team files vault'
+  },
+  {
+    id: 'builtin-calendar',
+    name: 'Team Calendar',
+    provider: 'builtin-calendar',
+    category: 'calendar',
+    description: 'Built-in team calendar'
+  },
+  {
+    id: 'builtin-agents',
+    name: 'Agents Directory',
+    provider: 'builtin-agents',
+    category: 'directory',
+    description: 'Directory of active agents'
+  },
+  {
+    id: 'builtin-email',
+    name: 'Email Support',
+    provider: 'builtin-email',
+    category: 'communication',
+    description: 'Email processing and responses'
+  }
+]
 
 const {
   data: agentsResponse,
@@ -65,7 +86,11 @@ const {
   { server: false, lazy: true }
 )
 
-const mcpServers = computed(() => mcpResponse.value ?? [])
+const mcpServers = computed(() => BUILTIN_MCP_SERVERS)
+const mcpPending = ref(false)
+function refreshMcp() {
+  // No-op for builtin servers (they don't need refreshing)
+}
 
 const allAgents = computed(() => agentsResponse.value ?? [])
 const otherAgents = computed(() => allAgents.value.filter((agent) => agent.id !== local.id))

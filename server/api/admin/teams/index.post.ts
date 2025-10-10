@@ -1,4 +1,4 @@
-import { upsertTeam } from '../../../utils/identityStorage'
+import { saveTeam } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -17,6 +17,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Name is required' })
   }
 
-  const team = await upsertTeam({ name, description, domain })
+  const team = await saveTeam({ name, description, domain })
   return team
 })

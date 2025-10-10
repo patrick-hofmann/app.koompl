@@ -1,4 +1,4 @@
-import { getIdentity, upsertUser } from '../../../utils/identityStorage'
+import { getUser, saveUser } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -14,8 +14,7 @@ export default defineEventHandler(async (event) => {
     password?: string
   }>(event)
 
-  const identity = await getIdentity()
-  const existing = identity.users.find((user) => user.id === id)
+  const existing = await getUser(id)
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'User not found' })
   }
@@ -27,5 +26,5 @@ export default defineEventHandler(async (event) => {
       ? String(body.password).trim()
       : existing.password
 
-  return await upsertUser({ id, name, email, password })
+  return await saveUser({ id, name, email, password })
 })

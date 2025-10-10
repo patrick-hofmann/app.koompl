@@ -1,4 +1,4 @@
-import { getIdentity } from '../../../../utils/identityStorage'
+import { getTeam, isSuperAdmin } from '../../../../features/team'
 
 export default defineEventHandler(async (event) => {
   // Check if user is super admin
@@ -7,8 +7,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const identity = await getIdentity()
-  if (!identity.superAdminIds.includes(session.user.id)) {
+  const isSuper = await isSuperAdmin(session.user.id)
+  if (!isSuper) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden: Super admin access required' })
   }
 
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing team ID' })
   }
 
-  const team = identity.teams.find((t) => t.id === teamId)
+  const team = await getTeam(teamId)
   if (!team) {
     throw createError({ statusCode: 404, statusMessage: 'Team not found' })
   }

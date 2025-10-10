@@ -1,4 +1,4 @@
-import { addSuperAdmin, setSuperAdminIds } from '../../../utils/identityStorage'
+import { makeSuperAdmin, setSuperAdmins } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
 
   if (Array.isArray(body?.userIds)) {
     const ids = body!.userIds.map((id) => String(id).trim()).filter(Boolean)
-    const superAdmins = await setSuperAdminIds(ids)
+    const superAdmins = await setSuperAdmins(ids)
     return { superAdminIds: superAdmins }
   }
 
@@ -19,6 +19,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'User id is required' })
   }
 
-  const superAdmins = await addSuperAdmin(userId)
+  const superAdmins = await makeSuperAdmin(userId)
   return { superAdminIds: superAdmins }
 })

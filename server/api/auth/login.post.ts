@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const { getIdentity } = await import('../../utils/identityStorage')
+    const { getIdentity } = await import('../../features/team/storage')
     const authData = await getIdentity()
 
     // Find user credentials

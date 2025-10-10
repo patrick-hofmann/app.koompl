@@ -1,4 +1,4 @@
-import { getIdentity, upsertTeam } from '../../../utils/identityStorage'
+import { getTeam, saveTeam } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -14,8 +14,7 @@ export default defineEventHandler(async (event) => {
     domain?: string
   }>(event)
 
-  const identity = await getIdentity()
-  const existing = identity.teams.find((team) => team.id === id)
+  const existing = await getTeam(id)
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Team not found' })
   }
@@ -30,5 +29,5 @@ export default defineEventHandler(async (event) => {
         : undefined
       : existing.domain
 
-  return await upsertTeam({ id, name, description, domain })
+  return await saveTeam({ id, name, description, domain })
 })

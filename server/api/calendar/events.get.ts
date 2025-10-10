@@ -1,8 +1,4 @@
-import {
-  getTeamCalendarEvents,
-  getCalendarEventsByDateRange,
-  getUsersCalendarEvents
-} from '../../utils/calendarStorage'
+import { listEvents, getEventsByDateRange, getUsersEvents } from '../../features/calendar'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -20,19 +16,20 @@ export default defineEventHandler(async (event) => {
   const endDate = query.endDate as string | undefined
   const userIds = query.userIds as string | string[] | undefined
 
+  const context = { teamId, userId: session.user?.id }
   let events
 
   if (startDate && endDate) {
     // Get events within date range
     const users = Array.isArray(userIds) ? userIds : userIds ? [userIds] : undefined
-    events = await getCalendarEventsByDateRange(teamId, startDate, endDate, users)
+    events = await getEventsByDateRange(context, startDate, endDate, users)
   } else if (userIds) {
     // Get events for specific users
     const users = Array.isArray(userIds) ? userIds : [userIds]
-    events = await getUsersCalendarEvents(teamId, users)
+    events = await getUsersEvents(context, users)
   } else {
     // Get all events
-    events = await getTeamCalendarEvents(teamId)
+    events = await listEvents(context)
   }
 
   return { events }

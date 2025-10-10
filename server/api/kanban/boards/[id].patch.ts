@@ -1,4 +1,4 @@
-import { updateBoard } from '../../../utils/kanbanStorage'
+import { updateBoard } from '../../../features/kanban'
 import type { KanbanBoard } from '../../types/kanban'
 
 export default defineEventHandler(async (event) => {
@@ -22,7 +22,8 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody<Partial<Pick<KanbanBoard, 'name' | 'description' | 'columns'>>>(event)
 
-  const board = await updateBoard(teamId, boardId, body)
+  const context = { teamId, userId: session.user?.id }
+  const board = await updateBoard(context, boardId, body)
   if (!board) {
     throw createError({
       statusCode: 404,

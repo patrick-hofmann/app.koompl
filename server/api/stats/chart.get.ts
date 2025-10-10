@@ -1,11 +1,13 @@
-import { mailStorage } from '../../utils/mailStorage'
+import { mailStorage } from '../../features/mail/storage'
 
-export default defineEventHandler(async _event => {
+export default defineEventHandler(async (_event) => {
   const query = getQuery(_event)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const period = (query.period as string) || 'daily'
   // Begin/end calculations for requested range
-  const rangeStart = query.rangeStart ? new Date(query.rangeStart as string) : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+  const rangeStart = query.rangeStart
+    ? new Date(query.rangeStart as string)
+    : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
   const rangeEnd = query.rangeEnd ? new Date(query.rangeEnd as string) : new Date()
   const direction = String(query.direction || 'both') as 'received' | 'sent' | 'both'
 
@@ -19,7 +21,7 @@ export default defineEventHandler(async _event => {
     const logs = await mailStorage.getRecentEmails(1000) // large buffer, we'll filter by date
     const seen = new Set<string>()
     const filtered = logs
-      .map(log => {
+      .map((log) => {
         const direction = log.type === 'outgoing' ? 'outbound' : 'inbound'
         const logDate = new Date(log.timestamp)
         if (!(logDate >= startDate && logDate <= endDate)) return null
@@ -30,8 +32,8 @@ export default defineEventHandler(async _event => {
       })
       .filter((v): v is (typeof logs)[number] & { direction: 'inbound' | 'outbound' } => Boolean(v))
 
-    let received = filtered.filter(e => e.direction === 'inbound')
-    let responded = filtered.filter(e => e.direction === 'outbound' && e.mailgunSent)
+    let received = filtered.filter((e) => e.direction === 'inbound')
+    let responded = filtered.filter((e) => e.direction === 'outbound' && e.mailgunSent)
 
     if (direction === 'received') {
       responded = []
@@ -45,7 +47,7 @@ export default defineEventHandler(async _event => {
         responded: responded.length
       },
       emailData: filtered
-        .map(e => ({
+        .map((e) => ({
           timestamp: e.timestamp,
           usedOpenAI: Boolean(e.usedOpenAI),
           mailgunSent: Boolean(e.mailgunSent),

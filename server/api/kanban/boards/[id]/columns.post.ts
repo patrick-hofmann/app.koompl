@@ -1,4 +1,4 @@
-import { addColumn } from '../../../../utils/kanbanStorage'
+import { createColumn } from '../../../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -28,7 +28,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const column = await addColumn(teamId, boardId, body.title, body.position)
+  const context = { teamId, userId: session.user?.id }
+  const column = await createColumn(context, boardId, body.title, body.position)
 
   if (!column) {
     throw createError({

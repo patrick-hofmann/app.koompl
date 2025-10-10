@@ -3,7 +3,7 @@
  */
 
 import type { Agent } from '~/types'
-import { getIdentity } from './identityStorage'
+import { getIdentity } from '../features/team/storage'
 
 /**
  * Constructs full email from username and team domain

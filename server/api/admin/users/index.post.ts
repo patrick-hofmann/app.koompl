@@ -1,4 +1,4 @@
-import { upsertUser } from '../../../utils/identityStorage'
+import { saveUser } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -19,6 +19,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Name, email, and password are required' })
   }
 
-  const user = await upsertUser({ name, email, password })
+  const user = await saveUser({ name, email, password })
   return user
 })

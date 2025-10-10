@@ -1,4 +1,4 @@
-import { upsertMembership } from '../../../utils/identityStorage'
+import { saveMembership } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
     role?: 'admin' | 'user'
   }>(event)
 
-  const membership = await upsertMembership({
+  const membership = await saveMembership({
     userId: String(body?.userId || ''),
     teamId: String(body?.teamId || ''),
     role: body?.role || 'user'

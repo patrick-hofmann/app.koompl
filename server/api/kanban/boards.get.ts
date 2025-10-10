@@ -1,4 +1,4 @@
-import { getTeamBoards } from '../../utils/kanbanStorage'
+import { listBoards } from '../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -11,6 +11,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const boards = await getTeamBoards(teamId)
+  const boards = await listBoards({ teamId, userId: session.user?.id })
   return { boards }
 })

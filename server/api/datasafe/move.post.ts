@@ -1,4 +1,4 @@
-import { moveFileNode, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { moveFile } from '../../features/datasafe'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -19,8 +19,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Source path required' })
   }
 
-  await ensureTeamDatasafe(teamId)
-  const node = await moveFileNode(teamId, sourcePath, targetFolder)
+  const context = { teamId, userId: session.user?.id }
+  const node = await moveFile(context, sourcePath, targetFolder)
 
   return {
     ok: true,

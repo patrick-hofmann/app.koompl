@@ -1,4 +1,4 @@
-import { upsertTeam, getIdentity } from '../../../../utils/identityStorage'
+import { getTeam, saveTeam, isSuperAdmin } from '../../../../features/team'
 
 export default defineEventHandler(async (event) => {
   // Check if user is super admin
@@ -7,8 +7,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
-  const identity = await getIdentity()
-  if (!identity.superAdminIds.includes(session.user.id)) {
+  const isSuper = await isSuperAdmin(session.user.id)
+  if (!isSuper) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden: Super admin access required' })
   }
 
@@ -29,13 +29,13 @@ export default defineEventHandler(async (event) => {
   }
 
   // Get existing team
-  const team = identity.teams.find((t) => t.id === teamId)
+  const team = await getTeam(teamId)
   if (!team) {
     throw createError({ statusCode: 404, statusMessage: 'Team not found' })
   }
 
-  // Update team with new domain (upsertTeam will handle uniqueness validation)
-  const updatedTeam = await upsertTeam({
+  // Update team with new domain (saveTeam will handle uniqueness validation)
+  const updatedTeam = await saveTeam({
     ...team,
     domain
   })

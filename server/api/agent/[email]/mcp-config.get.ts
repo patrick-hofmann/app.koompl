@@ -5,6 +5,15 @@ interface McpConfigResponse {
   serverIds: string[]
 }
 
+// Only builtin MCP servers are supported
+const BUILTIN_SERVER_MAP: Record<string, string> = {
+  'builtin-kanban': '/api/mcp/builtin-kanban',
+  'builtin-datasafe': '/api/mcp/builtin-datasafe',
+  'builtin-agents': '/api/mcp/builtin-agents',
+  'builtin-calendar': '/api/mcp/builtin-calendar',
+  'builtin-email': '/api/mcp/builtin-email'
+}
+
 export default defineEventHandler(async (event): Promise<McpConfigResponse> => {
   const agentEmail = getRouterParam(event, 'email')
 
@@ -28,7 +37,7 @@ export default defineEventHandler(async (event): Promise<McpConfigResponse> => {
   const recipientDomain = emailParts[1].toLowerCase()
 
   // Look up team by domain
-  const { getIdentity } = await import('../../../utils/identityStorage')
+  const { getIdentity } = await import('../../../features/team/storage')
   const identity = await getIdentity()
   const team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain)
 
@@ -54,57 +63,19 @@ export default defineEventHandler(async (event): Promise<McpConfigResponse> => {
     })
   }
 
+  // Get agent's MCP server IDs (only builtin servers supported)
   const mcpServerIds = agent.mcpServerIds || []
-  mcpServerIds.push('builtin-email') // all agents have email support
-
-  // Map builtin/predefined server IDs to their API endpoints (without localhost)
-  const builtinServerMap: Record<string, string> = {
-    'builtin-kanban': '/api/mcp/builtin-kanban',
-    'builtin-datasafe': '/api/mcp/builtin-datasafe',
-    'builtin-agents': '/api/mcp/builtin-agents',
-    'builtin-calendar': '/api/mcp/builtin-calendar',
-    'builtin-email': '/api/mcp/builtin-email'
+  if (!mcpServerIds.includes('builtin-email')) {
+    mcpServerIds.push('builtin-email') // all agents have email support
   }
 
-  // Build MCP configs based on agent's mcpServerIds
+  // Build MCP configs - only builtin servers
   const mcpConfigs: Record<string, { url: string }> = {}
 
   for (const serverId of mcpServerIds) {
-    // Check if it's a builtin server
-    if (builtinServerMap[serverId]) {
-      mcpConfigs[serverId] = { url: builtinServerMap[serverId] }
-      continue
+    if (BUILTIN_SERVER_MAP[serverId]) {
+      mcpConfigs[serverId] = { url: BUILTIN_SERVER_MAP[serverId] }
     }
-
-    // Load custom MCP server from storage (e.g., "nuxt-ui-documentation")
-    /* try {
-      const { findMcpServer } = await import('../../../mcp/storage')
-      const customServer = await findMcpServer(serverId)
-
-      if (customServer && customServer.url) {
-        // Remove localhost from URL if present for external access
-        let serverUrl = customServer.url
-        if (serverUrl.startsWith('http://localhost:3000')) {
-          serverUrl = serverUrl.replace('http://localhost:3000', '')
-        } else if (serverUrl.startsWith('https://localhost:3000')) {
-          serverUrl = serverUrl.replace('https://localhost:3000', '')
-        }
-
-        mcpConfigs[serverId] = { url: serverUrl }
-
-        console.log('[MCP Config] Loaded custom server:', {
-          serverId,
-          name: customServer.name,
-          provider: customServer.provider,
-          url: serverUrl
-        })
-      } else {
-        console.warn('[MCP Config] Custom MCP server not found:', serverId)
-      }
-    } catch (error) {
-      console.error('[MCP Config] Error loading custom server:', serverId, error)
-    }
-    */
   }
 
   console.log('[MCP Config] Generated config for agent:', {

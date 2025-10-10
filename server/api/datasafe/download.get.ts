@@ -1,4 +1,4 @@
-import { readFile, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { downloadFile } from '../../features/datasafe'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -17,25 +17,22 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'File path required' })
   }
 
-  await ensureTeamDatasafe(teamId)
-  const record = await readFile(teamId, path)
-  if (!record) {
-    throw createError({ statusCode: 404, statusMessage: 'File not found' })
-  }
+  const context = { teamId, userId: session.user?.id }
+  const { base64, node } = await downloadFile(context, path)
 
   return {
     ok: true,
     file: {
-      name: record.node.name,
-      path: record.node.path,
-      mimeType: record.file.mimeType,
-      size: record.file.size,
-      base64: record.file.data,
-      encoding: record.file.encoding,
-      source: record.file.source,
-      ruleMatches: record.file.ruleMatches,
-      metadata: record.file.metadata,
-      updatedAt: record.file.updatedAt
+      name: node.name,
+      path: node.path,
+      mimeType: node.mimeType,
+      size: node.size,
+      base64,
+      encoding: 'base64',
+      source: node.source,
+      ruleMatches: node.ruleMatches,
+      metadata: node.metadata,
+      updatedAt: node.updatedAt
     }
   }
 })

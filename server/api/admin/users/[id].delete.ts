@@ -1,4 +1,4 @@
-import { deleteUser } from '../../../utils/identityStorage'
+import { removeUser } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -8,6 +8,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'User id is required' })
   }
 
-  await deleteUser(id)
+  await removeUser(id)
   return { success: true }
 })

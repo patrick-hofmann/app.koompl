@@ -1,4 +1,4 @@
-import { getIdentity } from '../../utils/identityStorage'
+import { getTeam } from '../../features/team'
 
 export default defineEventHandler(async (event) => {
   // Get current user session
@@ -10,8 +10,7 @@ export default defineEventHandler(async (event) => {
   const currentTeamId = session.team.id
 
   // Fetch team data directly from storage (not from session)
-  const identity = await getIdentity()
-  const team = identity.teams.find((t) => t.id === currentTeamId)
+  const team = await getTeam(currentTeamId)
 
   if (!team) {
     throw createError({ statusCode: 404, statusMessage: 'Team not found' })

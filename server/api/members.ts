@@ -1,5 +1,5 @@
 import type { Member } from '~/types'
-import { getIdentity } from '../utils/identityStorage'
+import { getTeamMembers } from '../features/team'
 
 function generateAvatar(name: string, email?: string) {
   const src = email
@@ -19,26 +19,15 @@ export default eventHandler(async (event) => {
     }
 
     const currentTeamId = session.team.id
-    const identity = await getIdentity()
+    const teamMembers = await getTeamMembers(currentTeamId)
 
-    // Get all memberships for this team
-    const teamMemberships = identity.memberships.filter((m) => m.teamId === currentTeamId)
-
-    // Get all team member data by fetching users and their roles
-    const members: Member[] = teamMemberships
-      .map((membership) => {
-        const user = identity.users.find((u) => u.id === membership.userId)
-        if (!user) {
-          return null
-        }
-        return {
-          name: user.name,
-          username: user.email, // Using email as username for now
-          role: membership.role,
-          avatar: generateAvatar(user.name, user.email)
-        }
-      })
-      .filter(Boolean) as Member[]
+    // Transform to Member format
+    const members: Member[] = teamMembers.map((member) => ({
+      name: member.name,
+      username: member.email, // Using email as username for now
+      role: member.role,
+      avatar: generateAvatar(member.name, member.email)
+    }))
 
     return members
   } catch (error: unknown) {

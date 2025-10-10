@@ -1,4 +1,4 @@
-import { createFolder, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { createFolder } from '../../features/datasafe'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -17,8 +17,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Folder path required' })
   }
 
-  await ensureTeamDatasafe(teamId)
-  const folder = await createFolder(teamId, path)
+  const context = { teamId, userId: session.user?.id }
+  const folder = await createFolder(context, path)
 
   return {
     ok: true,

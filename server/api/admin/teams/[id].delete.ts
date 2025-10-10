@@ -1,4 +1,4 @@
-import { deleteTeam } from '../../../utils/identityStorage'
+import { removeTeam } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -8,6 +8,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Team id is required' })
   }
 
-  await deleteTeam(id)
+  await removeTeam(id)
   return { success: true }
 })

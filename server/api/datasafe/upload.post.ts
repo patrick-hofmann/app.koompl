@@ -1,4 +1,4 @@
-import { storeFile, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { uploadFile } from '../../features/datasafe'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -34,9 +34,9 @@ export default defineEventHandler(async (event) => {
   const mimeType = filePart.type || 'application/octet-stream'
   const size = buffer.length
 
-  await ensureTeamDatasafe(teamId)
-
-  const node = await storeFile(teamId, [folder, filename].filter(Boolean).join('/'), {
+  const context = { teamId, userId: session.user?.id }
+  const node = await uploadFile(context, {
+    path: [folder, filename].filter(Boolean).join('/'),
     base64,
     mimeType,
     size,

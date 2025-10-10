@@ -1,4 +1,4 @@
-import { getCalendarEvent } from '../../../utils/calendarStorage'
+import { getEvent } from '../../../features/calendar'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -20,7 +20,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const calendarEvent = await getCalendarEvent(teamId, eventId)
+  const context = { teamId, userId: session.user?.id }
+  const calendarEvent = await getEvent(context, eventId)
 
   if (!calendarEvent) {
     throw createError({

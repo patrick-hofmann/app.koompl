@@ -1,4 +1,4 @@
-import { deleteMembership } from '../../../utils/identityStorage'
+import { removeMembership } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -8,6 +8,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Membership id is required' })
   }
 
-  await deleteMembership(id)
+  await removeMembership(id)
   return { success: true }
 })

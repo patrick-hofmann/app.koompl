@@ -1,4 +1,4 @@
-import { getCalendarEvent, deleteCalendarEvent } from '../../../utils/calendarStorage'
+import { getEvent, deleteEvent } from '../../../features/calendar'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -21,8 +21,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const context = { teamId, userId }
+
   // Verify the event belongs to the user
-  const existingEvent = await getCalendarEvent(teamId, eventId)
+  const existingEvent = await getEvent(context, eventId)
 
   if (!existingEvent) {
     throw createError({
@@ -38,7 +40,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const success = await deleteCalendarEvent(teamId, eventId)
+  const success = await deleteEvent(context, eventId)
 
   if (!success) {
     throw createError({

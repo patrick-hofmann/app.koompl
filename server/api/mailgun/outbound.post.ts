@@ -4,7 +4,7 @@
  */
 
 import type { Agent } from '~/types'
-import { mailStorage } from '../../utils/mailStorage'
+import { mailStorage } from '../../features/mail/storage'
 import { agentLogger } from '../../utils/agentLogging'
 import { determineMailgunDomain, sendMailgunMessage } from '../../utils/mailgunHelpers'
 

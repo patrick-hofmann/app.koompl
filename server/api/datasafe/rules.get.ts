@@ -1,4 +1,4 @@
-import { getRules, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { listRules } from '../../features/datasafe'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -11,8 +11,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await ensureTeamDatasafe(teamId)
-  const rules = await getRules(teamId)
+  const context = { teamId, userId: session.user?.id }
+  const rules = await listRules(context)
 
   return {
     ok: true,

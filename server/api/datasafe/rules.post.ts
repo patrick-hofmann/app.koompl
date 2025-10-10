@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { saveRules, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { updateRules } from '../../features/datasafe'
 import type { DatasafeRule, DatasafeRuleCondition } from '../../types/datasafe'
 
 function nowIso(): string {
@@ -43,11 +43,11 @@ export default defineEventHandler(async (event) => {
     .map((rule) => sanitizeRule(rule))
     .filter((rule): rule is DatasafeRule => !!rule)
 
-  await ensureTeamDatasafe(teamId)
-  await saveRules(teamId, sanitized)
+  const context = { teamId, userId: session.user?.id }
+  const rules = await updateRules(context, sanitized)
 
   return {
     ok: true,
-    rules: sanitized
+    rules
   }
 })

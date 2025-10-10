@@ -1,4 +1,4 @@
-import { updateCard } from '../../../../../utils/kanbanStorage'
+import { updateCard } from '../../../../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -38,7 +38,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const card = await updateCard(teamId, boardId, body.columnId, cardId, body)
+  const context = { teamId, userId: session.user?.id }
+  const card = await updateCard(context, boardId, body.columnId, cardId, body)
 
   if (!card) {
     throw createError({

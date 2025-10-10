@@ -1,4 +1,4 @@
-import { createCalendarEvent } from '../../utils/calendarStorage'
+import { createEvent } from '../../features/calendar'
 import type { CalendarEvent } from '../../types/calendar'
 
 export default defineEventHandler(async (event) => {
@@ -25,6 +25,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const newEvent = await createCalendarEvent(teamId, userId, body)
+  const newEvent = await createEvent({ teamId, userId }, body)
   return { event: newEvent }
 })

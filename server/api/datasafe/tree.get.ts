@@ -1,4 +1,4 @@
-import { getTree, listFolder, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { getTree } from '../../features/datasafe'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -11,11 +11,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await ensureTeamDatasafe(teamId)
-
   const query = getQuery(event)
   const path = typeof query.path === 'string' ? query.path : undefined
-  const node = path ? await listFolder(teamId, path) : await getTree(teamId)
+
+  const context = { teamId, userId: session.user?.id }
+  const node = await getTree(context, path)
 
   return {
     ok: true,

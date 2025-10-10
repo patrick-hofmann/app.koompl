@@ -5,7 +5,7 @@
  * No complex flow engine - just store, validate, and respond.
  */
 
-import { mailStorage } from '../../utils/mailStorage'
+import { mailStorage } from '../../features/mail/storage'
 import { agentLogger } from '../../utils/agentLogging'
 import { evaluateInboundMail } from '../../utils/mailPolicy'
 import { runMCPAgent } from '../../utils/mcpAgentHelper'
@@ -173,7 +173,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Look up team by domain
-    const { getIdentity } = await import('../../utils/identityStorage')
+    const { getIdentity } = await import('../../features/team/storage')
     const identity = await getIdentity()
     const team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain)
 
@@ -219,7 +219,9 @@ export default defineEventHandler(async (event) => {
     // Process attachments to datasafe
     const datasafeStored: Array<{ path: string; name: string; size: number }> = []
     try {
-      const { ensureTeamDatasafe, storeAttachment } = await import('../../utils/datasafeStorage')
+      const { ensureTeamDatasafe, storeAttachment } = await import(
+        '../../features/datasafe/storage'
+      )
       const { getAttachmentStats, validateAttachment, extractMailgunAttachments } = await import(
         '../../utils/mailgunHelpers'
       )

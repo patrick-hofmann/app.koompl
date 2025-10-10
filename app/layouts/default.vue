@@ -80,14 +80,6 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
       onSelect: () => {
         open.value = false
       }
-    },
-    {
-      label: 'MCP Servers',
-      icon: 'i-lucide-server-cog',
-      to: '/mcp',
-      onSelect: () => {
-        open.value = false
-      }
     }
   ]
 

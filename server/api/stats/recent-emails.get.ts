@@ -1,6 +1,6 @@
-import { mailStorage } from '../../utils/mailStorage'
+import { mailStorage } from '../../features/mail/storage'
 
-export default defineEventHandler(async _event => {
+export default defineEventHandler(async (_event) => {
   const query = getQuery(_event)
   const limit = Number.parseInt((query.limit as string) || '5')
   // Get date range from query parameters
@@ -20,7 +20,7 @@ export default defineEventHandler(async _event => {
       const endDate = new Date(rangeEnd)
       endDate.setHours(23, 59, 59, 999) // End of day
 
-      recentEmails = recentEmails.filter(log => {
+      recentEmails = recentEmails.filter((log) => {
         const logDate = new Date(log.timestamp)
         return logDate >= startDate && logDate <= endDate
       })
@@ -35,7 +35,7 @@ export default defineEventHandler(async _event => {
     // De-duplicate by messageId+direction (first occurrence wins) to avoid double entries
     const seen = new Set<string>()
     let processedEmails = recentEmails
-      .map(log => {
+      .map((log) => {
         // Determine direction
         const direction = log.type === 'outgoing' ? 'outbound' : 'inbound'
 
@@ -65,19 +65,25 @@ export default defineEventHandler(async _event => {
         seen.add(key)
         return item
       })
-      .filter((v): v is {
-        id: string;
-        date: string;
-        status: string;
-        direction: string;
-        from: string;
-        to: string;
-        subject: string
-      } => Boolean(v))
+      .filter(
+        (
+          v
+        ): v is {
+          id: string
+          date: string
+          status: string
+          direction: string
+          from: string
+          to: string
+          subject: string
+        } => Boolean(v)
+      )
 
     // Apply direction filter if requested
     if (direction !== 'both') {
-      processedEmails = processedEmails.filter(e => (direction === 'received' ? e.direction === 'inbound' : e.direction === 'outbound'))
+      processedEmails = processedEmails.filter((e) =>
+        direction === 'received' ? e.direction === 'inbound' : e.direction === 'outbound'
+      )
     }
 
     return processedEmails

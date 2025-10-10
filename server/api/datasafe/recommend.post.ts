@@ -1,4 +1,4 @@
-import { recommendPlacement, ensureTeamDatasafe } from '../../utils/datasafeStorage'
+import { recommendPlacement } from '../../features/datasafe'
 import type { DatasafeAttachmentContext } from '../../types/datasafe'
 
 export default defineEventHandler(async (event) => {
@@ -17,8 +17,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing file metadata' })
   }
 
-  await ensureTeamDatasafe(teamId)
-  const recommendation = await recommendPlacement(teamId, {
+  const context = { teamId, userId: session.user?.id }
+  const recommendation = await recommendPlacement(context, {
     filename: body.filename,
     mimeType: body.mimeType,
     size: body.size,

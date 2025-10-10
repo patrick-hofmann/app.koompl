@@ -1,4 +1,4 @@
-import { deleteColumn } from '../../../../../utils/kanbanStorage'
+import { deleteColumn } from '../../../../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -21,7 +21,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const success = await deleteColumn(teamId, boardId, columnId)
+  const context = { teamId, userId: session.user?.id }
+  const success = await deleteColumn(context, boardId, columnId)
 
   if (!success) {
     throw createError({

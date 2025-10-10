@@ -1,4 +1,4 @@
-import { createBoard } from '../../utils/kanbanStorage'
+import { createBoard } from '../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -20,6 +20,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const board = await createBoard(teamId, body.name, body.description, body.columns)
+  const board = await createBoard(
+    { teamId, userId: session.user?.id },
+    {
+      name: body.name,
+      description: body.description,
+      initialColumns: body.columns
+    }
+  )
   return { board }
 })

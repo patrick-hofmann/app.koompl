@@ -1,5 +1,5 @@
 import type { Agent, MailPolicyConfig, MailPolicyRule } from '~/types'
-import { getIdentity, type IdentityData } from './identityStorage'
+import { getIdentity, type IdentityData } from '../features/team/storage'
 
 interface NormalizedMailPolicy {
   inbound: MailPolicyRule

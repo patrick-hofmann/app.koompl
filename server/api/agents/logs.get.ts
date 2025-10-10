@@ -1,10 +1,11 @@
-import { mailStorage } from '../../utils/mailStorage'
+import { mailStorage } from '../../features/mail/storage'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   const query = getQuery(event)
-  const agentId = typeof query.agentId === 'string' && query.agentId.trim().length > 0
-    ? query.agentId.trim()
-    : undefined
+  const agentId =
+    typeof query.agentId === 'string' && query.agentId.trim().length > 0
+      ? query.agentId.trim()
+      : undefined
   const limit = Math.min(Math.max(parseInt(String(query.limit || '100'), 10) || 50, 1), 500)
 
   try {

@@ -1,4 +1,4 @@
-import { deleteCard } from '../../../../../utils/kanbanStorage'
+import { deleteCard } from '../../../../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -30,7 +30,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const success = await deleteCard(teamId, boardId, body.columnId, cardId)
+  const context = { teamId, userId: session.user?.id }
+  const success = await deleteCard(context, boardId, body.columnId, cardId)
 
   if (!success) {
     throw createError({

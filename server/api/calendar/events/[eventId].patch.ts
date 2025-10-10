@@ -1,4 +1,4 @@
-import { getCalendarEvent, updateCalendarEvent } from '../../../utils/calendarStorage'
+import { getEvent, updateEvent } from '../../../features/calendar'
 import type { CalendarEvent } from '../../../types/calendar'
 
 export default defineEventHandler(async (event) => {
@@ -22,8 +22,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const context = { teamId, userId }
+
   // Verify the event belongs to the user
-  const existingEvent = await getCalendarEvent(teamId, eventId)
+  const existingEvent = await getEvent(context, eventId)
 
   if (!existingEvent) {
     throw createError({
@@ -44,7 +46,7 @@ export default defineEventHandler(async (event) => {
       Partial<Omit<CalendarEvent, 'id' | 'teamId' | 'createdAt' | 'updatedAt' | 'createdBy'>>
     >(event)
 
-  const updatedEvent = await updateCalendarEvent(teamId, eventId, body)
+  const updatedEvent = await updateEvent(context, eventId, body)
 
   if (!updatedEvent) {
     throw createError({

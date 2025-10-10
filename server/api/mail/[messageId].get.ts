@@ -1,4 +1,4 @@
-import { mailStorage } from '../../utils/mailStorage'
+import { mailStorage } from '../../features/mail/storage'
 
 export default defineEventHandler(async (event) => {
   const messageId = getRouterParam(event, 'messageId')

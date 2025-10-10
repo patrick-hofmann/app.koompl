@@ -1,4 +1,4 @@
-import { deleteBoard } from '../../../utils/kanbanStorage'
+import { deleteBoard } from '../../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -19,7 +19,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const success = await deleteBoard(teamId, boardId)
+  const context = { teamId, userId: session.user?.id }
+  const success = await deleteBoard(context, boardId)
   if (!success) {
     throw createError({
       statusCode: 404,

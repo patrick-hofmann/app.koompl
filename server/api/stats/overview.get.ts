@@ -1,6 +1,6 @@
-import { mailStorage } from '../../utils/mailStorage'
+import { mailStorage } from '../../features/mail/storage'
 
-export default defineEventHandler(async _event => {
+export default defineEventHandler(async (_event) => {
   try {
     // Get agents count
     const agentsStorage = useStorage('agents')
@@ -35,23 +35,26 @@ export default defineEventHandler(async _event => {
       const logs = await mailStorage.getRecentEmails(1000)
       const seen = new Set<string>()
       const filtered = logs
-        .map(log => {
+        .map((log) => {
           const direction = log.type === 'outgoing' ? 'outbound' : 'inbound'
           const key = `${direction}:${log.messageId || log.storageKey || log.timestamp}`
           if (seen.has(key)) return null
           seen.add(key)
           return { ...log, direction }
         })
-        .filter((v): v is (typeof logs)[number] & { direction: 'inbound' | 'outbound' } => Boolean(v))
+        .filter((v): v is (typeof logs)[number] & { direction: 'inbound' | 'outbound' } =>
+          Boolean(v)
+        )
 
-      emailsReceived = filtered.filter(e => e.direction === 'inbound').length
-      emailsResponded = filtered.filter(e => e.direction === 'outbound' && e.mailgunSent).length
+      emailsReceived = filtered.filter((e) => e.direction === 'inbound').length
+      emailsResponded = filtered.filter((e) => e.direction === 'outbound' && e.mailgunSent).length
     } catch {
       // ignore errors and leave counts at zero
     }
 
     // Calculate success rate with minimum 100% if no data
-    const successRate = emailsReceived > 0 ? Math.round((emailsResponded / emailsReceived) * 100) : 100
+    const successRate =
+      emailsReceived > 0 ? Math.round((emailsResponded / emailsReceived) * 100) : 100
 
     return {
       agents: {

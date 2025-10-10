@@ -50,7 +50,7 @@ export default defineEventHandler(async (event) => {
 
   // Store email in storage so AI can use reply_to_email
   try {
-    const { mailStorage } = await import('../../../utils/mailStorage')
+    const { mailStorage } = await import('../../../features/mail/storage')
 
     await mailStorage.storeInboundEmail({
       messageId,

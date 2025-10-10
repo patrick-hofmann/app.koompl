@@ -1,4 +1,4 @@
-import { removeSuperAdmin } from '../../../utils/identityStorage'
+import { revokeSuperAdmin } from '../../../features/team'
 import { requireSuperAdmin } from '../../../utils/authSession'
 
 export default defineEventHandler(async (event) => {
@@ -8,6 +8,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'User id is required' })
   }
 
-  const superAdmins = await removeSuperAdmin(id)
+  const superAdmins = await revokeSuperAdmin(id)
   return { superAdminIds: superAdmins }
 })

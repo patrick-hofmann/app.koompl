@@ -1,4 +1,4 @@
-import { addCard } from '../../../../utils/kanbanStorage'
+import { createCard } from '../../../../features/kanban'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
@@ -37,7 +37,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const card = await addCard(teamId, boardId, body.columnId, {
+  const context = { teamId, userId }
+  const card = await createCard(context, boardId, body.columnId, {
     title: body.title,
     description: body.description,
     assignee: body.assignee,

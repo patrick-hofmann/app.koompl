@@ -1,6 +1,6 @@
-import { mailStorage } from '../../../utils/mailStorage'
+import { mailStorage } from '../../../features/mail/storage'
 
-export default defineEventHandler(async event => {
+export default defineEventHandler(async (event) => {
   const agentId = getRouterParam(event, 'id') as string
   if (!agentId) {
     throw createError({ statusCode: 400, statusMessage: 'Missing agent id' })
