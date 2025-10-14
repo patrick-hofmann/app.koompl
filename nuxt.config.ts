@@ -252,6 +252,19 @@ export default defineNuxtConfig({
         region: process.env.S3_REGION,
         endpoint: process.env.S3_ENDPOINT
       },
+      // Hierarchical mount for emails grouped per team/agent with attachments
+      'email-mount-point': {
+        driver: 's3',
+        bucket:
+          process.env.S3_BUCKET_EMAILS ||
+          process.env.S3_BUCKET_MAIL ||
+          process.env.S3_BUCKET_INBOUND ||
+          process.env.S3_BUCKET_SETTINGS,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        region: process.env.S3_REGION,
+        endpoint: process.env.S3_ENDPOINT
+      },
       // Persistent storage for team datasafe vault
       datasafe: {
         // driver: 'fs',

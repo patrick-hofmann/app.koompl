@@ -6,6 +6,7 @@ interface Props {
   enabled: boolean
   loading?: boolean
   teamDomain: string
+  mailLink?: string
 }
 
 const props = defineProps<Props>()
@@ -39,14 +40,76 @@ const checkboxColor = computed(() => {
     blue: 'blue',
     green: 'green',
     purple: 'purple',
-    orange: 'primary'
+    orange: 'orange'
   }
   return colors[props.koompl.color] || 'primary'
+})
+
+// Get checkbox UI classes based on koompl color
+const checkboxClasses = computed(() => {
+  const colorMap: Record<string, { border: string; icon: string; bg: string }> = {
+    blue: {
+      border: 'border-blue-500',
+      icon: 'text-blue-500',
+      bg: 'bg-blue-500'
+    },
+    green: {
+      border: 'border-green-500',
+      icon: 'text-green-500',
+      bg: 'bg-green-500'
+    },
+    purple: {
+      border: 'border-purple-500',
+      icon: 'text-purple-500',
+      bg: 'bg-purple-500'
+    },
+    orange: {
+      border: 'border-orange-500',
+      icon: 'text-orange-500',
+      bg: 'bg-orange-500'
+    }
+  }
+  return colorMap[props.koompl.color] || colorMap.blue
 })
 
 const teamDomain = computed(() => {
   return props.teamDomain || 'agents.local'
 })
+
+// Get MCP tool info
+const mcpTools = computed(() => {
+  const toolMap: Record<string, { label: string; icon: string; color: string }> = {
+    'builtin-calendar': {
+      label: 'Calendar',
+      icon: 'i-lucide-calendar',
+      color: 'blue'
+    },
+    'builtin-kanban': {
+      label: 'Tasks',
+      icon: 'i-lucide-kanban',
+      color: 'purple'
+    },
+    'builtin-datasafe': {
+      label: 'Files',
+      icon: 'i-lucide-folder',
+      color: 'orange'
+    },
+    'builtin-email': {
+      label: 'Email',
+      icon: 'i-lucide-mail',
+      color: 'green'
+    },
+    'builtin-agents': {
+      label: 'Delegation',
+      icon: 'i-lucide-users',
+      color: 'primary'
+    }
+  }
+
+  return (props.koompl.mcpServerIds || []).map((id) => toolMap[id]).filter(Boolean)
+})
+
+const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}`)
 </script>
 
 <template>
@@ -92,9 +155,9 @@ const teamDomain = computed(() => {
           size="xl"
           :ui="{
             base: '',
-            background: enabled ? 'bg-primary' : 'bg-transparent',
-            border: 'border-2 border-green-500',
-            icon: enabled ? 'text-green-500' : 'text-transparent'
+            background: enabled ? checkboxClasses.bg : 'bg-transparent',
+            border: `border-2 ${checkboxClasses.border}`,
+            icon: enabled ? checkboxClasses.icon : 'text-transparent'
           }"
           @update:model-value="emit('toggle', $event)"
           @click.stop
@@ -111,6 +174,16 @@ const teamDomain = computed(() => {
         {{ koompl.description }}
       </p>
 
+      <!-- MCP Tools -->
+      <div v-if="mcpTools.length > 0" class="flex flex-wrap gap-1.5">
+        <UBadge v-for="tool in mcpTools" :key="tool.label" variant="soft" size="sm">
+          <template #leading>
+            <UIcon :name="tool.icon" class="w-3 h-3" />
+          </template>
+          {{ tool.label }}
+        </UBadge>
+      </div>
+
       <!-- Footer actions -->
       <div class="flex items-center justify-between pt-2">
         <div class="flex items-center gap-2 text-xs text-muted">
@@ -119,6 +192,17 @@ const teamDomain = computed(() => {
         </div>
 
         <div class="flex items-center gap-1">
+          <UButton
+            icon="i-lucide-mail"
+            size="xs"
+            variant="ghost"
+            :color="props.enabled ? 'primary' : 'neutral'"
+            :to="props.enabled ? mailboxLink : undefined"
+            :disabled="!props.enabled"
+            title="View mailbox"
+            @click.stop
+          />
+
           <!-- Test buttons (only when enabled) -->
           <template v-if="enabled">
             <UButton

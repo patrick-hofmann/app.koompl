@@ -9,6 +9,7 @@ interface AgentEmailRequest {
     base64: string
     mimeType: string
     type?: 'image' | 'file'
+    filename?: string
   }>
 }
 
@@ -62,7 +63,14 @@ export default defineEventHandler(async (event) => {
       agentEmail,
       inReplyTo: [],
       references: [],
-      mcpContexts: []
+      mcpContexts: [],
+      attachments: body.files?.map((file, index) => ({
+        id: `temp-${index}-${Date.now()}`,
+        filename: file.filename || `attachment-${index + 1}`,
+        mimeType: file.mimeType,
+        size: Buffer.from(file.base64, 'base64').length,
+        base64: file.base64
+      }))
     })
 
     console.log('[AgentRespond] ✓ Email stored with message-id:', messageId)

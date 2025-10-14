@@ -6,10 +6,36 @@
  */
 
 import type { Agent, Mail } from '~/types'
-import type { MailLogEntry, InboundEmail, OutboundEmail } from '../../types/mail'
+import type {
+  MailLogEntry,
+  InboundEmail,
+  OutboundEmail,
+  EmailConversation,
+  AgentEmailIndex,
+  EmailAttachment
+} from '../../types/mail'
+import { buildConversationId, generateExcerpt } from './threading'
+
+function mapAttachments(attachments?: EmailAttachment[]): EmailAttachment[] | undefined {
+  if (!attachments || attachments.length === 0) {
+    return undefined
+  }
+
+  return attachments.map((attachment, index) => ({
+    id: attachment.id ?? `att-${index}-${Date.now()}`,
+    filename: attachment.filename,
+    mimeType: attachment.mimeType,
+    size: attachment.size,
+    storageKey: attachment.storageKey,
+    datasafePath: attachment.datasafePath,
+    inline: attachment.inline,
+    contentId: attachment.contentId
+  }))
+}
 
 export class UnifiedMailStorage {
   private storage = useStorage('mail')
+  private emailMount = useStorage('email-mount-point')
 
   /**
    * Store an inbound email (from Mailgun webhook)
@@ -25,11 +51,18 @@ export class UnifiedMailStorage {
     references?: string[]
     agentId?: string
     agentEmail?: string
+    teamId?: string
+    conversationId?: string
     mcpContexts?: unknown[]
     rawPayload?: Record<string, unknown>
+    attachments?: EmailAttachment[]
   }): Promise<InboundEmail> {
     const id = `inbound-${data.messageId}`
     const timestamp = new Date().toISOString()
+
+    // Build conversation ID if not provided
+    const conversationId =
+      data.conversationId || buildConversationId(data.messageId, data.inReplyTo, data.references)
 
     const inboundEmail: InboundEmail = {
       id,
@@ -44,12 +77,23 @@ export class UnifiedMailStorage {
       references: data.references,
       agentId: data.agentId,
       agentEmail: data.agentEmail,
+      teamId: data.teamId,
+      conversationId,
       mcpContexts: data.mcpContexts,
-      rawPayload: data.rawPayload
+      rawPayload: data.rawPayload,
+      attachments: mapAttachments(data.attachments)
     }
 
     // Store individual inbound email
     await this.storage.setItem(`emails/inbound/${id}.json`, inboundEmail)
+
+    if (data.agentId && data.teamId) {
+      await this.persistEmailMountSnapshot({
+        direction: 'inbound',
+        email: inboundEmail,
+        attachments: mapAttachments(data.attachments) ?? inboundEmail.attachments
+      })
+    }
 
     // Add to unified log
     await this.addToLog({
@@ -68,9 +112,16 @@ export class UnifiedMailStorage {
       metadata: {
         hasHtml: !!data.html,
         hasRawPayload: !!data.rawPayload,
-        hasThreadHeaders: Boolean(data.inReplyTo?.length || data.references?.length)
+        hasThreadHeaders: Boolean(data.inReplyTo?.length || data.references?.length),
+        conversationId,
+        teamId: data.teamId
       }
     })
+
+    // Update conversation index if agent is assigned
+    if (data.agentId && data.teamId) {
+      await this.updateAgentEmailIndex(data.agentId, data.teamId, inboundEmail, 'inbound')
+    }
 
     return inboundEmail
   }
@@ -83,6 +134,7 @@ export class UnifiedMailStorage {
     agentId?: string
     agentEmail?: string
     mcpContexts?: unknown[]
+    attachments?: EmailAttachment[]
   }): Promise<void> {
     const id = `inbound-${data.messageId}`
 
@@ -93,9 +145,18 @@ export class UnifiedMailStorage {
         ...existing,
         agentId: data.agentId ?? existing.agentId,
         agentEmail: data.agentEmail ?? existing.agentEmail,
-        mcpContexts: data.mcpContexts ?? existing.mcpContexts
+        mcpContexts: data.mcpContexts ?? existing.mcpContexts,
+        attachments: mapAttachments(data.attachments) ?? existing.attachments
       }
       await this.storage.setItem(`emails/inbound/${id}.json`, updated)
+
+      if (updated.agentId && updated.teamId) {
+        await this.persistEmailMountSnapshot({
+          direction: 'inbound',
+          email: updated,
+          attachments: mapAttachments(updated.attachments)
+        })
+      }
     }
 
     // Update unified log entry in-place (do not add a new one)
@@ -130,14 +191,28 @@ export class UnifiedMailStorage {
     body: string
     agentId: string
     agentEmail: string
+    teamId?: string
+    conversationId?: string
+    inReplyTo?: string
+    references?: string[]
     usedOpenAI: boolean
     mailgunSent: boolean
     mcpServerIds?: string[]
     mcpContextCount?: number
+    attachments?: EmailAttachment[]
     isAutomatic?: boolean // true for automatic responses, false for manual responses
   }): Promise<OutboundEmail> {
     const id = `outbound-${data.messageId}`
     const timestamp = new Date().toISOString()
+
+    // Build conversation ID if not provided
+    const conversationId =
+      data.conversationId ||
+      buildConversationId(
+        data.messageId,
+        data.inReplyTo ? [data.inReplyTo] : undefined,
+        data.references
+      )
 
     const outboundEmail: OutboundEmail = {
       id,
@@ -149,15 +224,28 @@ export class UnifiedMailStorage {
       body: data.body,
       agentId: data.agentId,
       agentEmail: data.agentEmail,
+      teamId: data.teamId,
+      conversationId,
+      inReplyTo: data.inReplyTo,
+      references: data.references,
       usedOpenAI: data.usedOpenAI,
       mailgunSent: data.mailgunSent,
       mcpServerIds: data.mcpServerIds,
       mcpContextCount: data.mcpContextCount,
-      isAutomatic: data.isAutomatic
+      isAutomatic: data.isAutomatic,
+      attachments: mapAttachments(data.attachments)
     }
 
     // Store individual outbound email
     await this.storage.setItem(`emails/outbound/${id}.json`, outboundEmail)
+
+    if (data.teamId) {
+      await this.persistEmailMountSnapshot({
+        direction: 'outbound',
+        email: outboundEmail,
+        attachments: outboundEmail.attachments
+      })
+    }
 
     // Add to unified log
     await this.addToLog({
@@ -175,8 +263,17 @@ export class UnifiedMailStorage {
       mailgunSent: data.mailgunSent,
       mcpServerIds: data.mcpServerIds,
       mcpContextCount: data.mcpContextCount,
-      metadata: { isAutomatic: data.isAutomatic }
+      metadata: {
+        isAutomatic: data.isAutomatic,
+        conversationId,
+        teamId: data.teamId
+      }
     })
+
+    // Update conversation index
+    if (data.teamId) {
+      await this.updateAgentEmailIndex(data.agentId, data.teamId, outboundEmail, 'outbound')
+    }
 
     return outboundEmail
   }
@@ -429,29 +526,46 @@ export class UnifiedMailStorage {
     let deletedCount = 0
 
     try {
-      // Get all logs to find emails for this agent
+      const pathsToDelete = new Set<string>()
+
+      // Gather paths from unified logs
       const allLogs = await this.getAllLogs()
       const agentLogs = allLogs.filter((log) => log.agentId === agentId)
 
-      console.log(`[MailStorage] Found ${agentLogs.length} email logs for agent ${agentId}`)
-
-      // Delete individual email files
       for (const log of agentLogs) {
-        try {
-          if (log.type === 'inbound') {
-            await this.storage.removeItem(`emails/inbound/${log.id}.json`)
-          } else if (log.type === 'outgoing') {
-            await this.storage.removeItem(`emails/outbound/${log.id}.json`)
-          }
-          deletedCount++
-        } catch (error) {
-          console.warn(`[MailStorage] Failed to delete email file for log ${log.id}:`, error)
+        if (log.type === 'inbound') {
+          pathsToDelete.add(`emails/inbound/${log.id}.json`)
+        } else if (log.type === 'outgoing') {
+          pathsToDelete.add(`emails/outbound/${log.id}.json`)
         }
       }
 
-      // Remove logs from unified log file
+      // Gather paths from conversation index (in case logs are missing)
+      const index = await this.loadAgentEmailIndex(agentId)
+      if (index) {
+        for (const conversation of Object.values(index.conversations)) {
+          for (const messageId of conversation.messageIds) {
+            pathsToDelete.add(`emails/inbound/inbound-${messageId}.json`)
+            pathsToDelete.add(`emails/outbound/outbound-${messageId}.json`)
+          }
+        }
+      }
+
+      // Remove collected email snapshots (verify ownership before deletion)
+      for (const path of pathsToDelete) {
+        const email = await this.storage.getItem<InboundEmail | OutboundEmail>(path)
+        if (email && email.agentId === agentId) {
+          await this.storage.removeItem(path)
+          deletedCount++
+        }
+      }
+
+      // Remove agent logs from unified log file
       const updatedLogs = allLogs.filter((log) => log.agentId !== agentId)
       await this.storage.setItem('logs/unified.json', updatedLogs)
+
+      // Remove conversation index for this agent
+      await this.storage.removeItem(`indexes/agents/${agentId}/conversations.json`)
 
       console.log(`[MailStorage] ✓ Cleared ${deletedCount} emails for agent ${agentId}`)
 
@@ -482,6 +596,237 @@ export class UnifiedMailStorage {
     } catch (error) {
       console.error(`[MailStorage] ✗ Failed to clear logs for agent ${agentId}:`, error)
       throw error
+    }
+  }
+
+  /**
+   * Get conversations for a specific agent
+   */
+  async getAgentConversations(agentId: string, limit: number = 50): Promise<EmailConversation[]> {
+    const agent = await this.getAgent(agentId)
+    if (!agent?.teamId) {
+      console.warn(`[MailStorage] Agent ${agentId} not found or has no team`)
+      return []
+    }
+
+    const index = await this.loadAgentEmailIndex(agentId)
+    if (!index) {
+      return []
+    }
+
+    // Convert conversations object to array and sort by last message date
+    const conversations = Object.values(index.conversations)
+      .sort((a, b) => new Date(b.lastMessageDate).getTime() - new Date(a.lastMessageDate).getTime())
+      .slice(0, limit)
+
+    return conversations
+  }
+
+  /**
+   * Get all emails in a conversation
+   */
+  async getConversationEmails(
+    conversationId: string,
+    agentId: string
+  ): Promise<Array<InboundEmail | OutboundEmail>> {
+    const agent = await this.getAgent(agentId)
+    if (!agent?.teamId) {
+      throw new Error('Agent not found or has no team')
+    }
+
+    const index = await this.loadAgentEmailIndex(agentId)
+    if (!index) {
+      return []
+    }
+
+    const conversation = index.conversations[conversationId]
+    if (!conversation) {
+      return []
+    }
+
+    // Load all emails in the conversation
+    const emails: Array<InboundEmail | OutboundEmail> = []
+    for (const messageId of conversation.messageIds) {
+      // Try inbound first
+      const inbound = await this.storage.getItem<InboundEmail>(
+        `emails/inbound/inbound-${messageId}.json`
+      )
+      if (inbound) {
+        emails.push(inbound)
+        continue
+      }
+
+      // Try outbound
+      const outbound = await this.storage.getItem<OutboundEmail>(
+        `emails/outbound/outbound-${messageId}.json`
+      )
+      if (outbound) {
+        emails.push(outbound)
+      }
+    }
+
+    // Sort by timestamp
+    return emails.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+  }
+
+  /**
+   * Load agent email index from storage
+   */
+  private async loadAgentEmailIndex(agentId: string): Promise<AgentEmailIndex | null> {
+    try {
+      const index = await this.storage.getItem<AgentEmailIndex>(
+        `indexes/agents/${agentId}/conversations.json`
+      )
+      return index || null
+    } catch (error) {
+      console.error(`[MailStorage] Failed to load index for agent ${agentId}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Update agent email index when a new email is stored
+   */
+  private async updateAgentEmailIndex(
+    agentId: string,
+    teamId: string,
+    email: InboundEmail | OutboundEmail,
+    direction: 'inbound' | 'outbound'
+  ): Promise<void> {
+    try {
+      // Load existing index or create new one
+      let index = await this.loadAgentEmailIndex(agentId)
+      if (!index) {
+        index = {
+          agentId,
+          teamId,
+          conversations: {},
+          lastUpdated: new Date().toISOString()
+        }
+      }
+
+      const conversationId = email.conversationId
+      if (!conversationId) {
+        console.warn(
+          `[MailStorage] Email ${email.messageId} has no conversationId, skipping index update`
+        )
+        return
+      }
+
+      // Get or create conversation
+      let conversation = index.conversations[conversationId]
+      if (!conversation) {
+        conversation = {
+          id: conversationId,
+          agentId,
+          teamId,
+          subject: email.subject,
+          participants: [],
+          messageIds: [],
+          lastMessageDate: email.timestamp,
+          messageCount: 0,
+          hasUnread: direction === 'inbound',
+          excerpt: generateExcerpt(email.body)
+        }
+        index.conversations[conversationId] = conversation
+      }
+
+      // Update conversation
+      conversation.lastMessageDate = email.timestamp
+      conversation.messageCount++
+      conversation.excerpt = generateExcerpt(email.body)
+
+      // Add message ID if not already present
+      if (!conversation.messageIds.includes(email.messageId)) {
+        conversation.messageIds.push(email.messageId)
+      }
+
+      // Update participants
+      const participants = new Set(conversation.participants)
+      const fromEmail = email.from.match(/<([^>]+)>/)?.[1] || email.from
+      const toEmail = email.to.match(/<([^>]+)>/)?.[1] || email.to
+      participants.add(fromEmail.toLowerCase())
+      participants.add(toEmail.toLowerCase())
+      conversation.participants = Array.from(participants)
+
+      // Mark as unread if inbound
+      if (direction === 'inbound') {
+        conversation.hasUnread = true
+      }
+
+      // Update index timestamp
+      index.lastUpdated = new Date().toISOString()
+
+      // Save index
+      await this.storage.setItem(`indexes/agents/${agentId}/conversations.json`, index)
+    } catch (error) {
+      console.error(`[MailStorage] Failed to update index for agent ${agentId}:`, error)
+      // Don't throw - index update is not critical
+    }
+  }
+
+  /**
+   * Mark conversation as read
+   */
+  async markConversationAsRead(agentId: string, conversationId: string): Promise<void> {
+    const index = await this.loadAgentEmailIndex(agentId)
+    if (!index) {
+      return
+    }
+
+    const conversation = index.conversations[conversationId]
+    if (conversation) {
+      conversation.hasUnread = false
+      index.lastUpdated = new Date().toISOString()
+      await this.storage.setItem(`indexes/agents/${agentId}/conversations.json`, index)
+    }
+  }
+
+  private async persistEmailMountSnapshot(params: {
+    direction: 'inbound' | 'outbound'
+    email: InboundEmail | OutboundEmail
+    attachments?: EmailAttachment[]
+  }): Promise<void> {
+    const { direction, email, attachments } = params
+
+    if (!email.teamId || !email.agentId) {
+      return
+    }
+
+    const basePath = `team/${email.teamId}/agent/${email.agentId}`
+    const messagePath = `${basePath}/messages/${direction}-${email.messageId}.json`
+
+    const payload = {
+      ...email,
+      direction,
+      attachments: attachments ?? email.attachments ?? []
+    }
+
+    try {
+      await this.emailMount.setItem(messagePath, payload)
+
+      if (attachments && attachments.length > 0) {
+        for (const attachment of attachments) {
+          if (!attachment.storageKey) {
+            continue
+          }
+
+          const attachmentPath = `${basePath}/attachments/${email.messageId}/${attachment.filename}`
+          await this.emailMount.setItem(attachmentPath, {
+            filename: attachment.filename,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+            storageKey: attachment.storageKey
+          })
+        }
+      }
+    } catch (error) {
+      console.error('[MailStorage] Failed to persist email mount snapshot', {
+        teamId: email.teamId,
+        agentId: email.agentId,
+        messageId: email.messageId,
+        error
+      })
     }
   }
 }

@@ -38,3 +38,12 @@ export type { AgentDirectoryEntry } from './agent/directory'
 // Team - Team and user management
 export * as team from './team'
 export type { TeamContext } from './team'
+
+// Koompl - Predefined templates and custom koompls
+export * as koompl from './koompl'
+export type {
+  PredefinedKoomplTemplate,
+  PredefinedKoomplStatus,
+  PredefinedKoomplContext,
+  CustomKoomplContext
+} from './koompl'

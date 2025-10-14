@@ -14,6 +14,42 @@ const form = reactive<{ from: string; to: string; subject: string; text: string 
 })
 const loading = ref(false)
 const result = ref<Record<string, unknown> | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+const attachments = ref<
+  Array<{ filename: string; base64: string; mimeType: string; size: number }>
+>([])
+
+function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  const files = target.files
+  if (!files || files.length === 0) return
+
+  Array.from(files).forEach((file) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const base64 = (e.target?.result as string)?.split(',')[1] || ''
+      attachments.value.push({
+        filename: file.name,
+        base64,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size
+      })
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function removeAttachment(index: number) {
+  attachments.value.splice(index, 1)
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
+}
 
 watch(
   () => props.agentId,
@@ -40,7 +76,13 @@ async function runRoundTrip() {
       error?: string
     }>(`/api/agents/${props.agentId}/roundtrip`, {
       method: 'POST',
-      body: { from: form.from, to: form.to || undefined, subject: form.subject, text: form.text }
+      body: {
+        from: form.from,
+        to: form.to || undefined,
+        subject: form.subject,
+        text: form.text,
+        attachments: attachments.value.length > 0 ? attachments.value : undefined
+      }
     })
     result.value = res.ok
       ? {
@@ -82,6 +124,51 @@ async function runRoundTrip() {
             <UFormField label="Body">
               <UTextarea v-model="form.text" :rows="5" autoresize />
             </UFormField>
+
+            <UFormField label="Attachments">
+              <div class="space-y-2">
+                <input
+                  ref="fileInput"
+                  type="file"
+                  multiple
+                  class="hidden"
+                  @change="handleFileSelect"
+                />
+                <UButton
+                  icon="i-lucide-paperclip"
+                  color="neutral"
+                  variant="outline"
+                  label="Add Files"
+                  @click="fileInput?.click()"
+                />
+
+                <div v-if="attachments.length > 0" class="space-y-2 mt-2">
+                  <div
+                    v-for="(attachment, index) in attachments"
+                    :key="index"
+                    class="flex items-center justify-between rounded border border-default px-3 py-2 text-sm"
+                  >
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-file" class="size-4 text-muted" />
+                      <div>
+                        <p class="font-medium text-highlighted">{{ attachment.filename }}</p>
+                        <p class="text-xs text-muted">
+                          {{ attachment.mimeType }} · {{ formatFileSize(attachment.size) }}
+                        </p>
+                      </div>
+                    </div>
+                    <UButton
+                      icon="i-lucide-x"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      @click="removeAttachment(index)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </UFormField>
+
             <div class="flex items-center gap-2 justify-end">
               <UButton
                 label="Close"

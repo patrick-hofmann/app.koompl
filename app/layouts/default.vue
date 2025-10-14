@@ -36,18 +36,33 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
     {
       label: 'Koompls',
       icon: 'i-lucide-bot',
-      to: '/agents',
-      onSelect: () => {
-        open.value = false
-      }
-    },
-    {
-      label: 'Mail Policies',
-      icon: 'i-lucide-shield',
-      to: '/agents/policies',
-      onSelect: () => {
-        open.value = false
-      }
+      defaultOpen: true,
+      children: [
+        {
+          label: 'Template Gallery',
+          icon: 'i-lucide-package',
+          to: '/koompls/templates',
+          onSelect: () => {
+            open.value = false
+          }
+        },
+        {
+          label: 'My Koompls',
+          icon: 'i-lucide-sparkles',
+          to: '/koompls/custom',
+          onSelect: () => {
+            open.value = false
+          }
+        },
+        {
+          label: 'Mail Policies',
+          icon: 'i-lucide-shield',
+          to: '/agents/policies',
+          onSelect: () => {
+            open.value = false
+          }
+        }
+      ]
     },
     {
       label: 'Domain',

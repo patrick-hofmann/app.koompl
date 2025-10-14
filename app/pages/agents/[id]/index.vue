@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Agent, Mail } from '~/types'
+import type { Agent, EmailConversation, ComposeData } from '~/types'
 
 const route = useRoute()
 const agentId = computed(() => String(route.params.id))
@@ -11,51 +11,34 @@ const { data: agent, refresh } = await useAsyncData(
   { server: false, lazy: true }
 )
 
-// Real email data for this agent
+// Conversation-based email data for this agent
 const {
-  data: emailData,
-  pending: emailsPending,
-  refresh: refreshEmails
+  data: conversationsData,
+  pending: conversationsPending,
+  refresh: refreshConversations
 } = await useAsyncData(
-  () => `agent-emails-${agentId.value}`,
+  () => `agent-conversations-${agentId.value}`,
   async () => {
-    const res = await $fetch<{ incoming: Mail[]; outgoing: Mail[] }>(
-      `/api/agents/${agentId.value}/emails`
+    const res = await $fetch<{ conversations: EmailConversation[] }>(
+      `/api/agents/${agentId.value}/conversations`,
+      { query: { limit: 100 } }
     )
-    return res
+    return res.conversations
   },
   { server: false, lazy: true }
 )
 
-// Tabs with email counts
+// Tabs with conversation counts
 const tabItems = computed(() => {
-  const incoming = emailData.value?.incoming || []
-  const outgoing = emailData.value?.outgoing || []
+  const conversations = conversationsData.value || []
   const logs = logsData.value || []
 
   return [
-    { label: `All (${incoming.length + outgoing.length})`, value: 'all' },
-    { label: `Incoming (${incoming.length})`, value: 'incoming' },
-    { label: `Outgoing (${outgoing.length})`, value: 'outgoing' },
+    { label: `Conversations (${conversations.length})`, value: 'conversations' },
     { label: `Log (${logs.length})`, value: 'log' }
   ]
 })
-const selectedTab = ref('all')
-
-// Real mail handling with incoming and outgoing emails
-const combinedMails = computed<Mail[]>(() => {
-  const incoming = emailData.value?.incoming || []
-  const outgoing = emailData.value?.outgoing || []
-
-  if (selectedTab.value === 'incoming') return incoming
-  if (selectedTab.value === 'outgoing') return outgoing
-  if (selectedTab.value === 'all')
-    return [...incoming, ...outgoing].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    )
-  if (selectedTab.value === 'log') return []
-  return []
-})
+const selectedTab = ref('conversations')
 
 // Comprehensive agent activity logs (MCP, AI, Email)
 type AgentLogEntry = {
@@ -127,7 +110,23 @@ function formatTs(value?: string) {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString()
 }
 
-const selectedMail = ref<Mail | null>()
+const selectedConversation = ref<EmailConversation | null>(null)
+const composeModalOpen = ref(false)
+const composeData = ref<ComposeData | undefined>(undefined)
+
+function openComposeModal(data?: ComposeData) {
+  composeData.value = data
+  composeModalOpen.value = true
+}
+
+function handleCompose(data: ComposeData) {
+  openComposeModal(data)
+}
+
+function handleEmailSent() {
+  refreshConversations()
+  selectedConversation.value = null
+}
 
 // Basic edit/delete mock actions
 const editOpen = ref(false)
@@ -152,6 +151,7 @@ async function deleteAgent() {
 // Clear functions
 const clearingEmails = ref(false)
 const clearingLogs = ref(false)
+const toast = useToast()
 const clearingAll = ref(false)
 
 async function clearEmails() {
@@ -168,11 +168,11 @@ async function clearEmails() {
     const result = await $fetch(`/api/agents/${agentId.value}/clear-emails`, { method: 'POST' })
     console.log('Emails cleared:', result)
 
-    // Refresh the email data
-    await refreshEmails()
+    // Refresh the conversation data
+    await refreshConversations()
+    selectedConversation.value = null
 
     // Show success message
-    const toast = useToast()
     toast.add({
       title: 'Emails Cleared',
       description: `Cleared ${result.deletedCount} emails`,
@@ -180,7 +180,6 @@ async function clearEmails() {
     })
   } catch (error) {
     console.error('Failed to clear emails:', error)
-    const toast = useToast()
     toast.add({
       title: 'Error',
       description: 'Failed to clear emails',
@@ -300,7 +299,7 @@ async function clearAll() {
 
     <div class="p-4">
       <!-- Mailbox Content -->
-      <div v-if="selectedTab !== 'log'">
+      <div v-if="selectedTab === 'conversations'">
         <UCard>
           <div class="flex items-center justify-between">
             <div class="min-w-0">
@@ -309,16 +308,23 @@ async function clearAll() {
             </div>
             <div class="flex items-center gap-2">
               <UButton
+                icon="i-lucide-pencil"
+                label="Compose"
+                color="primary"
+                variant="outline"
+                @click="openComposeModal()"
+              />
+              <UButton
                 icon="i-lucide-refresh-ccw"
                 label="Refresh"
                 color="neutral"
                 variant="outline"
-                :loading="emailsPending"
-                @click="refreshEmails"
+                :loading="conversationsPending"
+                @click="refreshConversations"
               />
               <UButton
                 icon="i-lucide-trash-2"
-                label="Clear Emails"
+                label="Clear"
                 color="red"
                 variant="outline"
                 :loading="clearingEmails"
@@ -327,28 +333,28 @@ async function clearAll() {
             </div>
           </div>
           <div class="mt-4">
-            <div v-if="emailsPending" class="space-y-2">
+            <div v-if="conversationsPending" class="space-y-2">
               <USkeleton class="h-4 w-full" />
               <USkeleton class="h-4 w-3/4" />
               <USkeleton class="h-4 w-2/3" />
             </div>
-            <InboxList
-              v-else-if="combinedMails.length > 0"
-              v-model="selectedMail"
-              :mails="combinedMails || []"
+            <InboxConversationList
+              v-else-if="conversationsData && conversationsData.length > 0"
+              v-model="selectedConversation"
+              :conversations="conversationsData"
             />
             <div v-else class="flex flex-1 items-center justify-center py-12">
               <div class="text-center">
                 <UIcon name="i-lucide-inbox" class="size-16 text-dimmed mx-auto mb-4" />
-                <p class="text-muted">
-                  {{
-                    selectedTab === 'incoming'
-                      ? 'No incoming emails'
-                      : selectedTab === 'outgoing'
-                        ? 'No outgoing emails sent yet'
-                        : 'No emails'
-                  }}
-                </p>
+                <p class="text-muted">No conversations yet</p>
+                <p class="text-sm text-dimmed mt-2">Send or receive an email to get started</p>
+                <UButton
+                  label="Compose Email"
+                  icon="i-lucide-pencil"
+                  color="primary"
+                  class="mt-4"
+                  @click="openComposeModal()"
+                />
               </div>
             </div>
           </div>
@@ -593,7 +599,22 @@ async function clearAll() {
     </div>
   </UDashboardPanel>
 
-  <InboxMail v-if="selectedMail" :mail="selectedMail" @close="selectedMail = null" />
+  <InboxConversationThread
+    v-if="selectedConversation"
+    :conversation="selectedConversation"
+    :agent-id="agentId"
+    @close="selectedConversation = null"
+    @compose="handleCompose"
+  />
+
+  <InboxComposeModal
+    v-if="composeModalOpen"
+    v-model="composeModalOpen"
+    :agent-id="agentId"
+    :compose-data="composeData"
+    @sent="handleEmailSent"
+    @close="composeModalOpen = false"
+  />
 
   <AgentsEditAgentModal
     :open="editOpen"

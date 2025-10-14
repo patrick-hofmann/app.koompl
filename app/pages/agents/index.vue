@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { h, reactive, ref, computed, watch } from 'vue'
+import type { Agent } from '~/types'
 import type { NavigationMenuItem, TableColumn } from '@nuxt/ui'
 import { getPaginationRowModel } from '@tanstack/table-core'
 import type { Row } from '@tanstack/table-core'
@@ -53,10 +55,10 @@ const enabledPredefined = computed(() => {
     const username = actualAgent?.email || pk.email.split('@')[0]
     return {
       ...pk,
-      // Use actual username and construct full email
       email: username,
       fullEmail: constructFullEmail(username),
-      enabled: !!actualAgent
+      enabled: !!actualAgent,
+      mailLink: actualAgent ? `/agents/${actualAgent.id}` : undefined
     }
   })
 })
@@ -89,15 +91,47 @@ function openAdd() {
   addOpen.value = true
 }
 
-const actions: NavigationMenuItem[] = [
-  {
-    label: 'Add Koompl',
-    icon: 'i-lucide-plus',
-    onSelect: () => {
-      openAdd()
+const actions = ref<NavigationMenuItem[]>([])
+
+function updateActions() {
+  const customItems = (agents.value || [])
+    .filter((agent) => !agent.isPredefined)
+    .map((agent) => ({
+      label: agent.name,
+      icon: 'i-lucide-user-circle',
+      to: `/agents/${agent.id}`
+    }))
+
+  const predefinedItems = enabledPredefined.value
+    .filter((pk) => pk.enabled && pk.mailLink)
+    .map((pk) => ({
+      label: pk.name,
+      icon: 'i-lucide-user',
+      to: pk.mailLink!
+    }))
+
+  actions.value = [
+    {
+      label: 'Add Koompl',
+      icon: 'i-lucide-plus',
+      onSelect: () => {
+        openAdd()
+      }
+    },
+    {
+      label: 'View Predefined Mailboxes',
+      icon: 'i-lucide-mail',
+      children: predefinedItems.length > 0 ? predefinedItems : undefined
+    },
+    {
+      label: 'View Custom Mailboxes',
+      icon: 'i-lucide-mail-open',
+      children: customItems.length > 0 ? customItems : undefined
     }
-  }
-]
+  ]
+}
+
+watch([agents, enabledPredefined], updateActions, { immediate: true })
 
 // Edit modal state
 const editOpen = ref(false)
@@ -141,6 +175,13 @@ const rowSelection = ref<Record<string, boolean>>({})
 function getRowItems(row: Row<Agent>) {
   return [
     { type: 'label', label: 'Actions' },
+    {
+      label: 'View mailbox',
+      icon: 'i-lucide-mail',
+      onSelect() {
+        navigateTo(`/agents/${row.original.id}`)
+      }
+    },
     {
       label: 'Open details',
       icon: 'i-lucide-list',
@@ -226,6 +267,18 @@ const columns: TableColumn<Agent>[] = [
     accessorKey: 'email',
     header: 'Email',
     cell: ({ row }) => h('span', {}, constructFullEmail(row.original.email))
+  },
+  {
+    id: 'mailbox',
+    header: 'Mailbox',
+    cell: ({ row }) =>
+      h(UButton, {
+        icon: 'i-lucide-mail',
+        size: 'xs',
+        variant: 'ghost',
+        color: 'primary',
+        onClick: () => navigateTo(`/agents/${row.original.id}`)
+      })
   },
   {
     accessorKey: 'role',
@@ -348,6 +401,7 @@ async function togglePredefinedKoompl(koompl: PredefinedKoompl, enabled: boolean
               :team-domain="teamDomain"
               :enabled="pk.enabled"
               :loading="togglingPredefined.has(pk.id)"
+              :mail-link="pk.mailLink"
               @toggle="togglePredefinedKoompl(pk, $event)"
               @info="showInfo(pk)"
               @test-prompt="testPredefinedPrompt(pk)"

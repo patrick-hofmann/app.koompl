@@ -20,6 +20,8 @@ interface RunMCPAgentOptions {
   userPrompt: string
   attachments?: FileAttachment[]
   event?: H3Event
+  agentEmail?: string
+  currentMessageId?: string
 }
 
 /**
@@ -28,7 +30,17 @@ interface RunMCPAgentOptions {
  * @returns The final output from the agent
  */
 export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> {
-  const { mcpConfigs, teamId, userId, systemPrompt, userPrompt, attachments, event } = options
+  const {
+    mcpConfigs,
+    teamId,
+    userId,
+    systemPrompt,
+    userPrompt,
+    attachments,
+    event,
+    agentEmail,
+    currentMessageId
+  } = options
   const baseUrl = event ? getRequestURL(event).origin : 'http://localhost:3000'
 
   // Create a custom fetch function for same-origin requests
@@ -97,6 +109,12 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     if (userId) {
       headers['x-user-id'] = userId
     }
+    if (agentEmail) {
+      headers['x-agent-email'] = agentEmail
+    }
+    if (currentMessageId) {
+      headers['x-current-message-id'] = currentMessageId
+    }
 
     return new MCPServerStreamableHttp({
       name,
@@ -113,11 +131,13 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     await server.connect()
   }
 
+  const model = 'gpt-5-nano'
+  const temperature = model === 'gpt-4o' ? 0.3 : undefined
   // Create an agent that uses these MCP servers
   const agent = new Agent({
-    model: 'gpt-4o',
+    model,
     modelSettings: {
-      temperature: 0.3,
+      temperature,
       maxTokens: 16000 // Increased to handle large attachments in function calls
     },
     name: 'MCP Assistant',

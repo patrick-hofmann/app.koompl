@@ -20,7 +20,7 @@ Core rules:
 - If a request spans multiple domains (e.g., calendar and kanban), forward sequentially to each appropriate agent in separate rounds.
 - After receiving the required responses from the contacted agent(s), synthesize a brief final answer to the original user and then COMPLETE.
 - Keep messages concise and professional.`,
-    mcpServerIds: [],
+    mcpServerIds: ['builtin-agents', 'builtin-email'],
     multiRoundConfig: {
       enabled: true,
       maxRounds: 10,

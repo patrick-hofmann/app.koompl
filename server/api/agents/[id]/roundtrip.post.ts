@@ -13,6 +13,12 @@ export default defineEventHandler(async (event) => {
       subject?: string
       text?: string
       html?: string
+      attachments?: Array<{
+        filename: string
+        base64: string
+        mimeType: string
+        size: number
+      }>
     }>(event)
 
     const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
@@ -42,6 +48,18 @@ export default defineEventHandler(async (event) => {
       'stripped-html': String(body?.html || ''),
       'Message-Id': messageId,
       'message-id': messageId
+    }
+
+    // Add attachments in Mailgun format if provided
+    if (body?.attachments && body.attachments.length > 0) {
+      payload.attachments = body.attachments.map((att) => ({
+        id: att.filename,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
+        data: att.base64
+      }))
+      console.log(`[RoundTrip] Added ${body.attachments.length} attachment(s) to payload`)
     }
 
     console.log('[RoundTrip] Generated message-id for test:', messageId)

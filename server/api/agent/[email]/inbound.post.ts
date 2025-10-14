@@ -1,8 +1,10 @@
 /**
- * Agent-Specific Inbound Email Handler (Simplified)
+ * Agent-Specific Inbound Email Handler (Simplified Storage)
  *
- * Receives emails for a specific agent and processes them directly.
- * No complex flow engine - just store, validate, and respond.
+ * Receives emails for a specific agent (either from team/inbound relay or direct),
+ * stores the email and attachments, and processes with MCP if enabled.
+ *
+ * Flow: ... → team/[teamId]/inbound → agent/[email]/inbound (storage)
  */
 
 import { mailStorage } from '../../../features/mail/storage'
@@ -12,7 +14,6 @@ import { runMCPAgent } from '../../../utils/mcpAgentHelper'
 import type { Agent } from '~/types'
 
 export default defineEventHandler(async (event) => {
-  // Always return ok to Mailgun no matter what happens
   try {
     const agentEmail = getRouterParam(event, 'email')
 
@@ -23,14 +24,24 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Parse Mailgun payload
+    // Check if this is a relayed request from team/inbound
+    const forwardedBy = getHeader(event, 'x-forwarded-by')
+    const forwardedTeamId = getHeader(event, 'x-team-id')
+    const forwardedAgentId = getHeader(event, 'x-agent-id')
+
+    console.log('[AgentInbound] Processing email for:', agentEmail, {
+      forwardedBy,
+      hasTeamId: !!forwardedTeamId,
+      hasAgentId: !!forwardedAgentId
+    })
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PARSE PAYLOAD (same format as Mailgun sends)
+    // ═══════════════════════════════════════════════════════════════════
+
     let payload: Record<string, unknown> | null = null
     const contentType = getHeader(event, 'content-type') || ''
 
-    console.log('[AgentInbound] Content-Type:', contentType)
-    console.log('[AgentInbound] Request method:', getMethod(event))
-
-    // Parse payload (multipart, JSON, or form data)
     if (contentType.includes('application/json')) {
       payload = await readBody(event)
       console.log('[AgentInbound] Parsed as JSON payload')
@@ -49,9 +60,6 @@ export default defineEventHandler(async (event) => {
                   type: field.type,
                   size: field.data.length
                 }
-                console.log(
-                  `[AgentInbound] Found file attachment: ${field.name} = ${field.filename} (${field.data.length} bytes)`
-                )
               } else {
                 const value =
                   field.data instanceof Buffer ? field.data.toString('utf8') : field.data
@@ -59,7 +67,6 @@ export default defineEventHandler(async (event) => {
               }
             }
           }
-          console.log('[AgentInbound] Parsed multipart form data, fields:', Object.keys(payload))
         }
       } catch (error) {
         console.error('[AgentInbound] Failed to parse multipart form data:', error)
@@ -67,18 +74,24 @@ export default defineEventHandler(async (event) => {
         payload = body
       }
     } else {
-      console.log('[AgentInbound] Parsing as regular form data...')
       const body = await readBody<Record<string, string>>(event)
       payload = body
     }
 
-    console.log('[AgentInbound] Final payload type:', typeof payload)
-    console.log(
-      '[AgentInbound] Final payload keys:',
-      payload ? Object.keys(payload).slice(0, 20) : 'no payload'
-    )
+    if (!payload) {
+      throw createError({ statusCode: 400, statusMessage: 'No payload received' })
+    }
 
-    // Helper functions for extracting email fields
+    // Helper to extract email fields
+    function firstString(...values: Array<unknown>): string | undefined {
+      for (const v of values) {
+        if (v === undefined || v === null) continue
+        const s = String(v)
+        if (s.length > 0) return s
+      }
+      return undefined
+    }
+
     function getPath(source: unknown, path: Array<string>): unknown {
       let current: unknown = source
       for (const key of path) {
@@ -91,20 +104,14 @@ export default defineEventHandler(async (event) => {
       return current
     }
 
-    function firstString(...values: Array<unknown>): string | undefined {
-      for (const v of values) {
-        if (v === undefined || v === null) continue
-        const s = String(v)
-        if (s.length > 0) return s
-      }
-      return undefined
-    }
+    // ═══════════════════════════════════════════════════════════════════
+    // EXTRACT EMAIL FIELDS
+    // ═══════════════════════════════════════════════════════════════════
 
-    // Extract email fields from payload
     const messageId = String(
       firstString(
-        payload ? (payload as Record<string, unknown>)['Message-Id'] : undefined,
-        payload ? (payload as Record<string, unknown>)['message-id'] : undefined,
+        payload['Message-Id'],
+        payload['message-id'],
         getPath(payload, ['message', 'headers', 'message-id']),
         (
           globalThis as unknown as { crypto?: { randomUUID?: () => string } }
@@ -112,133 +119,167 @@ export default defineEventHandler(async (event) => {
         Math.random().toString(36).slice(2)
       )
     )
+
     const from = firstString(
-      payload ? (payload as Record<string, unknown>)['from'] : undefined,
-      payload ? (payload as Record<string, unknown>)['sender'] : undefined,
-      payload ? (payload as Record<string, unknown>)['From'] : undefined,
+      payload.from,
+      payload.sender,
+      payload.From,
       getPath(payload, ['headers', 'from'])
     )
+
     const to = firstString(
-      payload ? (payload as Record<string, unknown>)['recipient'] : undefined,
-      payload ? (payload as Record<string, unknown>)['to'] : undefined,
-      payload ? (payload as Record<string, unknown>)['To'] : undefined,
-      payload ? (payload as Record<string, unknown>)['recipients'] : undefined,
-      payload ? (payload as Record<string, unknown>)['Recipients'] : undefined,
+      payload.recipient,
+      payload.to,
+      payload.To,
+      payload.recipients,
+      payload.Recipients,
       getPath(payload, ['headers', 'to']),
-      getPath(payload, ['headers', 'To']),
-      getPath(payload, ['message', 'recipients', 0]),
-      getPath(payload, ['envelope', 'to'])
+      getPath(payload, ['message', 'recipients', 0])
     )
+
     const subject = firstString(
-      payload ? (payload as Record<string, unknown>)['subject'] : undefined,
-      payload ? (payload as Record<string, unknown>)['Subject'] : undefined,
+      payload.subject,
+      payload.Subject,
       getPath(payload, ['headers', 'subject'])
     )
+
     const text = firstString(
-      payload ? (payload as Record<string, unknown>)['stripped-text'] : undefined,
-      payload ? (payload as Record<string, unknown>)['text'] : undefined,
-      payload ? (payload as Record<string, unknown>)['body-plain'] : undefined,
-      payload ? (payload as Record<string, unknown>)['body'] : undefined
-    )
-    const html = firstString(
-      payload ? (payload as Record<string, unknown>)['stripped-html'] : undefined,
-      payload ? (payload as Record<string, unknown>)['html'] : undefined,
-      payload ? (payload as Record<string, unknown>)['body-html'] : undefined
+      payload['stripped-text'],
+      payload.text,
+      payload['body-plain'],
+      payload.body
     )
 
-    // ═══════════════════════════════════════════════════════════════════
-    // STORE EMAIL IN NITRO STORAGE BEFORE AI PROCESSING
-    // ═══════════════════════════════════════════════════════════════════
-    console.log(`[AgentInbound] 💾 Storing email: message-id=${messageId}`)
+    const html = firstString(payload['stripped-html'], payload.html, payload['body-html'])
 
-    const storedEmail = await mailStorage.storeInboundEmail({
+    console.log('[AgentInbound] Email fields:', {
+      messageId: messageId.slice(0, 30),
+      from,
+      subject
+    })
+
+    // ═══════════════════════════════════════════════════════════════════
+    // RESOLVE AGENT AND TEAM
+    // ═══════════════════════════════════════════════════════════════════
+
+    let team: { id: string; name: string; domain?: string } | null = null
+    let agent: Agent | null = null
+
+    // If relayed from team/inbound, use forwarded IDs
+    if (forwardedBy === 'team-inbound' && forwardedTeamId && forwardedAgentId) {
+      console.log('[AgentInbound] Using forwarded team/agent IDs')
+
+      const storage = useStorage('settings')
+      team = await storage.getItem(`teams/${forwardedTeamId}/settings.json`)
+
+      const agentsStorage = useStorage('agents')
+      const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
+      agent = agents.find((a) => a.id === forwardedAgentId) || null
+    } else {
+      // Fallback: lookup by email (for direct calls or testing)
+      console.log('[AgentInbound] Looking up agent by email (no forwarded headers)')
+
+      const emailParts = agentEmail.split('@')
+      if (emailParts.length !== 2) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Invalid email format. Expected: username@domain.com'
+        })
+      }
+
+      const recipientUsername = emailParts[0].toLowerCase()
+      const recipientDomain = emailParts[1].toLowerCase()
+
+      // Look up team by domain
+      const { getIdentity } = await import('../../../features/team/storage')
+      const identity = await getIdentity()
+      team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain) || null
+
+      if (!team) {
+        throw createError({ statusCode: 404, statusMessage: 'Team not found for domain' })
+      }
+
+      // Load agents and find the agent
+      const agentsStorage = useStorage('agents')
+      const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
+      const teamAgents = agents.filter((a) => a.teamId === team!.id)
+      agent =
+        teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername) || null
+
+      if (!agent) {
+        throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
+      }
+    }
+
+    if (!team || !agent) {
+      throw createError({ statusCode: 404, statusMessage: 'Team or agent not found' })
+    }
+
+    const fullAgentEmail = agent.email.includes('@') ? agent.email : `${agent.email}@${team.domain}`
+
+    console.log('[AgentInbound] ✓ Resolved:', {
+      teamId: team.id,
+      teamName: team.name,
+      agentId: agent.id,
+      agentEmail: fullAgentEmail
+    })
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EXTRACT THREADING HEADERS AND STORE EMAIL
+    // ═══════════════════════════════════════════════════════════════════
+
+    const { extractThreadingHeaders, buildConversationId } = await import(
+      '../../../features/mail/threading'
+    )
+    const threadHeaders = extractThreadingHeaders(payload)
+    const conversationId = buildConversationId(
+      String(messageId || ''),
+      threadHeaders.inReplyTo,
+      threadHeaders.references
+    )
+
+    console.log('[AgentInbound] Threading:', {
+      conversationId,
+      inReplyTo: threadHeaders.inReplyTo
+    })
+
+    const rawAttachments = Array.isArray(payload.attachments) ? payload.attachments : []
+
+    // Store email with full context
+    await mailStorage.storeInboundEmail({
       messageId: String(messageId || ''),
       from: String(from || ''),
       to: String(to || ''),
       subject: String(subject || ''),
       body: String(text || ''),
       html: String(html || ''),
-      inReplyTo: [],
-      references: [],
-      agentId: undefined,
-      agentEmail: undefined,
-      mcpContexts: [],
-      rawPayload: payload
-    })
-
-    console.log(`[AgentInbound] ✓ Email stored: ${storedEmail.id}`)
-
-    // Extract bare email addresses
-    const { extractEmail } = await import('../../../utils/mailgunHelpers')
-    const toEmail = extractEmail(to) || agentEmail
-    const fromEmail = extractEmail(from)
-
-    console.log('[AgentInbound] Email extraction:', {
-      rawTo: to,
-      extractedToEmail: toEmail,
-      rawFrom: from,
-      extractedFromEmail: fromEmail,
-      agentEmail
-    })
-
-    // Extract domain and username from agent email
-    const emailParts = agentEmail.split('@')
-    if (emailParts.length !== 2) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Invalid email format. Expected: username@domain.com'
-      })
-    }
-
-    const recipientUsername = emailParts[0].toLowerCase()
-    const recipientDomain = emailParts[1].toLowerCase()
-
-    console.log('[AgentInbound] Looking up agent:', {
-      email: agentEmail,
-      username: recipientUsername,
-      domain: recipientDomain
-    })
-
-    // Look up team by domain
-    const { getIdentity } = await import('../../../features/team/storage')
-    const identity = await getIdentity()
-    const team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain)
-
-    if (!team) {
-      console.log('[AgentInbound] No team found for domain:', recipientDomain)
-      return { ok: true, error: 'Team not found for domain' }
-    }
-
-    console.log('[AgentInbound] Found team:', {
-      teamId: team.id,
-      teamName: team.name,
-      domain: recipientDomain
-    })
-
-    // Load agents and find the agent
-    const agentsStorage = useStorage('agents')
-    const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-    const teamAgents = agents.filter((a) => a.teamId === team.id)
-    const agent = teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername)
-
-    if (!agent) {
-      console.log('[AgentInbound] No agent found for username in team:', {
-        username: recipientUsername,
-        teamId: team.id
-      })
-      return { ok: true, error: 'Agent not found' }
-    }
-
-    const fullAgentEmail = `${agent.email}@${recipientDomain}`
-    console.log('[AgentInbound] Found agent:', {
+      inReplyTo: threadHeaders.inReplyTo,
+      references: threadHeaders.references,
+      conversationId,
       agentId: agent.id,
-      username: agent.email,
-      fullEmail: fullAgentEmail,
-      teamId: agent.teamId
+      agentEmail: fullAgentEmail,
+      teamId: team.id,
+      mcpContexts: [],
+      rawPayload: payload,
+      attachments: rawAttachments
     })
 
-    // Process attachments to datasafe
+    console.log('[AgentInbound] ✓ Email stored')
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PROCESS ATTACHMENTS TO DATASAFE
+    // ═══════════════════════════════════════════════════════════════════
+
     const datasafeStored: Array<{ path: string; name: string; size: number }> = []
+    const emailAttachments: Array<{
+      id: string
+      filename: string
+      mimeType: string
+      size: number
+      datasafePath?: string
+      storageKey?: string
+    }> = []
+
     try {
       const { ensureTeamDatasafe, storeAttachment } = await import(
         '../../../features/datasafe/storage'
@@ -287,6 +328,14 @@ export default defineEventHandler(async (event) => {
               }
             })
             datasafeStored.push({ path: node.path, name: node.name, size: node.size })
+            emailAttachments.push({
+              id: `${messageId}-${attachment.filename}`,
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+              datasafePath: node.path,
+              storageKey: node.path
+            })
             console.log(
               `[AgentInbound] ✓ Stored attachment: ${attachment.filename} -> ${node.path}`
             )
@@ -302,7 +351,21 @@ export default defineEventHandler(async (event) => {
       console.error('[AgentInbound] Failed to process attachments:', datasafeErr)
     }
 
-    // Log inbound email activity
+    // Update stored email with datasafe attachment paths
+    if (emailAttachments.length > 0) {
+      await mailStorage.updateInboundEmailContext({
+        messageId: String(messageId || ''),
+        agentId: agent.id,
+        agentEmail: fullAgentEmail,
+        mcpContexts: [],
+        attachments: emailAttachments
+      })
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // LOG EMAIL ACTIVITY
+    // ═══════════════════════════════════════════════════════════════════
+
     try {
       await agentLogger.logEmailActivity({
         agentId: agent.id,
@@ -313,124 +376,106 @@ export default defineEventHandler(async (event) => {
           from: String(from || ''),
           to: String(to || ''),
           subject: String(subject || ''),
-          body: String(text || '')
-        },
-        metadata: {
-          mailgunSent: false,
-          isAutomatic: false,
-          mcpContextCount: 0,
-          datasafeStoredPaths: datasafeStored.map((item) => item.path)
+          body: String(text || ''),
+          html: String(html || ''),
+          conversationId,
+          attachments: datasafeStored.length
         }
       })
     } catch (logErr) {
       console.error('[AgentInbound] Failed to log email activity:', logErr)
     }
 
-    console.log('\n[AgentInbound] ════════════════════════════════════════════')
-    console.log('[AgentInbound] 📨 PROCESSING INBOUND EMAIL')
-    console.log(`[AgentInbound] Agent: ${agent.name} (${agent.email})`)
-    console.log(`[AgentInbound] From: ${fromEmail || from}`)
-    console.log(`[AgentInbound] Subject: ${subject}`)
-    console.log('[AgentInbound] ════════════════════════════════════════════')
+    // ═══════════════════════════════════════════════════════════════════
+    // EVALUATE POLICY AND PROCESS WITH MCP
+    // ═══════════════════════════════════════════════════════════════════
 
-    // Check mail policy
-    const inboundPolicy = await evaluateInboundMail(agent, String(fromEmail || from || ''), {
-      agents,
-      identity
-    })
-    if (!inboundPolicy.allowed) {
-      console.warn('[AgentInbound] ✗ Email blocked by mail policy:', inboundPolicy.reason)
-      return { ok: true, blocked: true, reason: 'inbound_mail_policy' }
-    }
+    // Extract bare email address for policy evaluation
+    const { extractEmail } = await import('../../../utils/mailgunHelpers')
+    const fromEmail = extractEmail(from) || String(from || '')
 
-    // Look up user by email for MCP context
-    let userId: string | undefined
-    if (fromEmail) {
-      const user = identity.users.find(
-        (u) => u.email.toLowerCase().trim() === fromEmail.toLowerCase().trim()
+    const policyDecision = await evaluateInboundMail(agent, fromEmail)
+
+    console.log(
+      '[AgentInbound] Policy decision:',
+      policyDecision.allowed ? 'allowed' : 'blocked',
+      policyDecision.reason || ''
+    )
+
+    if (policyDecision.allowed) {
+      console.log('[AgentInbound] 🤖 Calling MCP agent...')
+
+      // Load MCP configuration for this agent
+      let mcpConfigs: Record<string, { url: string }> = {}
+      try {
+        const configResponse = await event.$fetch(`/api/agent/${agentEmail}/mcp-config`, {
+          method: 'GET'
+        })
+        mcpConfigs = configResponse.mcpConfigs
+        console.log('[AgentInbound] Loaded MCP config for inbound:', Object.keys(mcpConfigs))
+      } catch (error) {
+        console.error('[AgentInbound] Failed to load MCP config for inbound:', error)
+        mcpConfigs = {}
+      }
+
+      // Build prompts
+      const baseEmailGuidelines = `\nEmail Communication Guidelines:\n- You have access to reply_to_email and forward_email tools to communicate with users\n- These tools require a message-id from the email storage\n- When you receive a request via email:\n  FIRST: Send a brief acknowledgment reply to the sender - if possible estimate a response time\n  Then, completing the action: Send a concise follow-up with key results in reply to the sender\n- Always use professional and friendly language\n- Be concise and direct\n`
+
+      const agentInstructions = (agent as any).prompt || 'You are a helpful AI assistant.'
+      const systemPrompt = `${agentInstructions}\n\n${baseEmailGuidelines}`
+
+      const userPrompt = `New inbound email for ${fullAgentEmail}.\nMessage-ID: ${String(messageId || '')}\nFrom: ${String(from || '')}\nTo: ${String(to || '')}\nSubject: ${String(subject || '')}\nBody:\n${String(text || '')}`
+
+      const result = await runMCPAgent({
+        mcpConfigs,
+        teamId: team.id,
+        userId: undefined,
+        systemPrompt,
+        userPrompt,
+        attachments: undefined,
+        event,
+        agentEmail: fullAgentEmail,
+        currentMessageId: String(messageId || '')
+      })
+
+      console.log(
+        '[AgentInbound] MCP result:',
+        typeof result === 'string' ? result.substring(0, 160) + '...' : result
       )
-      if (user) {
-        userId = user.id
-        console.log(`[AgentInbound] Found user ID for ${fromEmail}: ${userId}`)
-      } else {
-        console.log(`[AgentInbound] No user found for email: ${fromEmail}`)
+
+      return {
+        ok: true,
+        messageId,
+        agentId: agent.id,
+        teamId: team.id,
+        conversationId,
+        attachments: datasafeStored.length,
+        mcpProcessed: true,
+        policyAllowed: policyDecision.allowed
+      }
+    } else {
+      console.log('[AgentInbound] Email blocked by policy:', policyDecision.reason)
+
+      return {
+        ok: true,
+        messageId,
+        agentId: agent.id,
+        teamId: team.id,
+        conversationId,
+        attachments: datasafeStored.length,
+        mcpProcessed: false,
+        policyAllowed: policyDecision.allowed,
+        policyReason: policyDecision.reason
       }
     }
-
-    // Get MCP configuration for the agent
-    let mcpConfigs: Record<string, { url: string }> = {}
-
-    try {
-      // Use event.$fetch to preserve session context
-      const configResponse = await event.$fetch(`/api/agent/${agentEmail}/mcp-config`, {
-        method: 'GET'
-      })
-      mcpConfigs = configResponse.mcpConfigs
-      console.log('[AgentInbound] Loaded MCP config:', {
-        serverIds: configResponse.serverIds,
-        configuredServers: Object.keys(mcpConfigs)
-      })
-    } catch (error) {
-      console.error('[AgentInbound] Failed to load MCP config:', error)
-      mcpConfigs = {}
-    }
-
-    // Apply predefined agent overrides
-    const { withPredefinedOverride } = await import('../../../utils/predefinedKoompls')
-    const effectiveAgent = withPredefinedOverride(agent)
-
-    console.log('[AgentInbound] Using agent prompt:', {
-      hasPrompt: !!effectiveAgent.prompt,
-      promptPreview: effectiveAgent.prompt
-        ? effectiveAgent.prompt.substring(0, 100) + '...'
-        : 'NO PROMPT SET'
-    })
-
-    // Build system prompt
-    const baseEmailGuidelines = `
-Email Communication Guidelines:
-- You have access to reply_to_email and forward_email tools
-- To reply, use: reply_to_email with message_id="${messageId}"
-- The system automatically quotes and formats emails
-- Always be professional and concise
-`
-
-    const systemPrompt = `${effectiveAgent.prompt || 'You are a helpful AI assistant.'}
-
-${baseEmailGuidelines}`
-
-    // Build user prompt
-    const userPrompt = `You received an email:
-
-From: ${fromEmail || from}
-Subject: ${subject || 'No Subject'}
-
-Message:
-${text || 'No message body'}
-
-MESSAGE-ID: ${messageId}
-
-Please process this email and reply using the reply_to_email tool.`
-
-    console.log('[AgentInbound] → Calling agent...')
-
-    // Call agent directly (no flow engine)
-    const result = await runMCPAgent({
-      mcpConfigs,
-      teamId: team.id,
-      userId,
-      systemPrompt,
-      userPrompt,
-      event
-    })
-
-    console.log('[AgentInbound] ✓ Agent execution complete')
-    console.log('[AgentInbound] Result preview:', result?.substring(0, 100))
-    console.log('[AgentInbound] ════════════════════════════════════════════\n')
-
-    return { ok: true, messageId, result }
   } catch (error) {
-    console.error('[AgentInbound] Error:', error)
-    return { ok: true } // Always return ok to Mailgun
+    console.error('[AgentInbound] Error processing email:', error)
+
+    // Return success to Mailgun even on error (don't retry)
+    return {
+      ok: true,
+      error: 'Internal processing error',
+      details: error instanceof Error ? error.message : String(error)
+    }
   }
 })

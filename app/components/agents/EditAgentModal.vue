@@ -4,6 +4,7 @@ import type { Agent } from '~/types'
 interface Props {
   open: boolean
   agent: Partial<Agent> | null
+  mode?: 'create' | 'edit'
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{
@@ -79,8 +80,9 @@ const {
   pending: agentsPending,
   refresh: refreshAgents
 } = await useAsyncData(
-  'agents-list',
+  'agents-list-for-delegation',
   async () => {
+    // Fetch both custom and predefined agents for delegation options
     return await $fetch<Agent[]>('/api/agents')
   },
   { server: false, lazy: true }
@@ -213,12 +215,12 @@ const submitButtonLabel = computed(() => (isCreating.value ? 'Create' : 'Save'))
 
 async function save() {
   if (isCreating.value) {
-    // Creating a new agent
-    await $fetch('/api/agents', { method: 'POST', body: local })
+    // Creating a new custom koompl
+    await $fetch('/api/koompl/custom', { method: 'POST', body: local })
   } else {
-    // Editing an existing agent
+    // Editing an existing custom koompl
     if (!local.id) return
-    await $fetch(`/api/agents/${local.id}`, { method: 'PATCH', body: local })
+    await $fetch(`/api/koompl/custom/${local.id}`, { method: 'PATCH', body: local })
   }
   emit('update:open', false)
   emit('saved')
@@ -228,7 +230,10 @@ async function refreshAvatar() {
   if (!local.id) return
   const n = Math.random().toString(36).slice(2, 8)
   const newSrc = `https://i.pravatar.cc/256?u=${encodeURIComponent(n)}&cb=${Date.now()}`
-  await $fetch(`/api/agents/${local.id}`, { method: 'PATCH', body: { avatar: { src: newSrc } } })
+  await $fetch(`/api/koompl/custom/${local.id}`, {
+    method: 'PATCH',
+    body: { avatar: { src: newSrc } }
+  })
   // Optimistically update local state for instant UI change
   const current = (local.avatar as Record<string, unknown>) || {}
   local.avatar = { ...current, src: newSrc }

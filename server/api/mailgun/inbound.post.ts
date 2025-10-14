@@ -1,33 +1,29 @@
 /**
- * Mailgun Inbound Email Handler (Simplified)
+ * Mailgun Inbound Email Handler (Simplified Relay)
  *
- * Receives emails from Mailgun webhook and processes them directly with the agent.
- * No complex flow engine - just store, validate, and respond.
+ * Receives emails from Mailgun webhook, identifies team by domain,
+ * and relays to team-level inbound handler.
+ *
+ * Flow: Mailgun → mailgun/inbound → team/[teamId]/inbound → agent/[email]/inbound
  */
-
-import { mailStorage } from '../../features/mail/storage'
-import { agentLogger } from '../../utils/agentLogging'
-import { evaluateInboundMail } from '../../utils/mailPolicy'
-import { runMCPAgent } from '../../utils/mcpAgentHelper'
-import type { Agent } from '~/types'
 
 export default defineEventHandler(async (event) => {
   // Always return ok to Mailgun no matter what happens
   try {
-    const agentsStorage = useStorage('agents')
-
     let payload: Record<string, unknown> | null = null
     const contentType = getHeader(event, 'content-type') || ''
 
-    console.log('[Inbound] Content-Type:', contentType)
-    console.log('[Inbound] Request method:', getMethod(event))
+    console.log('[MailgunInbound] Content-Type:', contentType)
+    console.log('[MailgunInbound] Request method:', getMethod(event))
 
-    // Parse payload (multipart, JSON, or form data)
+    // ═══════════════════════════════════════════════════════════════════
+    // PARSE PAYLOAD (multipart, JSON, or form data)
+    // ═══════════════════════════════════════════════════════════════════
     if (contentType.includes('application/json')) {
       payload = await readBody(event)
-      console.log('[Inbound] Parsed as JSON payload')
+      console.log('[MailgunInbound] Parsed as JSON payload')
     } else if (contentType.includes('multipart/form-data')) {
-      console.log('[Inbound] Parsing multipart form data...')
+      console.log('[MailgunInbound] Parsing multipart form data...')
       try {
         const formData = await readMultipartFormData(event)
         if (formData) {
@@ -35,6 +31,7 @@ export default defineEventHandler(async (event) => {
           for (const field of formData) {
             if (field.name && field.data) {
               if (field.filename) {
+                // File attachment
                 payload[field.name] = {
                   filename: field.filename,
                   data: field.data,
@@ -42,47 +39,41 @@ export default defineEventHandler(async (event) => {
                   size: field.data.length
                 }
                 console.log(
-                  `[Inbound] Found file attachment: ${field.name} = ${field.filename} (${field.data.length} bytes)`
+                  `[MailgunInbound] Found attachment: ${field.name} = ${field.filename} (${field.data.length} bytes)`
                 )
               } else {
+                // Text field
                 const value =
                   field.data instanceof Buffer ? field.data.toString('utf8') : field.data
                 payload[field.name] = value
               }
             }
           }
-          console.log('[Inbound] Parsed multipart form data, fields:', Object.keys(payload))
+          console.log('[MailgunInbound] Parsed multipart form data, fields:', Object.keys(payload))
         }
       } catch (error) {
-        console.error('[Inbound] Failed to parse multipart form data:', error)
+        console.error('[MailgunInbound] Failed to parse multipart form data:', error)
         const body = await readBody<Record<string, string>>(event)
         payload = body
       }
     } else {
-      console.log('[Inbound] Parsing as regular form data...')
+      console.log('[MailgunInbound] Parsing as regular form data...')
       const body = await readBody<Record<string, string>>(event)
       payload = body
     }
 
-    console.log('[Inbound] Final payload type:', typeof payload)
-    console.log(
-      '[Inbound] Final payload keys:',
-      payload ? Object.keys(payload).slice(0, 20) : 'no payload'
-    )
-
-    // Helper functions for extracting email fields
-    function getPath(source: unknown, path: Array<string>): unknown {
-      let current: unknown = source
-      for (const key of path) {
-        if (current && typeof current === 'object' && key in (current as Record<string, unknown>)) {
-          current = (current as Record<string, unknown>)[key]
-        } else {
-          return undefined
-        }
-      }
-      return current
+    if (!payload) {
+      console.error('[MailgunInbound] No payload received')
+      return { ok: true, error: 'No payload' }
     }
 
+    console.log('[MailgunInbound] Payload keys:', Object.keys(payload))
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EXTRACT RECIPIENT AND IDENTIFY TEAM BY DOMAIN
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Helper to get first non-empty string
     function firstString(...values: Array<unknown>): string | undefined {
       for (const v of values) {
         if (v === undefined || v === null) continue
@@ -92,85 +83,46 @@ export default defineEventHandler(async (event) => {
       return undefined
     }
 
-    // Extract email fields from payload
-    const messageId = String(
-      firstString(
-        payload ? (payload as Record<string, unknown>)['Message-Id'] : undefined,
-        payload ? (payload as Record<string, unknown>)['message-id'] : undefined,
-        getPath(payload, ['message', 'headers', 'message-id']),
-        (
-          globalThis as unknown as { crypto?: { randomUUID?: () => string } }
-        ).crypto?.randomUUID?.(),
-        Math.random().toString(36).slice(2)
-      )
-    )
-    const from = firstString(
-      payload ? (payload as Record<string, unknown>)['from'] : undefined,
-      payload ? (payload as Record<string, unknown>)['sender'] : undefined,
-      payload ? (payload as Record<string, unknown>)['From'] : undefined,
-      getPath(payload, ['headers', 'from'])
-    )
-    const to = firstString(
-      payload ? (payload as Record<string, unknown>)['recipient'] : undefined,
-      payload ? (payload as Record<string, unknown>)['to'] : undefined,
-      payload ? (payload as Record<string, unknown>)['To'] : undefined,
-      payload ? (payload as Record<string, unknown>)['recipients'] : undefined,
-      payload ? (payload as Record<string, unknown>)['Recipients'] : undefined,
-      getPath(payload, ['headers', 'to']),
-      getPath(payload, ['headers', 'To']),
-      getPath(payload, ['message', 'recipients', 0]),
-      getPath(payload, ['envelope', 'to'])
-    )
-    const subject = firstString(
-      payload ? (payload as Record<string, unknown>)['subject'] : undefined,
-      payload ? (payload as Record<string, unknown>)['Subject'] : undefined,
-      getPath(payload, ['headers', 'subject'])
-    )
-    const text = firstString(
-      payload ? (payload as Record<string, unknown>)['stripped-text'] : undefined,
-      payload ? (payload as Record<string, unknown>)['text'] : undefined,
-      payload ? (payload as Record<string, unknown>)['body-plain'] : undefined,
-      payload ? (payload as Record<string, unknown>)['body'] : undefined
-    )
-    const html = firstString(
-      payload ? (payload as Record<string, unknown>)['stripped-html'] : undefined,
-      payload ? (payload as Record<string, unknown>)['html'] : undefined,
-      payload ? (payload as Record<string, unknown>)['body-html'] : undefined
+    const recipient = firstString(
+      payload.recipient,
+      payload.to,
+      payload.To,
+      payload.recipients,
+      payload.Recipients
     )
 
-    // ═══════════════════════════════════════════════════════════════════
-    // STORE EMAIL IN NITRO STORAGE BEFORE AI PROCESSING
-    // ═══════════════════════════════════════════════════════════════════
-    console.log(`[Inbound] 💾 Storing email: message-id=${messageId}`)
+    const from = firstString(payload.from, payload.sender, payload.From)
 
-    const storedEmail = await mailStorage.storeInboundEmail({
-      messageId: String(messageId || ''),
-      from: String(from || ''),
-      to: String(to || ''),
-      subject: String(subject || ''),
-      body: String(text || ''),
-      html: String(html || ''),
-      inReplyTo: [],
-      references: [],
-      agentId: undefined,
-      agentEmail: undefined,
-      mcpContexts: [],
-      rawPayload: payload
+    const subject = firstString(payload.subject, payload.Subject)
+
+    console.log('[MailgunInbound] Email details:', {
+      recipient,
+      from,
+      subject
     })
 
-    console.log(`[Inbound] ✓ Email stored: ${storedEmail.id}`)
+    if (!recipient) {
+      console.error('[MailgunInbound] No recipient found in payload')
+      return { ok: true, error: 'No recipient' }
+    }
 
-    // Extract bare email addresses
+    // Extract bare email address (handle "Name <email@domain.com>" format)
     const { extractEmail } = await import('../../utils/mailgunHelpers')
-    const toEmail = extractEmail(to)
-    const fromEmail = extractEmail(from)
+    const recipientEmail = extractEmail(recipient)
+
+    if (!recipientEmail) {
+      console.error('[MailgunInbound] Could not extract email from recipient:', recipient)
+      return { ok: true, error: 'Invalid recipient format' }
+    }
 
     // Extract domain from recipient
-    const recipientDomain = toEmail?.split('@')[1]?.toLowerCase()
+    const recipientDomain = recipientEmail.split('@')[1]?.toLowerCase()
     if (!recipientDomain) {
-      console.log('[Inbound] No domain found in recipient email:', toEmail)
+      console.error('[MailgunInbound] No domain found in recipient email:', recipientEmail)
       return { ok: true, error: 'Invalid recipient email' }
     }
+
+    console.log('[MailgunInbound] Recipient domain:', recipientDomain)
 
     // Look up team by domain
     const { getIdentity } = await import('../../features/team/storage')
@@ -178,244 +130,53 @@ export default defineEventHandler(async (event) => {
     const team = identity.teams.find((t) => t.domain?.toLowerCase() === recipientDomain)
 
     if (!team) {
-      console.log('[Inbound] No team found for domain:', recipientDomain)
+      console.warn('[MailgunInbound] No team found for domain:', recipientDomain)
       return { ok: true, error: 'Team not found for domain' }
     }
 
-    console.log('[Inbound] Found team:', {
+    console.log('[MailgunInbound] ✓ Found team:', {
       teamId: team.id,
       teamName: team.name,
       domain: recipientDomain
     })
 
-    // Extract username from recipient email
-    const recipientUsername = toEmail?.split('@')[0]?.toLowerCase()
-    if (!recipientUsername) {
-      console.log('[Inbound] No username found in recipient email:', toEmail)
-      return { ok: true, error: 'Invalid recipient username' }
-    }
+    // ═══════════════════════════════════════════════════════════════════
+    // RELAY TO TEAM INBOUND HANDLER
+    // ═══════════════════════════════════════════════════════════════════
 
-    // Load agents and find the agent
-    const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-    const teamAgents = agents.filter((a) => a.teamId === team.id)
-    const agent = teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername)
+    console.log(
+      `[MailgunInbound] 📤 Relaying to team inbound handler: /api/team/${team.id}/inbound`
+    )
 
-    if (!agent) {
-      console.log('[Inbound] No agent found for username in team:', {
-        username: recipientUsername,
-        teamId: team.id
-      })
-      return { ok: true, error: 'Agent not found' }
-    }
-
-    const fullAgentEmail = `${agent.email}@${recipientDomain}`
-    console.log('[Inbound] Found agent:', {
-      agentId: agent.id,
-      username: agent.email,
-      fullEmail: fullAgentEmail,
-      teamId: agent.teamId
-    })
-
-    // Process attachments to datasafe
-    const datasafeStored: Array<{ path: string; name: string; size: number }> = []
     try {
-      const { ensureTeamDatasafe, storeAttachment } = await import(
-        '../../features/datasafe/storage'
-      )
-      const { getAttachmentStats, validateAttachment, extractMailgunAttachments } = await import(
-        '../../utils/mailgunHelpers'
-      )
-
-      const stats = getAttachmentStats(payload as Record<string, unknown>)
-      console.log(
-        `[Inbound] Attachment stats: ${stats.totalCount} attachments, ${stats.totalSize} bytes`
-      )
-
-      if (stats.hasAttachments) {
-        await ensureTeamDatasafe(team.id)
-        const attachments = extractMailgunAttachments(payload as Record<string, unknown>)
-        const validAttachments = []
-
-        for (const attachment of attachments) {
-          const validation = validateAttachment(attachment)
-          if (validation.isValid) {
-            validAttachments.push(attachment)
-          } else {
-            console.warn(
-              `[Inbound] Skipping invalid attachment ${attachment.filename}:`,
-              validation.errors
-            )
-          }
+      const response = await $fetch(`/api/team/${team.id}/inbound`, {
+        method: 'POST',
+        body: payload,
+        headers: {
+          'x-forwarded-by': 'mailgun-inbound',
+          'x-source-domain': recipientDomain
         }
+      })
 
-        console.log(`[Inbound] Processing ${validAttachments.length} valid attachments`)
+      console.log('[MailgunInbound] ✓ Successfully relayed to team handler')
 
-        for (const attachment of validAttachments) {
-          try {
-            const node = await storeAttachment(team.id, {
-              filename: attachment.filename,
-              data: attachment.data,
-              encoding: 'base64',
-              mimeType: attachment.mimeType,
-              size: attachment.size,
-              source: 'email-attachment',
-              emailMeta: {
-                messageId: String(messageId || ''),
-                from: String(from || ''),
-                subject: String(subject || '')
-              }
-            })
-            datasafeStored.push({ path: node.path, name: node.name, size: node.size })
-            console.log(`[Inbound] ✓ Stored attachment: ${attachment.filename} -> ${node.path}`)
-          } catch (storeErr) {
-            console.error(`[Inbound] Failed to store attachment ${attachment.filename}:`, storeErr)
-          }
-        }
+      return {
+        ok: true,
+        teamId: team.id,
+        domain: recipientDomain,
+        relayed: true,
+        response
       }
-    } catch (datasafeErr) {
-      console.error('[Inbound] Failed to process attachments:', datasafeErr)
-    }
-
-    // Log inbound email activity
-    try {
-      await agentLogger.logEmailActivity({
-        agentId: agent.id,
-        agentEmail: fullAgentEmail,
-        direction: 'inbound',
-        email: {
-          messageId: String(messageId || ''),
-          from: String(from || ''),
-          to: String(to || ''),
-          subject: String(subject || ''),
-          body: String(text || '')
-        },
-        metadata: {
-          mailgunSent: false,
-          isAutomatic: false,
-          mcpContextCount: 0,
-          datasafeStoredPaths: datasafeStored.map((item) => item.path)
-        }
-      })
-    } catch (logErr) {
-      console.error('[Inbound] Failed to log email activity:', logErr)
-    }
-
-    console.log('\n[Inbound] ════════════════════════════════════════════')
-    console.log('[Inbound] 📨 PROCESSING INBOUND EMAIL')
-    console.log(`[Inbound] Agent: ${agent.name} (${agent.email})`)
-    console.log(`[Inbound] From: ${fromEmail || from}`)
-    console.log(`[Inbound] Subject: ${subject}`)
-    console.log('[Inbound] ════════════════════════════════════════════')
-
-    // Check mail policy
-    const inboundPolicy = await evaluateInboundMail(agent, String(fromEmail || from || ''), {
-      agents,
-      identity
-    })
-    if (!inboundPolicy.allowed) {
-      console.warn('[Inbound] ✗ Email blocked by inbound mail policy:', inboundPolicy.reason)
-      return { ok: true, blocked: true, reason: 'inbound_mail_policy' }
-    }
-
-    // Look up user by email for MCP context
-    let userId: string | undefined
-    if (fromEmail) {
-      const user = identity.users.find(
-        (u) => u.email.toLowerCase().trim() === fromEmail.toLowerCase().trim()
-      )
-      if (user) {
-        userId = user.id
-        console.log(`[Inbound] Found user ID for ${fromEmail}: ${userId}`)
-      } else {
-        console.log(`[Inbound] No user found for email: ${fromEmail}`)
-      }
-    }
-
-    // Get MCP configuration for the agent
-    let mcpConfigs: Record<string, { url: string }> = {}
-
-    try {
-      // Use event.$fetch to preserve session context
-      const configResponse = await event.$fetch(
-        `/api/agent/${agent.email}@${recipientDomain}/mcp-config`,
-        {
-          method: 'GET'
-        }
-      )
-      mcpConfigs = configResponse.mcpConfigs
-      console.log('[Inbound] Loaded MCP config:', {
-        serverIds: configResponse.serverIds,
-        configuredServers: Object.keys(mcpConfigs)
-      })
     } catch (error) {
-      console.error('[Inbound] Failed to load MCP config:', error)
-      mcpConfigs = {}
+      console.error('[MailgunInbound] Failed to relay to team handler:', error)
+      return {
+        ok: true,
+        error: 'Failed to relay to team handler',
+        details: error
+      }
     }
-
-    // Apply predefined agent overrides
-    const { withPredefinedOverride } = await import('../../utils/predefinedKoompls')
-    const effectiveAgent = withPredefinedOverride(agent)
-
-    console.log('[Inbound] Using agent prompt:', {
-      hasPrompt: !!effectiveAgent.prompt,
-      promptPreview: effectiveAgent.prompt
-        ? effectiveAgent.prompt.substring(0, 100) + '...'
-        : 'NO PROMPT SET'
-    })
-
-    // Build system prompt
-    const baseEmailGuidelines = `
-Email Communication Guidelines:
-- You have access to reply_to_email and forward_email tools
-- To reply, use reply_to_email with the message_id from the email
-- The system automatically quotes and formats emails
-- Always be professional and concise
-`
-
-    const systemPrompt = `${effectiveAgent.prompt || 'You are a helpful AI assistant.'}
-
-${baseEmailGuidelines}`
-
-    // Build user prompt with attachment info
-    let attachmentInfo = ''
-    if (datasafeStored.length > 0) {
-      attachmentInfo = `\n\nATTACHMENTS AUTOMATICALLY STORED TO DATASAFE:
-${datasafeStored.map((att) => `- ${att.name} → ${att.path} (${att.size} bytes)`).join('\n')}
-
-These files are now available in your datasafe and can be accessed using the datasafe tools.`
-    }
-
-    const userPrompt = `You received an email:
-
-From: ${fromEmail || from}
-Subject: ${subject || 'No Subject'}
-
-Message:
-${text || 'No message body'}${attachmentInfo}
-
-MESSAGE-ID: ${messageId}
-
-IMPORTANT: You MUST reply to this email using the reply_to_email tool with the message_id above.`
-
-    console.log('[Inbound] → Calling agent...')
-
-    // Call agent directly (no flow engine)
-    const result = await runMCPAgent({
-      mcpConfigs,
-      teamId: team.id,
-      userId,
-      systemPrompt,
-      userPrompt,
-      event
-    })
-
-    console.log('[Inbound] ✓ Agent execution complete')
-    console.log('[Inbound] Result preview:', result?.substring(0, 100))
-    console.log('[Inbound] ════════════════════════════════════════════\n')
-
-    return { ok: true, messageId, result }
   } catch (error) {
-    console.error('[Inbound] Error:', error)
-    return { ok: true } // Always return ok to Mailgun
+    console.error('[MailgunInbound] Unexpected error:', error)
+    return { ok: true, error: 'Internal server error' }
   }
 })

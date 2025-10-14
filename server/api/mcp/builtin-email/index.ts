@@ -147,6 +147,7 @@ export default defineEventHandler(async (event) => {
 
   const headers = getRequestHeaders(event)
   const agentEmail = headers['x-agent-email']
+  const currentMessageIdHeader = headers['x-current-message-id']
 
   console.log('[BuiltinEmailMCP] Authenticated:', {
     teamId,
@@ -370,6 +371,8 @@ export default defineEventHandler(async (event) => {
       case 'tools/call': {
         const toolName = body.params?.name
         const args = body.params?.arguments || {}
+        const agentId = body.params?.agentId || body.agentId
+        const agentEmail = body.params?.agentEmail || body.agentEmail
 
         if (!toolName) {
           throw createError({ statusCode: 400, statusMessage: 'Tool name is required' })
@@ -436,16 +439,21 @@ export default defineEventHandler(async (event) => {
 
         if (toolName === 'reply_to_email') {
           // Validate required fields
-          if (!args.message_id || typeof args.message_id !== 'string') {
+          if (
+            (!args.message_id || typeof args.message_id !== 'string') &&
+            !currentMessageIdHeader
+          ) {
             throw createError({ statusCode: 400, statusMessage: 'message_id is required' })
           }
           if (!args.reply_text || typeof args.reply_text !== 'string') {
             throw createError({ statusCode: 400, statusMessage: 'reply_text is required' })
           }
 
-          const messageId = String(args.message_id).trim()
+          const messageId = String(
+            (args.message_id as string) || currentMessageIdHeader || ''
+          ).trim()
           const replyText = String(args.reply_text)
-          const from = args.from ? String(args.from) : undefined
+          const explicitFrom = args.from ? String(args.from) : undefined
 
           // Parse attachments if provided (fetches from datasafe if needed)
           const attachments = await parseAttachments(args, teamId, userId)
@@ -469,6 +477,22 @@ export default defineEventHandler(async (event) => {
           }
 
           const originalEmail = storedEmail.email
+
+          // Resolve agent metadata (fallback to stored email if not provided)
+          const effectiveAgentId = agentId || originalEmail.agentId
+          let effectiveAgentEmail = agentEmail || explicitFrom || originalEmail.agentEmail
+
+          if (!effectiveAgentEmail && effectiveAgentId && teamDomain) {
+            effectiveAgentEmail = `${effectiveAgentId}@${teamDomain}`
+          }
+
+          if (!effectiveAgentId || !effectiveAgentEmail) {
+            throw createError({
+              statusCode: 400,
+              statusMessage:
+                'Unable to determine agent identity for reply_to_email (agentId/agentEmail missing)'
+            })
+          }
 
           // Reply to the sender of the original email
           const recipientEmail = extractEmail(originalEmail.from) || originalEmail.from
@@ -514,14 +538,65 @@ ${quotedBody}`
           const { sendMailgunEmail } = await import('../../../utils/mailgunHelpers')
 
           try {
-            await sendMailgunEmail({
-              from: from || agentEmail || `Agent <noreply@${teamDomain}>`,
+            const mailgunResult = await sendMailgunEmail({
+              from: explicitFrom || effectiveAgentEmail,
               to: recipientEmail,
               subject: replySubject,
               text: formattedReply,
               inReplyTo,
               references,
               attachments: attachments.length > 0 ? attachments : undefined
+            })
+
+            // Store outbound email with threading headers
+            const sentMessageId =
+              mailgunResult.id || `sent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+            const { buildConversationId } = await import('../../../features/mail/threading')
+            const conversationId =
+              originalEmail.conversationId ||
+              buildConversationId(
+                originalEmail.messageId,
+                originalEmail.inReplyTo,
+                originalEmail.references
+              )
+
+            if (!conversationId) {
+              console.warn(
+                '[BuiltinEmailMCP] No conversationId found for original email, generated fallback',
+                {
+                  messageId,
+                  inReplyTo: originalEmail.inReplyTo,
+                  references: originalEmail.references
+                }
+              )
+            }
+
+            await mailStorage.storeOutboundEmail({
+              messageId: sentMessageId,
+              from: explicitFrom || effectiveAgentEmail,
+              to: recipientEmail,
+              subject: replySubject,
+              body: formattedReply,
+              agentId: effectiveAgentId,
+              agentEmail: effectiveAgentEmail,
+              teamId,
+              conversationId,
+              inReplyTo,
+              references: references.split(' ').filter(Boolean),
+              usedOpenAI: true,
+              mailgunSent: true,
+              isAutomatic: true,
+              attachments:
+                attachments.length > 0
+                  ? attachments.map((att) => ({
+                      id: att.filename,
+                      filename: att.filename,
+                      mimeType: att.mimeType,
+                      size: att.size,
+                      storageKey: att.datasafe_path as string | undefined,
+                      datasafePath: att.datasafe_path as string | undefined
+                    }))
+                  : undefined
             })
 
             result = {
@@ -535,6 +610,8 @@ ${quotedBody}`
                       to: recipientEmail,
                       subject: replySubject,
                       originalMessageId: messageId,
+                      sentMessageId,
+                      conversationId,
                       reason: validation.reason,
                       attachmentCount: attachments.length,
                       sentAt: new Date().toISOString()
@@ -553,14 +630,19 @@ ${quotedBody}`
           }
         } else if (toolName === 'forward_email') {
           // Validate required fields
-          if (!args.message_id || typeof args.message_id !== 'string') {
+          if (
+            (!args.message_id || typeof args.message_id !== 'string') &&
+            !currentMessageIdHeader
+          ) {
             throw createError({ statusCode: 400, statusMessage: 'message_id is required' })
           }
           if (!args.to || typeof args.to !== 'string') {
             throw createError({ statusCode: 400, statusMessage: 'to is required' })
           }
 
-          const messageId = String(args.message_id).trim()
+          const messageId = String(
+            (args.message_id as string) || currentMessageIdHeader || ''
+          ).trim()
           const to = String(args.to).trim()
           const forwardMessage = args.forward_message ? String(args.forward_message) : ''
           const from = args.from ? String(args.from) : undefined
@@ -628,6 +710,48 @@ ${originalEmail.body}`
               subject: forwardSubject,
               text: forwardedContent,
               attachments: attachments.length > 0 ? attachments : undefined
+            })
+
+            // Record forwarded email in storage so it appears in conversation history
+            const forwardedConversationId =
+              originalEmail.conversationId ||
+              (await import('../../../features/mail/threading').then(({ buildConversationId }) =>
+                buildConversationId(
+                  originalEmail.messageId,
+                  originalEmail.inReplyTo,
+                  originalEmail.references
+                )
+              ))
+
+            await mailStorage.storeOutboundEmail({
+              messageId: `forward-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              from: from || agentEmail || `Agent <noreply@${teamDomain}>`,
+              to: recipientEmail,
+              subject: forwardSubject,
+              body: forwardedContent,
+              agentId: agentId || originalEmail.agentId || userId,
+              agentEmail:
+                agentEmail ||
+                originalEmail.agentEmail ||
+                (agentId && teamDomain ? `${agentId}@${teamDomain}` : ''),
+              teamId,
+              conversationId: forwardedConversationId,
+              inReplyTo: originalEmail.messageId,
+              references: originalEmail.references,
+              usedOpenAI: true,
+              mailgunSent: true,
+              isAutomatic: true,
+              attachments:
+                attachments.length > 0
+                  ? attachments.map((att) => ({
+                      id: att.filename,
+                      filename: att.filename,
+                      mimeType: att.mimeType,
+                      size: att.size,
+                      storageKey: att.datasafe_path as string | undefined,
+                      datasafePath: att.datasafe_path as string | undefined
+                    }))
+                  : undefined
             })
 
             result = {

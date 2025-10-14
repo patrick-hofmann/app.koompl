@@ -178,3 +178,54 @@ export interface IdentityData {
   memberships: TeamMembership[]
   superAdminIds: string[]
 }
+
+export interface EmailConversation {
+  id: string
+  agentId: string
+  teamId: string
+  subject: string
+  participants: string[]
+  messageIds: string[]
+  lastMessageDate: string
+  messageCount: number
+  hasUnread: boolean
+  excerpt: string
+}
+
+export interface EmailMessage {
+  id: string
+  messageId: string
+  conversationId: string
+  from: string
+  to: string
+  subject: string
+  body: string
+  html?: string
+  timestamp: string
+  direction: 'inbound' | 'outbound'
+  isUnread?: boolean
+  attachments?: EmailAttachment[]
+}
+
+export interface EmailAttachment {
+  id: string
+  filename: string
+  mimeType: string
+  size: number
+  storageKey?: string
+  datasafePath?: string
+  inline?: boolean
+  contentId?: string
+  base64?: string
+}
+
+export type ComposeMode = 'new' | 'reply' | 'forward'
+
+export interface ComposeData {
+  mode: ComposeMode
+  to?: string
+  subject?: string
+  body?: string
+  inReplyTo?: string
+  originalMessageId?: string
+}
