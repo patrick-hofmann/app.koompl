@@ -36,7 +36,11 @@ const {
       })
     )
   },
-  { server: false, immediate: true }
+  {
+    server: false,
+    immediate: true,
+    watch: [() => props.conversation.id, () => props.agentId]
+  }
 )
 
 const emails = computed(() => emailsData.value || [])
@@ -87,6 +91,17 @@ function extractEmailAddress(header: string): string {
 function extractName(header: string): string {
   const match = header.match(/^([^<]+)</)
   return match ? match[1].trim().replace(/['"]/g, '') : header.split('@')[0]
+}
+
+function downloadAttachment(messageId: string, filename: string) {
+  // Create download link for email attachment
+  const downloadUrl = `/api/mail/${messageId}/attachments/${encodeURIComponent(filename)}`
+
+  // Trigger download by opening URL in new window
+  const link = document.createElement('a')
+  link.href = downloadUrl
+  link.download = filename
+  link.click()
 }
 
 function handleReply() {
@@ -245,12 +260,12 @@ const dropdownItems = [
                       </div>
                     </div>
                     <UButton
-                      v-if="attachment.datasafePath"
                       color="primary"
                       variant="ghost"
                       size="xs"
-                      :to="`/datasafe?path=${encodeURIComponent(attachment.datasafePath)}`"
-                      label="Open in Datasafe"
+                      icon="i-lucide-download"
+                      label="Download"
+                      @click="downloadAttachment(email.messageId, attachment.filename)"
                     />
                   </div>
                 </div>

@@ -292,6 +292,75 @@ export const datasafeDefinition: BuiltinMcpDefinition<DatasafeMcpContext> = {
       }
     },
     {
+      name: 'copy_email_attachment_to_datasafe',
+      description:
+        'Copy an email attachment from email storage to datasafe. Use this to access email attachments without passing binary data through AI context. First copy the attachment, then use regular datasafe tools to work with it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          message_id: {
+            type: 'string',
+            description: 'Message ID of the email containing the attachment'
+          },
+          filename: {
+            type: 'string',
+            description: 'Filename of the attachment to copy'
+          },
+          target_path: {
+            type: 'string',
+            description: 'Target path in datasafe (e.g., "Documents/filename.pdf")'
+          },
+          overwrite: {
+            type: 'boolean',
+            description: 'Whether to overwrite if file exists (default: false)'
+          }
+        },
+        required: ['message_id', 'filename', 'target_path'],
+        additionalProperties: false
+      },
+      execute: async ({ context, args }) => {
+        const { message_id, filename, target_path, overwrite } = args as {
+          message_id?: string
+          filename?: string
+          target_path?: string
+          overwrite?: boolean
+        }
+
+        if (!message_id || !filename || !target_path) {
+          return {
+            success: false,
+            error: 'message_id, filename, and target_path are required'
+          }
+        }
+
+        try {
+          const { copyEmailAttachmentToDatasafe } = await import('../../../features/datasafe')
+          const node = await copyEmailAttachmentToDatasafe(context, {
+            messageId: message_id,
+            filename,
+            targetPath: target_path,
+            overwrite: overwrite || false
+          })
+
+          return {
+            success: true,
+            data: {
+              path: node.path,
+              size: node.size,
+              mimeType: node.mimeType,
+              createdAt: node.createdAt
+            },
+            summary: `Copied email attachment '${filename}' from message ${message_id} to datasafe at ${node.path}`
+          }
+        } catch (error) {
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error)
+          }
+        }
+      }
+    },
+    {
       name: 'get_stats',
       description: 'Summarize Datasafe usage including total files, size, and recent updates',
       inputSchema: {

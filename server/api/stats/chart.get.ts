@@ -1,4 +1,4 @@
-import { mailStorage } from '../../features/mail/storage'
+import { getRecentEmails } from '../../features/mail'
 
 export default defineEventHandler(async (_event) => {
   const query = getQuery(_event)
@@ -18,7 +18,7 @@ export default defineEventHandler(async (_event) => {
     const endDate = new Date(rangeEnd)
     endDate.setHours(23, 59, 59, 999)
 
-    const logs = await mailStorage.getRecentEmails(1000) // large buffer, we'll filter by date
+    const logs = await getRecentEmails(1000) // large buffer, we'll filter by date
     const seen = new Set<string>()
     const filtered = logs
       .map((log) => {

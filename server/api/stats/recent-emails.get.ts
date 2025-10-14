@@ -1,4 +1,4 @@
-import { mailStorage } from '../../features/mail/storage'
+import { getRecentEmails } from '../../features/mail'
 
 export default defineEventHandler(async (_event) => {
   const query = getQuery(_event)
@@ -10,7 +10,7 @@ export default defineEventHandler(async (_event) => {
 
   try {
     // Get recent emails (both inbound and outbound) from unified storage
-    let recentEmails = await mailStorage.getRecentEmails(limit * 2)
+    let recentEmails = await getRecentEmails(limit * 2)
 
     // Filter by date range if provided
     if (rangeStart && rangeEnd) {

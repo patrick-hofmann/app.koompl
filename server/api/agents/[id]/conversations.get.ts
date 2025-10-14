@@ -3,7 +3,7 @@
  * Returns conversation list with excerpts for inbox view
  */
 
-import { mailStorage } from '../../../features/mail/storage'
+import { getAgentConversations } from '../../../features/mail'
 
 export default defineEventHandler(async (event) => {
   const agentId = getRouterParam(event, 'id')
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Get conversations from storage
-    const conversations = await mailStorage.getAgentConversations(agentId, limit)
+    const conversations = await getAgentConversations({ agentId }, limit)
 
     console.log(
       `[ConversationsAPI] Found ${conversations.length} conversations for agent ${agentId}`

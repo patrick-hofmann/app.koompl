@@ -3,7 +3,7 @@
  * Returns conversation thread with all messages
  */
 
-import { mailStorage } from '../../../../features/mail/storage'
+import { getConversationEmails, markConversationRead } from '../../../../features/mail'
 
 export default defineEventHandler(async (event) => {
   const agentId = getRouterParam(event, 'id')
@@ -18,14 +18,14 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Get all emails in the conversation
-    const emails = await mailStorage.getConversationEmails(conversationId, agentId)
+    const emails = await getConversationEmails({ agentId }, conversationId)
 
     console.log(
       `[ConversationDetailAPI] Found ${emails.length} emails for conversation ${conversationId}`
     )
 
     // Mark conversation as read
-    await mailStorage.markConversationAsRead(agentId, conversationId)
+    await markConversationRead({ agentId }, conversationId)
 
     return {
       conversationId,

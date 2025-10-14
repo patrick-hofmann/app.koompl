@@ -1,9 +1,9 @@
-import { mailStorage } from '../../features/mail/storage'
+import { getAllLogs } from '../../features/mail'
 
 export default defineEventHandler(async (_event) => {
   try {
     // Get all logs from unified storage
-    const allLogs = await mailStorage.getAllLogs()
+    const allLogs = await getAllLogs()
 
     // Group by agentId to see what's there
     const logsByAgent = allLogs.reduce(

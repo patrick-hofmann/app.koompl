@@ -30,6 +30,10 @@ interface RunMCPAgentOptions {
  * @returns The final output from the agent
  */
 export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> {
+  const startTime = Date.now()
+  const startTimestamp = new Date().toISOString()
+  console.log(`[${startTimestamp}] [MCPAgent] ⏱️  Starting MCP agent execution`)
+
   const {
     mcpConfigs,
     teamId,
@@ -127,12 +131,20 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
   })
 
   // Connect all servers
+  const connectStart = Date.now()
   for (const server of mcpServers) {
     await server.connect()
   }
+  const connectDuration = Date.now() - connectStart
+  console.log(
+    `[MCPAgent] ⏱️  Connected to ${mcpServers.length} MCP servers in ${connectDuration}ms`
+  )
 
-  const model = 'gpt-5-nano'
-  const temperature = model === 'gpt-4o' ? 0.3 : undefined
+  const model = 'gpt-4o-mini' // Fast, cost-effective model for agent tasks
+  const temperature = 0.3 // Lower temperature for more deterministic responses
+
+  console.log(`[MCPAgent] 🤖 Using model: ${model} (temperature: ${temperature})`)
+
   // Create an agent that uses these MCP servers
   const agent = new Agent({
     model,
@@ -144,6 +156,24 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     instructions: systemPrompt,
     mcpServers
   })
+
+  const setupDuration = Date.now() - startTime
+  const setupEndTimestamp = new Date().toISOString()
+  console.log(`[${setupEndTimestamp}] [MCPAgent] ⏱️  Setup completed in ${setupDuration}ms`)
+  console.log(`[MCPAgent] Agent config:`, {
+    model,
+    mcpServerCount: mcpServers.length,
+    serverNames: mcpServers.map((s) => s['name']),
+    systemPromptLength: systemPrompt.length,
+    userPromptLength: userPrompt.length,
+    hasAttachments: !!attachments && attachments.length > 0
+  })
+
+  // Log the actual prompts (truncated for readability)
+  console.log(`[MCPAgent] 📝 System Prompt (${systemPrompt.length} chars):`)
+  console.log(systemPrompt.substring(0, 500) + (systemPrompt.length > 500 ? '...' : ''))
+  console.log(`[MCPAgent] 📝 User Prompt (${userPrompt.length} chars):`)
+  console.log(userPrompt.substring(0, 500) + (userPrompt.length > 500 ? '...' : ''))
 
   try {
     let finalPrompt = userPrompt
@@ -166,12 +196,41 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
         '\n(Use the base64 data above with the appropriate MCP tools to store or process these files)'
     }
 
+    const beforeRun = Date.now()
+    const beforeRunTimestamp = new Date().toISOString()
+    console.log(`[${beforeRunTimestamp}] [MCPAgent] 🚀 Running OpenAI agent...`)
+    console.log(`[MCPAgent] Final prompt length: ${finalPrompt.length} chars`)
+
+    // Log tool count that agent has access to
+    console.log(`[MCPAgent] Agent has access to MCP tools from ${mcpServers.length} servers`)
+
     const result = await run(agent, finalPrompt)
+
+    const afterRun = Date.now()
+    const afterRunTimestamp = new Date().toISOString()
+    console.log(
+      `[${afterRunTimestamp}] [MCPAgent] ⏱️  Agent run completed in ${afterRun - beforeRun}ms`
+    )
+    console.log(`[MCPAgent] Result output length: ${result.finalOutput?.length || 0} chars`)
+
+    const totalDuration = Date.now() - startTime
+    const endTimestamp = new Date().toISOString()
+    console.log(`[${endTimestamp}] [MCPAgent] ⏱️  Total execution time: ${totalDuration}ms`)
+
+    // Performance breakdown
+    console.log(`[MCPAgent] 📊 Performance breakdown:`)
+    console.log(`  - Setup: ${setupDuration}ms`)
+    console.log(`  - Agent execution: ${afterRun - beforeRun}ms`)
+    console.log(`  - Total: ${totalDuration}ms`)
+
     return result.finalOutput
   } finally {
     // Always cleanup: close all MCP servers
+    const cleanupStart = Date.now()
     for (const server of mcpServers) {
       await server.close()
     }
+    const cleanupDuration = Date.now() - cleanupStart
+    console.log(`[MCPAgent] ⏱️  Cleanup completed in ${cleanupDuration}ms`)
   }
 }

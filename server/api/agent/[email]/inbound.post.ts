@@ -7,13 +7,21 @@
  * Flow: ... → team/[teamId]/inbound → agent/[email]/inbound (storage)
  */
 
-import { mailStorage } from '../../../features/mail/storage'
+import {
+  storeInboundEmail,
+  updateInboundEmailContext,
+  storeEmailAttachments
+} from '../../../features/mail'
 import { agentLogger } from '../../../utils/agentLogging'
 import { evaluateInboundMail } from '../../../utils/mailPolicy'
 import { runMCPAgent } from '../../../utils/mcpAgentHelper'
 import type { Agent } from '~/types'
 
 export default defineEventHandler(async (event) => {
+  const requestStartTime = Date.now()
+  const requestStartTimestamp = new Date().toISOString()
+  console.log(`[${requestStartTimestamp}] [AgentInbound] ⏱️  Request started`)
+
   try {
     const agentEmail = getRouterParam(event, 'email')
 
@@ -246,7 +254,7 @@ export default defineEventHandler(async (event) => {
     const rawAttachments = Array.isArray(payload.attachments) ? payload.attachments : []
 
     // Store email with full context
-    await mailStorage.storeInboundEmail({
+    await storeInboundEmail({
       messageId: String(messageId || ''),
       from: String(from || ''),
       to: String(to || ''),
@@ -264,96 +272,25 @@ export default defineEventHandler(async (event) => {
       attachments: rawAttachments
     })
 
-    console.log('[AgentInbound] ✓ Email stored')
+    const emailStoredTime = Date.now()
+    console.log(`[AgentInbound] ✓ Email stored (${emailStoredTime - requestStartTime}ms elapsed)`)
 
     // ═══════════════════════════════════════════════════════════════════
-    // PROCESS ATTACHMENTS TO DATASAFE
+    // PROCESS ATTACHMENTS TO MAIL STORAGE
     // ═══════════════════════════════════════════════════════════════════
 
-    const datasafeStored: Array<{ path: string; name: string; size: number }> = []
-    const emailAttachments: Array<{
-      id: string
-      filename: string
-      mimeType: string
-      size: number
-      datasafePath?: string
-      storageKey?: string
-    }> = []
+    const attachmentStart = Date.now()
+    // Use centralized attachment processing from mail feature
+    const { attachments: emailAttachments, storedCount } = await storeEmailAttachments(payload, {
+      teamId: team.id,
+      messageId: String(messageId || ''),
+      from: String(from || ''),
+      subject: String(subject || '')
+    })
 
-    try {
-      const { ensureTeamDatasafe, storeAttachment } = await import(
-        '../../../features/datasafe/storage'
-      )
-      const { getAttachmentStats, validateAttachment, extractMailgunAttachments } = await import(
-        '../../../utils/mailgunHelpers'
-      )
-
-      const stats = getAttachmentStats(payload as Record<string, unknown>)
-      console.log(
-        `[AgentInbound] Attachment stats: ${stats.totalCount} attachments, ${stats.totalSize} bytes`
-      )
-
-      if (stats.hasAttachments) {
-        await ensureTeamDatasafe(team.id)
-        const attachments = extractMailgunAttachments(payload as Record<string, unknown>)
-        const validAttachments = []
-
-        for (const attachment of attachments) {
-          const validation = validateAttachment(attachment)
-          if (validation.isValid) {
-            validAttachments.push(attachment)
-          } else {
-            console.warn(
-              `[AgentInbound] Skipping invalid attachment ${attachment.filename}:`,
-              validation.errors
-            )
-          }
-        }
-
-        console.log(`[AgentInbound] Processing ${validAttachments.length} valid attachments`)
-
-        for (const attachment of validAttachments) {
-          try {
-            const node = await storeAttachment(team.id, {
-              filename: attachment.filename,
-              data: attachment.data,
-              encoding: 'base64',
-              mimeType: attachment.mimeType,
-              size: attachment.size,
-              source: 'email-attachment',
-              emailMeta: {
-                messageId: String(messageId || ''),
-                from: String(from || ''),
-                subject: String(subject || '')
-              }
-            })
-            datasafeStored.push({ path: node.path, name: node.name, size: node.size })
-            emailAttachments.push({
-              id: `${messageId}-${attachment.filename}`,
-              filename: attachment.filename,
-              mimeType: attachment.mimeType,
-              size: attachment.size,
-              datasafePath: node.path,
-              storageKey: node.path
-            })
-            console.log(
-              `[AgentInbound] ✓ Stored attachment: ${attachment.filename} -> ${node.path}`
-            )
-          } catch (storeErr) {
-            console.error(
-              `[AgentInbound] Failed to store attachment ${attachment.filename}:`,
-              storeErr
-            )
-          }
-        }
-      }
-    } catch (datasafeErr) {
-      console.error('[AgentInbound] Failed to process attachments:', datasafeErr)
-    }
-
-    // Update stored email with datasafe attachment paths
+    // Update stored email with attachment metadata
     if (emailAttachments.length > 0) {
-      await mailStorage.updateInboundEmailContext({
+      await updateInboundEmailContext({
         messageId: String(messageId || ''),
         agentId: agent.id,
         agentEmail: fullAgentEmail,
@@ -361,6 +298,11 @@ export default defineEventHandler(async (event) => {
         attachments: emailAttachments
       })
     }
+
+    const attachmentDuration = Date.now() - attachmentStart
+    console.log(
+      `[AgentInbound] ⏱️  Attachment processing: ${attachmentDuration}ms (${storedCount} stored)`
+    )
 
     // ═══════════════════════════════════════════════════════════════════
     // LOG EMAIL ACTIVITY
@@ -379,7 +321,7 @@ export default defineEventHandler(async (event) => {
           body: String(text || ''),
           html: String(html || ''),
           conversationId,
-          attachments: datasafeStored.length
+          attachments: storedCount
         }
       })
     } catch (logErr) {
@@ -403,7 +345,10 @@ export default defineEventHandler(async (event) => {
     )
 
     if (policyDecision.allowed) {
-      console.log('[AgentInbound] 🤖 Calling MCP agent...')
+      const mcpStart = Date.now()
+      console.log(
+        `[AgentInbound] 🤖 Calling MCP agent... (${mcpStart - requestStartTime}ms elapsed so far)`
+      )
 
       // Load MCP configuration for this agent
       let mcpConfigs: Record<string, { url: string }> = {}
@@ -419,12 +364,36 @@ export default defineEventHandler(async (event) => {
       }
 
       // Build prompts
-      const baseEmailGuidelines = `\nEmail Communication Guidelines:\n- You have access to reply_to_email and forward_email tools to communicate with users\n- These tools require a message-id from the email storage\n- When you receive a request via email:\n  FIRST: Send a brief acknowledgment reply to the sender - if possible estimate a response time\n  Then, completing the action: Send a concise follow-up with key results in reply to the sender\n- Always use professional and friendly language\n- Be concise and direct\n`
+      const baseEmailGuidelines = `\nEmail Communication Guidelines:\n- You have access to reply_to_email and forward_email tools to communicate with users\n- These tools require a message-id from the email storage\n- When you receive a request via email:\n  FIRST: Send a brief acknowledgment reply to the sender - if possible estimate a response time\n  Then, completing the action: Send a concise follow-up with key results in reply to the sender\n- Always use professional and friendly language\n- Be concise and direct\n\n⚠️  IMPORTANT - Attachment Handling:\n- NEVER download files using download_file and pass the base64 data through your context\n- NEVER include large base64 data in your responses\n- To send files: Use attachments array with datasafe_path reference (e.g., {datasafe_path: "path/to/file.pdf"})\n- The server will fetch files automatically - you just provide the path\n- For email attachments: Use email_message_id + email_filename reference\n`
 
       const agentInstructions = (agent as any).prompt || 'You are a helpful AI assistant.'
       const systemPrompt = `${agentInstructions}\n\n${baseEmailGuidelines}`
 
-      const userPrompt = `New inbound email for ${fullAgentEmail}.\nMessage-ID: ${String(messageId || '')}\nFrom: ${String(from || '')}\nTo: ${String(to || '')}\nSubject: ${String(subject || '')}\nBody:\n${String(text || '')}`
+      // Build user prompt with attachment information if present
+      let userPrompt = `New inbound email for ${fullAgentEmail}.\nMessage-ID: ${String(messageId || '')}\nFrom: ${String(from || '')}\nTo: ${String(to || '')}\nSubject: ${String(subject || '')}\nBody:\n${String(text || '')}`
+
+      // Add attachment information if attachments were stored
+      if (emailAttachments.length > 0) {
+        userPrompt += `\n\n📎 EMAIL ATTACHMENTS (${emailAttachments.length}):`
+        for (const att of emailAttachments) {
+          userPrompt += `\n- File: ${att.filename}`
+          userPrompt += `\n  Type: ${att.mimeType}`
+          userPrompt += `\n  Size: ${att.size} bytes`
+          userPrompt += `\n  ID: ${att.id}`
+        }
+        userPrompt += `\n\n✅ IMPORTANT: Email attachments workflow:`
+        userPrompt += `\n1. Attachments are stored in email storage (not datasafe yet)`
+        userPrompt += `\n2. To work with attachments, use the copy_email_attachment_to_datasafe tool`
+        userPrompt += `\n3. This tool copies the attachment to your datasafe without passing data through AI`
+        userPrompt += `\n4. After copying, use regular datasafe tools to read/process the file`
+        userPrompt += `\n\nExample: copy_email_attachment_to_datasafe(message_id="${String(messageId || '')}", filename="${emailAttachments[0]?.filename}", target_path="Documents/${emailAttachments[0]?.filename}")`
+      }
+
+      console.log('[AgentInbound] Prompt includes:', {
+        hasAttachments: emailAttachments.length > 0,
+        attachmentCount: emailAttachments.length,
+        attachmentIds: emailAttachments.map((a) => a.id)
+      })
 
       const result = await runMCPAgent({
         mcpConfigs,
@@ -438,6 +407,11 @@ export default defineEventHandler(async (event) => {
         currentMessageId: String(messageId || '')
       })
 
+      const mcpDuration = Date.now() - mcpStart
+      const totalDuration = Date.now() - requestStartTime
+      console.log(
+        `[AgentInbound] ⏱️  MCP agent completed in ${mcpDuration}ms (total: ${totalDuration}ms)`
+      )
       console.log(
         '[AgentInbound] MCP result:',
         typeof result === 'string' ? result.substring(0, 160) + '...' : result
@@ -449,7 +423,7 @@ export default defineEventHandler(async (event) => {
         agentId: agent.id,
         teamId: team.id,
         conversationId,
-        attachments: datasafeStored.length,
+        attachments: storedCount,
         mcpProcessed: true,
         policyAllowed: policyDecision.allowed
       }
@@ -462,7 +436,7 @@ export default defineEventHandler(async (event) => {
         agentId: agent.id,
         teamId: team.id,
         conversationId,
-        attachments: datasafeStored.length,
+        attachments: storedCount,
         mcpProcessed: false,
         policyAllowed: policyDecision.allowed,
         policyReason: policyDecision.reason

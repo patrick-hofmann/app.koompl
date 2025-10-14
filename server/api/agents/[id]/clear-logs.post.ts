@@ -3,6 +3,9 @@
  * This will remove all activity logs (MCP, AI, Email) for the agent
  */
 
+import { clearAgentLogs } from '../../../features/mail'
+import { agentLogger } from '../../../utils/agentLogging'
+
 export default defineEventHandler(async (event) => {
   try {
     const agentId = getRouterParam(event, 'id')
@@ -10,11 +13,8 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Agent ID is required' })
     }
 
-    const { agentLogger } = await import('../../../utils/agentLogging')
-    const { mailStorage } = await import('../../../features/mail/storage')
-
     // Clear all logs for this agent
-    const mailLogsResult = await mailStorage.clearAgentLogs(agentId)
+    const mailLogsResult = await clearAgentLogs({ agentId })
     const activityLogsResult = await agentLogger.clearAgentLogs(agentId)
 
     const totalDeleted = mailLogsResult.deletedCount + activityLogsResult.deletedCount

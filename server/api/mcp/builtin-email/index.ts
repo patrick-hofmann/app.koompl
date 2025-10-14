@@ -43,6 +43,7 @@ function applyCors(event: H3Event) {
   setResponseHeader(event, 'Access-Control-Allow-Headers', '*')
 }
 
+// Use centralized attachment parsing from mail feature
 async function parseAttachments(
   args: Record<string, unknown>,
   teamId: string,
@@ -56,64 +57,8 @@ async function parseAttachments(
     size: number
   }>
 > {
-  const attachments: Array<{
-    filename: string
-    data: string
-    encoding: 'base64'
-    mimeType: string
-    size: number
-  }> = []
-
-  if (args.attachments && Array.isArray(args.attachments)) {
-    for (const att of args.attachments) {
-      if (att && typeof att === 'object') {
-        const filename = String(att.filename || `attachment-${Date.now()}.bin`)
-        let data = String(att.data || '')
-        let mimeType = String(att.mimeType || 'application/octet-stream')
-        let size = typeof att.size === 'number' ? att.size : 0
-
-        // If datasafe_path is provided, fetch from datasafe server-side
-        if (att.datasafe_path && typeof att.datasafe_path === 'string') {
-          console.log(`[BuiltinEmailMCP] Fetching attachment from datasafe: ${att.datasafe_path}`)
-          try {
-            const { downloadDatasafeFile } = await import('../builtin-datasafe/operations')
-            const { base64, node } = await downloadDatasafeFile(
-              { teamId, userId, agentId: userId },
-              att.datasafe_path
-            )
-            data = base64
-            mimeType = node.mimeType || mimeType
-            size = node.size || Buffer.from(base64, 'base64').length
-            console.log(`[BuiltinEmailMCP] ✓ Fetched ${filename} from datasafe (${size} bytes)`)
-          } catch (fetchError) {
-            console.error(
-              `[BuiltinEmailMCP] Failed to fetch from datasafe: ${att.datasafe_path}`,
-              fetchError
-            )
-            continue // Skip this attachment
-          }
-        } else if (!data) {
-          continue // No data and no datasafe_path, skip
-        }
-
-        if (!size) {
-          size = Buffer.from(data, 'base64').length
-        }
-
-        if (data) {
-          attachments.push({
-            filename,
-            data,
-            encoding: 'base64' as const,
-            mimeType,
-            size
-          })
-        }
-      }
-    }
-  }
-
-  return attachments
+  const { parseAttachments: parseMailAttachments } = await import('../../../features/mail')
+  return await parseMailAttachments(args, teamId, userId)
 }
 
 export default defineEventHandler(async (event) => {
@@ -149,7 +94,8 @@ export default defineEventHandler(async (event) => {
   const agentEmail = headers['x-agent-email']
   const currentMessageIdHeader = headers['x-current-message-id']
 
-  console.log('[BuiltinEmailMCP] Authenticated:', {
+  const authTimestamp = new Date().toISOString()
+  console.log(`[${authTimestamp}] [BuiltinEmailMCP] Authenticated:`, {
     teamId,
     userId,
     agentEmail,
@@ -222,7 +168,8 @@ export default defineEventHandler(async (event) => {
 
     switch (body.method) {
       case 'initialize': {
-        console.log('[BuiltinEmailMCP] Method: initialize')
+        const timestamp = new Date().toISOString()
+        console.log(`[${timestamp}] [BuiltinEmailMCP] Method: initialize`)
         result = {
           protocolVersion: '2024-11-05',
           capabilities: {
@@ -237,7 +184,9 @@ export default defineEventHandler(async (event) => {
       }
 
       case 'tools/list': {
-        console.log('[BuiltinEmailMCP] Method: tools/list')
+        const startTime = Date.now()
+        const timestamp = new Date().toISOString()
+        console.log(`[${timestamp}] [BuiltinEmailMCP] Method: tools/list`)
         result = {
           tools: [
             {
@@ -359,6 +308,11 @@ export default defineEventHandler(async (event) => {
             }
           ]
         }
+        const duration = Date.now() - startTime
+        const endTimestamp = new Date().toISOString()
+        console.log(
+          `[${endTimestamp}] [BuiltinEmailMCP] ⏱️  tools/list completed in ${duration}ms (${result.tools.length} tools)`
+        )
         break
       }
 
@@ -369,6 +323,7 @@ export default defineEventHandler(async (event) => {
       }
 
       case 'tools/call': {
+        const toolStartTime = Date.now()
         const toolName = body.params?.name
         const args = body.params?.arguments || {}
         const agentId = body.params?.agentId || body.agentId
@@ -378,7 +333,8 @@ export default defineEventHandler(async (event) => {
           throw createError({ statusCode: 400, statusMessage: 'Tool name is required' })
         }
 
-        console.log(`[BuiltinEmailMCP] Tool called: ${toolName}`, {
+        const timestamp = new Date().toISOString()
+        console.log(`[${timestamp}] [BuiltinEmailMCP] Tool called: ${toolName}`, {
           args: Object.keys(args).reduce(
             (acc, key) => {
               // Truncate long data for logging
@@ -466,8 +422,14 @@ export default defineEventHandler(async (event) => {
           })
 
           // Load the original email from storage
-          const { mailStorage } = await import('../../../features/mail/storage')
-          const storedEmail = await mailStorage.getEmailByMessageId(messageId)
+          const { getEmail } = await import('../../../features/mail')
+          const storedEmail = await getEmail(messageId)
+
+          console.log('[BuiltinEmailMCP] Original email lookup:', {
+            messageId,
+            found: !!storedEmail,
+            type: storedEmail?.type
+          })
 
           if (!storedEmail || storedEmail.type !== 'inbound') {
             throw createError({
@@ -571,7 +533,17 @@ ${quotedBody}`
               )
             }
 
-            await mailStorage.storeOutboundEmail({
+            const { storeOutboundEmail } = await import('../../../features/mail')
+
+            console.log('[BuiltinEmailMCP] Storing reply email:', {
+              messageId: sentMessageId,
+              from: explicitFrom || effectiveAgentEmail,
+              to: recipientEmail,
+              conversationId,
+              hasAttachments: attachments.length > 0
+            })
+
+            await storeOutboundEmail({
               messageId: sentMessageId,
               from: explicitFrom || effectiveAgentEmail,
               to: recipientEmail,
@@ -659,8 +631,14 @@ ${quotedBody}`
           })
 
           // Load the original email from storage
-          const { mailStorage } = await import('../../../features/mail/storage')
-          const storedEmail = await mailStorage.getEmailByMessageId(messageId)
+          const { getEmail } = await import('../../../features/mail')
+          const storedEmail = await getEmail(messageId)
+
+          console.log('[BuiltinEmailMCP] Original email lookup:', {
+            messageId,
+            found: !!storedEmail,
+            type: storedEmail?.type
+          })
 
           if (!storedEmail) {
             throw createError({
@@ -723,7 +701,8 @@ ${originalEmail.body}`
                 )
               ))
 
-            await mailStorage.storeOutboundEmail({
+            const { storeOutboundEmail } = await import('../../../features/mail')
+            await storeOutboundEmail({
               messageId: `forward-${Date.now()}-${Math.random().toString(36).slice(2)}`,
               from: from || agentEmail || `Agent <noreply@${teamDomain}>`,
               to: recipientEmail,
@@ -784,6 +763,12 @@ ${originalEmail.body}`
         } else {
           throw createError({ statusCode: 400, statusMessage: `Unknown tool: ${toolName}` })
         }
+
+        const toolDuration = Date.now() - toolStartTime
+        const endTimestamp = new Date().toISOString()
+        console.log(
+          `[${endTimestamp}] [BuiltinEmailMCP] ⏱️  Tool '${toolName}' completed in ${toolDuration}ms`
+        )
 
         break
       }

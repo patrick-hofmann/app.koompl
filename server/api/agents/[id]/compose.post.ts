@@ -3,7 +3,7 @@
  * Handles new emails, replies, and forwards
  */
 
-import { mailStorage } from '../../../features/mail/storage'
+import { getEmail, storeOutboundEmail, createConversationId } from '../../../features/mail'
 import type { Agent } from '~/types'
 
 interface ComposeRequest {
@@ -74,11 +74,9 @@ export default defineEventHandler(async (event) => {
     let references: string[] = []
     let conversationId: string
 
-    const { buildConversationId } = await import('../../../features/mail/threading')
-
     if (request.type === 'reply' && request.inReplyTo) {
       // Load original email to get references
-      const originalEmail = await mailStorage.getEmailByMessageId(request.inReplyTo)
+      const originalEmail = await getEmail(request.inReplyTo)
       if (originalEmail) {
         inReplyTo = originalEmail.email.messageId
         references = [
@@ -89,7 +87,7 @@ export default defineEventHandler(async (event) => {
 
         conversationId =
           originalEmail.email.conversationId ||
-          buildConversationId(
+          createConversationId(
             originalEmail.email.messageId,
             originalEmail.email.inReplyTo,
             originalEmail.email.references
@@ -127,7 +125,7 @@ export default defineEventHandler(async (event) => {
     const sentMessageId =
       mailgunResult.id || `sent-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-    await mailStorage.storeOutboundEmail({
+    await storeOutboundEmail({
       messageId: sentMessageId,
       from: agentEmail,
       to: request.to,

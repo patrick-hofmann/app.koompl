@@ -47,3 +47,20 @@ export type {
   PredefinedKoomplContext,
   CustomKoomplContext
 } from './koompl'
+
+// Mail - Email handling and storage
+export * as mail from './mail'
+export type {
+  MailContext,
+  MailLogEntry,
+  InboundEmail,
+  OutboundEmail,
+  EmailConversation,
+  EmailAttachment,
+  AgentEmailIndex,
+  ThreadingHeaders,
+  StoreInboundEmailParams,
+  StoreOutboundEmailParams,
+  ProcessedAttachments,
+  StoredAttachment
+} from './mail'

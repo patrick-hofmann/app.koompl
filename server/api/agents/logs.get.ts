@@ -1,4 +1,4 @@
-import { mailStorage } from '../../features/mail/storage'
+import { getAgentLogs, getRecentEmails } from '../../features/mail'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -9,9 +9,7 @@ export default defineEventHandler(async (event) => {
   const limit = Math.min(Math.max(parseInt(String(query.limit || '100'), 10) || 50, 1), 500)
 
   try {
-    const items = agentId
-      ? await mailStorage.getLogsForAgent(agentId, limit)
-      : await mailStorage.getRecentEmails(limit)
+    const items = agentId ? await getAgentLogs({ agentId }, limit) : await getRecentEmails(limit)
 
     return {
       ok: true,

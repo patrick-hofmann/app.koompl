@@ -1,4 +1,4 @@
-import { mailStorage } from '../../features/mail/storage'
+import { getRecentEmails } from '../../features/mail'
 
 export default defineEventHandler(async (_event) => {
   try {
@@ -32,7 +32,7 @@ export default defineEventHandler(async (_event) => {
     let emailsReceived = 0
     let emailsResponded = 0
     try {
-      const logs = await mailStorage.getRecentEmails(1000)
+      const logs = await getRecentEmails(1000)
       const seen = new Set<string>()
       const filtered = logs
         .map((log) => {

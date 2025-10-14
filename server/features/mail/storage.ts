@@ -524,6 +524,7 @@ export class UnifiedMailStorage {
     console.log(`[MailStorage] Clearing all emails for agent ${agentId}`)
 
     let deletedCount = 0
+    const messageIdsToClean = new Set<string>()
 
     try {
       const pathsToDelete = new Set<string>()
@@ -538,6 +539,10 @@ export class UnifiedMailStorage {
         } else if (log.type === 'outgoing') {
           pathsToDelete.add(`emails/outbound/${log.id}.json`)
         }
+        // Track message IDs for attachment cleanup
+        if (log.messageId) {
+          messageIdsToClean.add(log.messageId)
+        }
       }
 
       // Gather paths from conversation index (in case logs are missing)
@@ -547,6 +552,7 @@ export class UnifiedMailStorage {
           for (const messageId of conversation.messageIds) {
             pathsToDelete.add(`emails/inbound/inbound-${messageId}.json`)
             pathsToDelete.add(`emails/outbound/outbound-${messageId}.json`)
+            messageIdsToClean.add(messageId)
           }
         }
       }
@@ -557,6 +563,16 @@ export class UnifiedMailStorage {
         if (email && email.agentId === agentId) {
           await this.storage.removeItem(path)
           deletedCount++
+        }
+      }
+
+      // Remove attachments for all cleared emails
+      const { deleteAttachments } = await import('./attachment-storage')
+      for (const messageId of messageIdsToClean) {
+        try {
+          await deleteAttachments(messageId)
+        } catch (error) {
+          console.warn(`[MailStorage] Failed to delete attachments for ${messageId}:`, error)
         }
       }
 

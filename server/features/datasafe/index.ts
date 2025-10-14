@@ -146,3 +146,47 @@ export async function getTree(
   }
   return await listFolderStorage(context.teamId, path)
 }
+
+/**
+ * Copy an email attachment to datasafe
+ * This allows agents to move attachments from email storage to datasafe without passing data through AI
+ */
+export async function copyEmailAttachmentToDatasafe(
+  context: DatasafeContext,
+  params: {
+    messageId: string
+    filename: string
+    targetPath: string
+    overwrite?: boolean
+  }
+): Promise<DatasafeFileNode> {
+  await ensureTeamDatasafe(context.teamId)
+
+  // Get the attachment from email storage
+  const { getAttachment } = await import('../mail/attachment-storage')
+  const attachment = await getAttachment(params.messageId, params.filename)
+
+  if (!attachment) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: `Email attachment not found: ${params.messageId}/${params.filename}`
+    })
+  }
+
+  console.log(
+    `[Datasafe] Copying email attachment to datasafe: ${params.filename} -> ${params.targetPath}`
+  )
+
+  // Store to datasafe
+  return await storeFile(context.teamId, params.targetPath, {
+    base64: attachment.data,
+    mimeType: attachment.mimeType,
+    size: attachment.size,
+    source: 'email-attachment',
+    metadata: {
+      originalMessageId: params.messageId,
+      originalFilename: params.filename
+    },
+    overwrite: params.overwrite
+  })
+}

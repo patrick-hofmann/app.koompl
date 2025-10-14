@@ -76,7 +76,8 @@ export default defineEventHandler(async (event) => {
   const { authenticateMcpRequest } = await import('../shared/auth')
   const { teamId, userId, isDevelopmentMode } = await authenticateMcpRequest(event)
 
-  console.log('[BuiltinDatasafeMCP] Authenticated:', {
+  const timestamp = new Date().toISOString()
+  console.log(`[${timestamp}] [BuiltinDatasafeMCP] Authenticated:`, {
     teamId,
     userId,
     devMode: isDevelopmentMode
@@ -113,7 +114,8 @@ export default defineEventHandler(async (event) => {
 
     switch (body.method) {
       case 'initialize': {
-        console.log('[BuiltinDatasafeMCP] Method: initialize')
+        const timestamp = new Date().toISOString()
+        console.log(`[${timestamp}] [BuiltinDatasafeMCP] Method: initialize`)
         result = {
           protocolVersion: '2024-11-05',
           capabilities: {
@@ -128,7 +130,9 @@ export default defineEventHandler(async (event) => {
       }
 
       case 'tools/list': {
-        console.log('[BuiltinDatasafeMCP] Method: tools/list')
+        const startTime = Date.now()
+        const timestamp = new Date().toISOString()
+        console.log(`[${timestamp}] [BuiltinDatasafeMCP] Method: tools/list`)
         result = {
           tools: [
             {
@@ -237,6 +241,37 @@ export default defineEventHandler(async (event) => {
               }
             },
             {
+              name: 'copy_email_attachment_to_datasafe',
+              description:
+                'Copy an email attachment from email storage to datasafe. Use this to access email attachments without passing binary data through AI. First copy the attachment to datasafe, then use regular datasafe tools to work with it.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  message_id: {
+                    type: 'string',
+                    description: 'Message ID of the email containing the attachment'
+                  },
+                  filename: {
+                    type: 'string',
+                    description: 'Filename of the attachment to copy'
+                  },
+                  target_path: {
+                    type: 'string',
+                    description:
+                      'Target path in datasafe (e.g., "Documents/filename.pdf" or "test1/filename.png")'
+                  },
+                  overwrite: {
+                    type: 'boolean',
+                    description: 'Whether to overwrite if file exists (default: false)'
+                  },
+                  teamId: { type: 'string' },
+                  userId: { type: 'string' }
+                },
+                required: ['message_id', 'filename', 'target_path'],
+                additionalProperties: false
+              }
+            },
+            {
               name: 'list_rules',
               description: 'List Datasafe automation rules configured for the team',
               inputSchema: {
@@ -263,6 +298,11 @@ export default defineEventHandler(async (event) => {
             }
           ]
         }
+        const duration = Date.now() - startTime
+        const endTimestamp = new Date().toISOString()
+        console.log(
+          `[${endTimestamp}] [BuiltinDatasafeMCP] ⏱️  tools/list completed in ${duration}ms (${result.tools.length} tools)`
+        )
         break
       }
 
@@ -273,6 +313,7 @@ export default defineEventHandler(async (event) => {
       }
 
       case 'tools/call': {
+        const toolStartTime = Date.now()
         const toolName = body.params?.name
         const args = body.params?.arguments || {}
 
@@ -280,7 +321,8 @@ export default defineEventHandler(async (event) => {
           throw createError({ statusCode: 400, statusMessage: 'Tool name is required' })
         }
 
-        console.log(`[BuiltinDatasafeMCP] Tool called: ${toolName}`, {
+        const timestamp = new Date().toISOString()
+        console.log(`[${timestamp}] [BuiltinDatasafeMCP] Tool called: ${toolName}`, {
           args: Object.keys(args).reduce(
             (acc, key) => {
               // Truncate base64 data for logging
@@ -603,6 +645,78 @@ export default defineEventHandler(async (event) => {
             break
           }
 
+          case 'copy_email_attachment_to_datasafe': {
+            const startTime = Date.now()
+            try {
+              if (typeof args.message_id !== 'string' || !args.message_id) {
+                throw new Error('message_id is required')
+              }
+              if (typeof args.filename !== 'string' || !args.filename) {
+                throw new Error('filename is required')
+              }
+              if (typeof args.target_path !== 'string' || !args.target_path) {
+                throw new Error('target_path is required')
+              }
+
+              console.log(
+                `[BuiltinDatasafeMCP] Copying email attachment: ${args.filename} from message ${args.message_id} to ${args.target_path}`
+              )
+
+              const { copyEmailAttachmentToDatasafe } = await import('../../../features/datasafe')
+              const node = await copyEmailAttachmentToDatasafe(resolvedContext, {
+                messageId: args.message_id as string,
+                filename: args.filename as string,
+                targetPath: args.target_path as string,
+                overwrite: Boolean(args.overwrite)
+              })
+
+              const duration = Date.now() - startTime
+              console.log(
+                `[BuiltinDatasafeMCP] ⏱️  Copied attachment in ${duration}ms: ${node.path} (${node.size} bytes)`
+              )
+
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: true,
+                      data: {
+                        path: node.path,
+                        size: node.size,
+                        mimeType: node.mimeType,
+                        createdAt: node.createdAt
+                      },
+                      summary: `Successfully copied '${args.filename}' to ${node.path}`
+                    })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              const duration = Date.now() - startTime
+              console.error(
+                `[BuiltinDatasafeMCP] ⏱️  Failed to copy attachment in ${duration}ms:`,
+                err
+              )
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to copy email attachment',
+                      messageId: args.message_id,
+                      filename: args.filename
+                    })
+                  }
+                ],
+                isError: true
+              }
+            }
+            break
+          }
+
           case 'get_stats': {
             try {
               const limit = typeof args.limit === 'number' ? (args.limit as number) : undefined
@@ -636,6 +750,9 @@ export default defineEventHandler(async (event) => {
           default:
             throw createError({ statusCode: 400, statusMessage: `Unknown tool: ${toolName}` })
         }
+
+        const toolDuration = Date.now() - toolStartTime
+        console.log(`[BuiltinDatasafeMCP] ⏱️  Tool '${toolName}' completed in ${toolDuration}ms`)
 
         result = toolResult
         break

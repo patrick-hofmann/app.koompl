@@ -1,9 +1,9 @@
-import { mailStorage } from '../../features/mail/storage'
+import { getAllLogs } from '../../features/mail'
 
 export default defineEventHandler(async (_event) => {
   try {
     // Get all logs from unified storage
-    const allLogs = await mailStorage.getAllLogs()
+    const allLogs = await getAllLogs()
 
     // Get existing agents
     const agentsStorage = useStorage('agents')
@@ -25,6 +25,9 @@ export default defineEventHandler(async (_event) => {
 
     // Remove orphaned logs from unified log
     const validLogs = allLogs.filter((log) => log.agentId && existingAgentIds.has(log.agentId))
+
+    // Direct access to storage layer for cleanup operations
+    const { mailStorage } = await import('../../features/mail/storage')
 
     // Update the unified log file
     await mailStorage.storage.setItem('logs/unified.json', validLogs)

@@ -3,6 +3,9 @@
  * This will remove all emails and activity logs for the agent
  */
 
+import { clearAgentEmails, clearAgentLogs } from '../../../features/mail'
+import { agentLogger } from '../../../utils/agentLogging'
+
 export default defineEventHandler(async (event) => {
   try {
     const agentId = getRouterParam(event, 'id')
@@ -10,12 +13,9 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Agent ID is required' })
     }
 
-    const { mailStorage } = await import('../../../features/mail/storage')
-    const { agentLogger } = await import('../../../utils/agentLogging')
-
     // Clear all emails and logs for this agent
-    const emailsResult = await mailStorage.clearAgentEmails(agentId)
-    const mailLogsResult = await mailStorage.clearAgentLogs(agentId)
+    const emailsResult = await clearAgentEmails({ agentId })
+    const mailLogsResult = await clearAgentLogs({ agentId })
     const activityLogsResult = await agentLogger.clearAgentLogs(agentId)
 
     const totalDeleted =

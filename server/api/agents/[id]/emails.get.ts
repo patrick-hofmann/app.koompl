@@ -1,4 +1,4 @@
-import { mailStorage } from '../../../features/mail/storage'
+import { getAgentEmails } from '../../../features/mail'
 
 export default defineEventHandler(async (event) => {
   const agentId = getRouterParam(event, 'id') as string
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Use unified mail storage to get agent emails
-    const emails = await mailStorage.getAgentEmails(agentId)
+    const emails = await getAgentEmails({ agentId })
 
     // Apply limit and type filtering
     const incoming = emails.incoming.slice(0, limit)

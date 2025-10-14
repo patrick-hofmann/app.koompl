@@ -4,7 +4,7 @@
  */
 
 import type { Agent } from '~/types'
-import { mailStorage } from '../../features/mail/storage'
+import { storeOutboundEmail } from '../../features/mail'
 import { agentLogger } from '../../utils/agentLogging'
 import { determineMailgunDomain, sendMailgunMessage } from '../../utils/mailgunHelpers'
 
@@ -137,7 +137,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Store the outbound email in unified storage (only real outgoing emails)
-    await mailStorage.storeOutboundEmail({
+    await storeOutboundEmail({
       messageId,
       from,
       to,

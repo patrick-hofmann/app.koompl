@@ -1,4 +1,4 @@
-import { mailStorage } from '../../features/mail/storage'
+import { getEmail } from '../../features/mail'
 
 export default defineEventHandler(async (event) => {
   const messageId = getRouterParam(event, 'messageId')
@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   console.log(`[Mail API] Looking up email by message-id: ${messageId}`)
 
-  const result = await mailStorage.getEmailByMessageId(messageId)
+  const result = await getEmail(messageId)
 
   if (!result) {
     throw createError({
