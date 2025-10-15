@@ -5,10 +5,10 @@ definePageMeta({
   title: 'Template Gallery'
 })
 
-const toast = useToast()
+// No toasts needed for templates anymore
 
 // Predefined Koompls from config
-const { getPredefinedKoompls, predefinedToAgent } = useAgents()
+const { getPredefinedKoompls } = useAgents()
 const predefinedKoompls = getPredefinedKoompls()
 
 // Get team domain
@@ -27,24 +27,14 @@ function constructFullEmail(username: string): string {
   return `${username}@${teamDomain.value}`
 }
 
-// Fetch all agents to check which templates are enabled
-const { data: agents, refresh } = await useAsyncData(
-  'agents-for-templates',
-  () => $fetch<Agent[]>('/api/agents'),
-  { server: false, lazy: true }
-)
-
-// Track which predefined Koompls are enabled
-const enabledPredefined = computed(() => {
-  const agentsList = agents.value || []
+// All templates are considered active; compute display data only
+const displayTemplates = computed(() => {
   return predefinedKoompls.map((pk) => {
-    const actualAgent = agentsList.find((a) => a.id === pk.id && a.isPredefined)
-    const username = actualAgent?.email || pk.email.split('@')[0]
+    const username = pk.email.split('@')[0]
     return {
       ...pk,
       email: username,
-      fullEmail: constructFullEmail(username),
-      enabled: !!actualAgent
+      fullEmail: constructFullEmail(username)
     }
   })
 })
@@ -58,43 +48,7 @@ function showInfo(koompl: PredefinedKoompl) {
   infoOpen.value = true
 }
 
-// Toggle enable/disable
-const togglingIds = ref(new Set<string>())
-
-async function togglePredefined(koompl: PredefinedKoompl & { enabled: boolean }) {
-  togglingIds.value.add(koompl.id)
-
-  try {
-    if (koompl.enabled) {
-      // Disable - delete the agent
-      await $fetch(`/api/agents/${koompl.id}`, { method: 'DELETE' })
-      toast.add({
-        title: 'Template disabled',
-        color: 'success',
-        icon: 'i-lucide-circle-off'
-      })
-    } else {
-      // Enable - create agent from template
-      const agent = predefinedToAgent(koompl, session.value?.team?.id)
-      await $fetch('/api/agents', { method: 'POST', body: agent })
-      toast.add({
-        title: 'Template enabled',
-        color: 'success',
-        icon: 'i-lucide-circle-check'
-      })
-    }
-    await refresh()
-  } catch (error) {
-    toast.add({
-      title: 'Error',
-      description: String(error),
-      color: 'error',
-      icon: 'i-lucide-alert-triangle'
-    })
-  } finally {
-    togglingIds.value.delete(koompl.id)
-  }
-}
+// No toggling anymore
 
 // Test modals
 const testOpen = ref(false)
@@ -102,14 +56,12 @@ const testAgentId = ref<string | null>(null)
 const roundTripOpen = ref(false)
 const roundTripAgentId = ref<string | null>(null)
 
-function testPrompt(koompl: PredefinedKoompl & { enabled: boolean }) {
-  if (!koompl.enabled) return
+function testPrompt(koompl: PredefinedKoompl) {
   testAgentId.value = koompl.id
   testOpen.value = true
 }
 
-function testRoundTrip(koompl: PredefinedKoompl & { enabled: boolean }) {
-  if (!koompl.enabled) return
+function testRoundTrip(koompl: PredefinedKoompl) {
   roundTripAgentId.value = koompl.id
   roundTripOpen.value = true
 }
@@ -139,13 +91,10 @@ function testRoundTrip(koompl: PredefinedKoompl & { enabled: boolean }) {
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AgentsPredefinedKoomplTile
-            v-for="pk in enabledPredefined"
+            v-for="pk in displayTemplates"
             :key="pk.id"
             :koompl="pk"
-            :enabled="pk.enabled"
-            :loading="togglingIds.has(pk.id)"
             :team-domain="teamDomain"
-            @toggle="togglePredefined(pk)"
             @info="showInfo(pk)"
             @test-prompt="testPrompt(pk)"
             @test-round-trip="testRoundTrip(pk)"

@@ -5,7 +5,6 @@ definePageMeta({
   title: 'Koompls'
 })
 
-const toast = useToast()
 const { session } = await useUserSession()
 
 // Get team domain
@@ -28,11 +27,10 @@ const { getPredefinedKoompls } = useAgents()
 const predefinedKoompls = getPredefinedKoompls()
 
 // Fetch all agents (only predefined agents are supported now)
-const { data: agents, refresh } = await useAsyncData(
-  'agents',
-  () => $fetch<Agent[]>('/api/agents'),
-  { server: false, lazy: true }
-)
+const { data: agents } = await useAsyncData('agents', () => $fetch<Agent[]>('/api/agents'), {
+  server: false,
+  lazy: true
+})
 
 // Track which predefined Koompls are enabled and get actual agent data
 const enabledPredefined = computed(() => {
@@ -97,45 +95,7 @@ function openInfo(koompl: PredefinedKoompl) {
   infoOpen.value = true
 }
 
-async function togglePredefined(koompl: PredefinedKoompl) {
-  if (koompl.enabled) {
-    // Disable: Delete the agent
-    try {
-      await $fetch(`/api/agents/${koompl.id}`, { method: 'DELETE' })
-      toast.add({
-        title: 'Koompl Disabled',
-        description: `${koompl.name} has been disabled.`
-      })
-    } catch {
-      toast.add({
-        title: 'Error',
-        description: 'Failed to disable Koompl.',
-        color: 'error'
-      })
-    }
-  } else {
-    // Enable: Create the agent
-    try {
-      const { predefinedToAgent } = useAgents()
-      const agentData = predefinedToAgent(koompl, session.value?.team?.id)
-      await $fetch('/api/agents', {
-        method: 'POST',
-        body: agentData
-      })
-      toast.add({
-        title: 'Koompl Enabled',
-        description: `${koompl.name} has been enabled.`
-      })
-    } catch {
-      toast.add({
-        title: 'Error',
-        description: 'Failed to enable Koompl.',
-        color: 'error'
-      })
-    }
-  }
-  await refresh()
-}
+// No toggle flow anymore
 </script>
 
 <template>
@@ -165,9 +125,8 @@ async function togglePredefined(koompl: PredefinedKoompl) {
               v-for="pk in enabledPredefined"
               :key="pk.id"
               :koompl="pk"
-              @toggle="togglePredefined(pk)"
               @info="openInfo(pk)"
-              @test="testPredefined(pk.id)"
+              @test-prompt="testPredefined(pk.id)"
               @test-round-trip="testPredefinedRoundTrip(pk.id)"
             />
           </div>

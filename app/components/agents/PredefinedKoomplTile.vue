@@ -3,8 +3,6 @@ import type { PredefinedKoompl } from '~/composables/useAgents'
 
 interface Props {
   koompl: PredefinedKoompl
-  enabled: boolean
-  loading?: boolean
   teamDomain: string
   mailLink?: string
 }
@@ -12,16 +10,13 @@ interface Props {
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  (e: 'toggle', value: boolean): void
   (e: 'info' | 'testPrompt' | 'testRoundTrip'): void
 }>()
 
 const cardClass = computed(() => {
   return [
     'relative overflow-hidden transition-all duration-300 cursor-pointer group',
-    props.enabled
-      ? 'ring-2 ring-primary bg-primary/5 shadow-lg scale-[1.02]'
-      : 'hover:shadow-md hover:scale-[1.01] bg-elevated'
+    'ring-2 ring-primary bg-primary/5 shadow-lg scale-[1.02]'
   ]
 })
 
@@ -35,42 +30,7 @@ const iconBgClass = computed(() => {
   return colors[props.koompl.color] || colors.blue
 })
 
-const checkboxColor = computed(() => {
-  const colors: Record<string, 'primary' | 'green' | 'blue' | 'purple' | 'orange'> = {
-    blue: 'blue',
-    green: 'green',
-    purple: 'purple',
-    orange: 'orange'
-  }
-  return colors[props.koompl.color] || 'primary'
-})
-
-// Get checkbox UI classes based on koompl color
-const checkboxClasses = computed(() => {
-  const colorMap: Record<string, { border: string; icon: string; bg: string }> = {
-    blue: {
-      border: 'border-blue-500',
-      icon: 'text-blue-500',
-      bg: 'bg-blue-500'
-    },
-    green: {
-      border: 'border-green-500',
-      icon: 'text-green-500',
-      bg: 'bg-green-500'
-    },
-    purple: {
-      border: 'border-purple-500',
-      icon: 'text-purple-500',
-      bg: 'bg-purple-500'
-    },
-    orange: {
-      border: 'border-orange-500',
-      icon: 'text-orange-500',
-      bg: 'bg-orange-500'
-    }
-  }
-  return colorMap[props.koompl.color] || colorMap.blue
-})
+// No checkbox anymore
 
 const teamDomain = computed(() => {
   return props.teamDomain || 'agents.local'
@@ -130,7 +90,7 @@ const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}
     />
 
     <div class="relative space-y-4">
-      <!-- Header with checkbox -->
+      <!-- Header -->
       <div class="flex items-start justify-between gap-3">
         <div class="flex items-center gap-3 flex-1 min-w-0">
           <!-- Icon -->
@@ -146,22 +106,6 @@ const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}
             <p class="text-sm text-muted truncate">{{ koompl.email }}@{{ teamDomain }}</p>
           </div>
         </div>
-
-        <!-- Checkbox -->
-        <UCheckbox
-          :model-value="enabled"
-          :disabled="loading"
-          :color="checkboxColor"
-          size="xl"
-          :ui="{
-            base: '',
-            background: enabled ? checkboxClasses.bg : 'bg-transparent',
-            border: `border-2 ${checkboxClasses.border}`,
-            icon: enabled ? checkboxClasses.icon : 'text-transparent'
-          }"
-          @update:model-value="emit('toggle', $event)"
-          @click.stop
-        />
       </div>
 
       <!-- Role badge -->
@@ -196,32 +140,29 @@ const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}
             icon="i-lucide-mail"
             size="xs"
             variant="ghost"
-            :color="props.enabled ? 'primary' : 'neutral'"
-            :to="props.enabled ? mailboxLink : undefined"
-            :disabled="!props.enabled"
+            color="primary"
+            :to="mailboxLink"
             title="View mailbox"
             @click.stop
           />
 
-          <!-- Test buttons (only when enabled) -->
-          <template v-if="enabled">
-            <UButton
-              icon="i-lucide-flask-conical"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              title="Test prompt"
-              @click.stop="emit('testPrompt')"
-            />
-            <UButton
-              icon="i-lucide-rotate-ccw"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              title="Test round-trip"
-              @click.stop="emit('testRoundTrip')"
-            />
-          </template>
+          <!-- Test buttons -->
+          <UButton
+            icon="i-lucide-flask-conical"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            title="Test prompt"
+            @click.stop="emit('testPrompt')"
+          />
+          <UButton
+            icon="i-lucide-rotate-ccw"
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            title="Test round-trip"
+            @click.stop="emit('testRoundTrip')"
+          />
 
           <!-- Info button -->
           <UButton
@@ -233,14 +174,6 @@ const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}
             @click.stop="emit('info')"
           />
         </div>
-      </div>
-
-      <!-- Loading overlay -->
-      <div
-        v-if="loading"
-        class="absolute inset-0 bg-elevated/80 backdrop-blur-sm flex items-center justify-center rounded-lg"
-      >
-        <UIcon name="i-lucide-loader-circle" class="w-6 h-6 animate-spin text-primary" />
       </div>
     </div>
   </UCard>
