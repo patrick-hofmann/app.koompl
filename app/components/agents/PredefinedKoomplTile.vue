@@ -36,38 +36,7 @@ const teamDomain = computed(() => {
   return props.teamDomain || 'agents.local'
 })
 
-// Get MCP tool info
-const mcpTools = computed(() => {
-  const toolMap: Record<string, { label: string; icon: string; color: string }> = {
-    'builtin-calendar': {
-      label: 'Calendar',
-      icon: 'i-lucide-calendar',
-      color: 'blue'
-    },
-    'builtin-kanban': {
-      label: 'Tasks',
-      icon: 'i-lucide-kanban',
-      color: 'purple'
-    },
-    'builtin-datasafe': {
-      label: 'Files',
-      icon: 'i-lucide-folder',
-      color: 'orange'
-    },
-    'builtin-email': {
-      label: 'Email',
-      icon: 'i-lucide-mail',
-      color: 'green'
-    },
-    'builtin-agents': {
-      label: 'Delegation',
-      icon: 'i-lucide-users',
-      color: 'primary'
-    }
-  }
-
-  return (props.koompl.mcp_servers || []).map((id) => toolMap[id]).filter(Boolean)
-})
+// (removed) Former MCP tools mapping; tile now shows raw server IDs
 
 const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}`)
 </script>
@@ -118,13 +87,13 @@ const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}
         {{ koompl.short_description || koompl.description }}
       </p>
 
-      <!-- MCP Tools -->
-      <div v-if="mcpTools.length > 0" class="flex flex-wrap gap-1.5">
-        <UBadge v-for="tool in mcpTools" :key="tool.label" variant="soft" size="sm">
-          <template #leading>
-            <UIcon :name="tool.icon" class="w-3 h-3" />
-          </template>
-          {{ tool.label }}
+      <!-- MCP Servers -->
+      <div
+        v-if="koompl.mcp_servers && koompl.mcp_servers.length > 0"
+        class="flex flex-wrap gap-1.5"
+      >
+        <UBadge v-for="serverId in koompl.mcp_servers" :key="serverId" variant="outline" size="sm">
+          {{ serverId }}
         </UBadge>
       </div>
 
