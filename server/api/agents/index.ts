@@ -1,5 +1,4 @@
-import type { Agent } from '~/types'
-import { listAgents, createAgent, updateAgent, deleteAgent } from '../../features/agent'
+import { listAgents } from '../../features/agent'
 
 export default defineEventHandler(async (event) => {
   const method = getMethod(event)
@@ -14,38 +13,27 @@ export default defineEventHandler(async (event) => {
   }
 
   if (method === 'POST') {
-    const body = await readBody<Partial<Agent>>(event)
-    const session = await getUserSession(event)
-
-    const agent = await createAgent({ teamId: session?.team?.id, userId: session?.user?.id }, body)
-    return agent
+    // Custom agent creation is no longer supported
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Custom agent creation is not allowed. Only predefined agents are supported.'
+    })
   }
 
   if (method === 'PUT' || method === 'PATCH') {
-    const body = await readBody<Partial<Agent>>(event)
-    if (!body.id) {
-      throw createError({ statusCode: 400, statusMessage: 'Missing agent id' })
-    }
-
-    const agent = await updateAgent(body.id, body)
-    if (!agent) {
-      throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
-    }
-    return agent
+    // Custom agent updates are no longer supported
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Custom agent updates are not allowed. Only predefined agents are supported.'
+    })
   }
 
   if (method === 'DELETE') {
-    const query = getQuery(event)
-    const id = String(query.id || '')
-    if (!id) {
-      throw createError({ statusCode: 400, statusMessage: 'Missing id' })
-    }
-
-    const success = await deleteAgent(id)
-    if (!success) {
-      throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
-    }
-    return { ok: true }
+    // Custom agent deletion is no longer supported
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Custom agent deletion is not allowed. Only predefined agents are supported.'
+    })
   }
 
   throw createError({ statusCode: 405, statusMessage: 'Method not allowed' })

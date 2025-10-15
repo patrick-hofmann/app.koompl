@@ -219,10 +219,6 @@ async function savePolicy(agent: Agent) {
   }
 }
 
-function policyDescription(rule: MailPolicyRule): string {
-  return MAIL_POLICY_OPTIONS.find((option) => option.value === rule)?.description || ''
-}
-
 const sortedAgents = computed(() => {
   const agents = agentsData.value || []
   return [...agents].sort((a, b) => {
@@ -257,16 +253,14 @@ const sortedAgents = computed(() => {
 
         <ClientOnly>
           <template #fallback>
-            <div class="space-y-3">
-              <USkeleton v-for="n in 3" :key="n" class="h-20 w-full" />
-            </div>
+            <USkeleton class="h-64 w-full" />
           </template>
 
-          <div v-if="pending" class="space-y-3">
-            <USkeleton v-for="n in 3" :key="n" class="h-20 w-full" />
+          <div v-if="pending">
+            <USkeleton class="h-64 w-full" />
           </div>
 
-          <div v-else class="space-y-4">
+          <div v-else>
             <UAlert
               v-if="sortedAgents.length === 0"
               title="No agents found"
@@ -275,110 +269,157 @@ const sortedAgents = computed(() => {
               color="neutral"
             />
 
-            <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <UCard v-for="agent in sortedAgents" :key="agent.id">
+            <div v-else class="space-y-4">
+              <!-- Policy Legend -->
+              <UCard>
                 <template #header>
-                  <div class="flex items-center justify-between gap-3">
-                    <div class="flex items-center gap-3 min-w-0">
-                      <UAvatar v-bind="agent.avatar" size="md" />
-                      <div class="min-w-0">
-                        <p class="font-semibold text-highlighted truncate">{{ agent.name }}</p>
-                        <p class="text-xs text-muted truncate">{{ agent.email }}</p>
-                      </div>
-                    </div>
-                    <UBadge :variant="agent.isPredefined ? 'subtle' : 'outline'">
-                      {{ agent.isPredefined ? 'Predefined' : agent.role || 'Agent' }}
-                    </UBadge>
-                  </div>
+                  <h3 class="text-sm font-medium text-highlighted">Policy Types</h3>
                 </template>
-
-                <div class="space-y-4">
-                  <div>
-                    <UFormField label="Inbound policy">
-                      <USelect
-                        :model-value="ensurePolicyState(agent).inbound"
-                        :items="MAIL_POLICY_OPTIONS"
-                        option-attribute="label"
-                        value-attribute="value"
-                        @update:model-value="(value: MailPolicyRule) => updateInbound(agent, value)"
-                      />
-                    </UFormField>
-                    <p class="text-xs text-muted mt-1">
-                      {{ policyDescription(ensurePolicyState(agent).inbound) }}
-                    </p>
-                    <UTextarea
-                      class="mt-2"
-                      :model-value="ensurePolicyState(agent).allowedInbound"
-                      placeholder="user@example.com, partner@example.org"
-                      :rows="2"
-                      @update:model-value="(value: string) => updateAllowedInbound(agent, value)"
-                    />
-                    <p class="text-[11px] text-muted mt-1">Comma or newline separated addresses.</p>
-                  </div>
-
-                  <USeparator />
-
-                  <div>
-                    <UFormField label="Outbound policy">
-                      <USelect
-                        :model-value="ensurePolicyState(agent).outbound"
-                        :items="MAIL_POLICY_OPTIONS"
-                        option-attribute="label"
-                        value-attribute="value"
-                        @update:model-value="
-                          (value: MailPolicyRule) => updateOutbound(agent, value)
-                        "
-                      />
-                    </UFormField>
-                    <p class="text-xs text-muted mt-1">
-                      {{ policyDescription(ensurePolicyState(agent).outbound) }}
-                    </p>
-                    <UTextarea
-                      class="mt-2"
-                      :model-value="ensurePolicyState(agent).allowedOutbound"
-                      placeholder="user@example.com, partner@example.org"
-                      :rows="2"
-                      @update:model-value="(value: string) => updateAllowedOutbound(agent, value)"
-                    />
-                    <p class="text-[11px] text-muted mt-1">Comma or newline separated addresses.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  <div v-for="option in MAIL_POLICY_OPTIONS" :key="option.value" class="space-y-1">
+                    <div class="font-medium text-highlighted">{{ option.label }}</div>
+                    <div class="text-muted">{{ option.description }}</div>
                   </div>
                 </div>
+              </UCard>
 
-                <template #footer>
-                  <div class="flex flex-wrap items-center gap-2 justify-between">
-                    <div class="flex items-center gap-2">
-                      <UButton
-                        color="neutral"
-                        variant="outline"
-                        icon="i-lucide-undo-2"
-                        size="xs"
-                        :disabled="!ensurePolicyState(agent).dirty"
-                        @click="resetToBase(agent)"
+              <!-- Agents Table -->
+              <UCard>
+                <div class="overflow-x-auto">
+                  <table class="w-full">
+                    <thead>
+                      <tr class="border-b border-gray-200 dark:border-gray-700">
+                        <th class="text-left py-3 px-4 font-medium text-highlighted">Agent</th>
+                        <th class="text-left py-3 px-4 font-medium text-highlighted">Inbound</th>
+                        <th class="text-left py-3 px-4 font-medium text-highlighted">Outbound</th>
+                        <th class="text-left py-3 px-4 font-medium text-highlighted">
+                          Allowed Addresses
+                        </th>
+                        <th class="text-center py-3 px-4 font-medium text-highlighted">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="agent in sortedAgents"
+                        :key="agent.id"
+                        class="border-b border-gray-100 dark:border-gray-800"
                       >
-                        Revert
-                      </UButton>
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        icon="i-lucide-rotate-ccw"
-                        size="xs"
-                        @click="resetToDefaults(agent)"
-                      >
-                        Defaults
-                      </UButton>
-                    </div>
-                    <UButton
-                      color="primary"
-                      icon="i-lucide-save"
-                      size="xs"
-                      :loading="ensurePolicyState(agent).saving"
-                      :disabled="!ensurePolicyState(agent).dirty || ensurePolicyState(agent).saving"
-                      @click="savePolicy(agent)"
-                    >
-                      Save
-                    </UButton>
-                  </div>
-                </template>
+                        <td class="py-3 px-4">
+                          <div class="flex items-center gap-3">
+                            <UAvatar v-bind="agent.avatar" size="sm" />
+                            <div class="min-w-0">
+                              <div class="flex items-center gap-2">
+                                <p class="font-medium text-highlighted truncate">
+                                  {{ agent.name }}
+                                </p>
+                                <UBadge
+                                  :variant="agent.isPredefined ? 'subtle' : 'outline'"
+                                  size="xs"
+                                >
+                                  {{ agent.isPredefined ? 'Predefined' : agent.role || 'Agent' }}
+                                </UBadge>
+                              </div>
+                              <p class="text-xs text-muted truncate">{{ agent.email }}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td class="py-3 px-4">
+                          <USelect
+                            :model-value="ensurePolicyState(agent).inbound"
+                            :items="MAIL_POLICY_OPTIONS"
+                            option-attribute="label"
+                            value-attribute="value"
+                            size="sm"
+                            @update:model-value="
+                              (value: MailPolicyRule) => updateInbound(agent, value)
+                            "
+                          />
+                        </td>
+                        <td class="py-3 px-4">
+                          <USelect
+                            :model-value="ensurePolicyState(agent).outbound"
+                            :items="MAIL_POLICY_OPTIONS"
+                            option-attribute="label"
+                            value-attribute="value"
+                            size="sm"
+                            @update:model-value="
+                              (value: MailPolicyRule) => updateOutbound(agent, value)
+                            "
+                          />
+                        </td>
+                        <td class="py-3 px-4">
+                          <div class="space-y-2">
+                            <div>
+                              <label class="text-xs text-muted">Inbound:</label>
+                              <UTextarea
+                                :model-value="ensurePolicyState(agent).allowedInbound"
+                                placeholder="user@example.com"
+                                :rows="1"
+                                size="xs"
+                                @update:model-value="
+                                  (value: string) => updateAllowedInbound(agent, value)
+                                "
+                              />
+                            </div>
+                            <div>
+                              <label class="text-xs text-muted">Outbound:</label>
+                              <UTextarea
+                                :model-value="ensurePolicyState(agent).allowedOutbound"
+                                placeholder="user@example.com"
+                                :rows="1"
+                                size="xs"
+                                @update:model-value="
+                                  (value: string) => updateAllowedOutbound(agent, value)
+                                "
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td class="py-3 px-4">
+                          <div class="flex items-center justify-center gap-1">
+                            <UTooltip text="Revert changes">
+                              <UButton
+                                color="neutral"
+                                variant="ghost"
+                                icon="i-lucide-undo-2"
+                                size="xs"
+                                :disabled="!ensurePolicyState(agent).dirty"
+                                @click="resetToBase(agent)"
+                              />
+                            </UTooltip>
+                            <UTooltip text="Reset to defaults">
+                              <UButton
+                                color="neutral"
+                                variant="ghost"
+                                icon="i-lucide-rotate-ccw"
+                                size="xs"
+                                @click="resetToDefaults(agent)"
+                              />
+                            </UTooltip>
+                            <UTooltip text="Save changes">
+                              <UButton
+                                color="primary"
+                                icon="i-lucide-save"
+                                size="xs"
+                                :loading="ensurePolicyState(agent).saving"
+                                :disabled="
+                                  !ensurePolicyState(agent).dirty || ensurePolicyState(agent).saving
+                                "
+                                @click="savePolicy(agent)"
+                              />
+                            </UTooltip>
+                          </div>
+                          <div
+                            v-if="ensurePolicyState(agent).dirty"
+                            class="flex justify-center mt-1"
+                          >
+                            <UBadge color="orange" variant="subtle" size="xs">Unsaved</UBadge>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </UCard>
             </div>
           </div>

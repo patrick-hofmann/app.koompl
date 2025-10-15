@@ -1,6 +1,7 @@
 import type { Agent, MailPolicyRule } from '~/types'
 import { getIdentity } from '../team/storage'
 import { normalizeMailPolicy } from '../../utils/mailPolicy'
+import agentConfig from '~~/agents.config'
 
 interface AgentDirectoryEntry {
   id: string
@@ -40,38 +41,12 @@ interface BuiltinServer {
   category: string
 }
 
-const BUILTIN_SERVERS: BuiltinServer[] = [
-  {
-    id: 'builtin-kanban',
-    name: 'Team Kanban Board',
-    provider: 'builtin-kanban',
-    category: 'productivity'
-  },
-  {
-    id: 'builtin-datasafe',
-    name: 'Team Datasafe',
-    provider: 'builtin-datasafe',
-    category: 'storage'
-  },
-  {
-    id: 'builtin-agents',
-    name: 'Agents Directory',
-    provider: 'builtin-agents',
-    category: 'directory'
-  },
-  {
-    id: 'builtin-calendar',
-    name: 'Team Calendar',
-    provider: 'builtin-calendar',
-    category: 'calendar'
-  },
-  {
-    id: 'builtin-email',
-    name: 'Email Support',
-    provider: 'builtin-email',
-    category: 'communication'
-  }
-]
+const BUILTIN_SERVERS: BuiltinServer[] = Object.values(agentConfig.mcp.metadata).map((server) => ({
+  id: server.id,
+  name: server.name,
+  provider: server.provider,
+  category: server.category
+}))
 
 interface DirectoryContext {
   agents: Agent[]
@@ -87,7 +62,7 @@ function slugify(value: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
-function deriveCapabilities(
+async function deriveCapabilities(
   agent: Agent,
   serverMap: Map<string, BuiltinServer>
 ): { capabilities: string[]; summary: string } {
@@ -99,7 +74,13 @@ function deriveCapabilities(
     capabilitySet.add(`role_${roleSlug}`)
   }
 
-  if (agent.multiRoundConfig?.canCommunicateWithAgents) {
+  // Check if agent can communicate with other agents using mail policy
+  const normalizedPolicy = await normalizeMailPolicy(agent)
+  if (
+    normalizedPolicy.outbound === 'team_and_agents' ||
+    normalizedPolicy.outbound === 'agents_only' ||
+    normalizedPolicy.outbound === 'any'
+  ) {
     capabilitySet.add('agent_delegation')
     summaryParts.push('koordiniert mit anderen Agents')
   }
@@ -184,7 +165,7 @@ async function buildDirectoryEntry(
   const teamDomain = agent.teamId ? context.teamDomainById.get(agent.teamId) : undefined
   const fullEmail = teamDomain ? `${agent.email}@${teamDomain}` : `${agent.email}@agents.local`
 
-  const { capabilities, summary } = deriveCapabilities(agent, context.serverMap)
+  const { capabilities, summary } = await deriveCapabilities(agent, context.serverMap)
 
   const _allowedAgents = agent.multiRoundConfig?.allowedAgentEmails
     ?.map((email) => {
@@ -205,10 +186,9 @@ async function buildDirectoryEntry(
 
   const description = (agent.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 320)
 
-  // Apply predefined overrides for consistent behavior with decision engine
-  const { withPredefinedOverride } = await import('../../utils/predefinedKoompls')
-  const effectiveAgent = withPredefinedOverride(agent)
-  const normalizedPolicy = normalizeMailPolicy(effectiveAgent)
+  // Use agent as-is; predefined agents are stored with their template values
+  const effectiveAgent = agent
+  const normalizedPolicy = await normalizeMailPolicy(agent)
 
   return {
     id: effectiveAgent.id,
@@ -221,11 +201,14 @@ async function buildDirectoryEntry(
     capabilities,
     summary,
     description: description || undefined,
-    canDelegate: Boolean(effectiveAgent.multiRoundConfig?.canCommunicateWithAgents),
+    canDelegate: Boolean(
+      normalizedPolicy.outbound === 'team_and_agents' ||
+        normalizedPolicy.outbound === 'agents_only' ||
+        normalizedPolicy.outbound === 'any'
+    ),
     allowedAgents:
-      effectiveAgent.multiRoundConfig?.allowedAgentEmails &&
-      effectiveAgent.multiRoundConfig.allowedAgentEmails.length > 0
-        ? effectiveAgent.multiRoundConfig.allowedAgentEmails
+      normalizedPolicy.allowedOutbound.size > 0
+        ? Array.from(normalizedPolicy.allowedOutbound)
         : undefined,
     mcpServers: visibleServers,
     isPredefined: effectiveAgent.isPredefined,
@@ -242,7 +225,9 @@ async function buildDirectoryEntry(
 
 export async function listAgentDirectory(teamId?: string): Promise<AgentDirectoryEntry[]> {
   const context = await loadDirectoryContext(teamId)
-  return Promise.all(context.agents.map((agent) => buildDirectoryEntry(agent, context)))
+  // Only show predefined agents
+  const predefinedAgents = context.agents.filter((agent) => agent.isPredefined)
+  return Promise.all(predefinedAgents.map((agent) => buildDirectoryEntry(agent, context)))
 }
 
 export async function getAgentDirectoryEntry(
@@ -252,16 +237,19 @@ export async function getAgentDirectoryEntry(
   const context = await loadDirectoryContext(teamId)
   const normalized = identifier.toLowerCase()
 
-  const agent = context.agents.find((candidate) => {
-    if (candidate.id === identifier) return true
-    if (candidate.email && candidate.email.toLowerCase() === normalized) return true
-    if (candidate.teamId) {
-      const domain = context.teamDomainById.get(candidate.teamId) || 'agents.local'
-      const fullEmail = `${candidate.email}@${domain}`.toLowerCase()
-      if (fullEmail === normalized) return true
-    }
-    return false
-  })
+  // Only look for predefined agents
+  const agent = context.agents
+    .filter((candidate) => candidate.isPredefined)
+    .find((candidate) => {
+      if (candidate.id === identifier) return true
+      if (candidate.email && candidate.email.toLowerCase() === normalized) return true
+      if (candidate.teamId) {
+        const domain = context.teamDomainById.get(candidate.teamId) || 'agents.local'
+        const fullEmail = `${candidate.email}@${domain}`.toLowerCase()
+        if (fullEmail === normalized) return true
+      }
+      return false
+    })
 
   if (!agent) return null
   return buildDirectoryEntry(agent, context)
@@ -274,21 +262,29 @@ export async function findAgentsByCapability(
   const context = await loadDirectoryContext(teamId)
   const target = slugify(capability)
 
-  const filteredAgents = context.agents.filter((agent) => {
-    const { capabilities } = deriveCapabilities(agent, context.serverMap)
-    return capabilities.some((entry) => entry.includes(target))
-  })
+  const withCaps = await Promise.all(
+    context.agents.map(async (agent) => ({
+      agent,
+      capabilities: (await deriveCapabilities(agent, context.serverMap)).capabilities
+    }))
+  )
 
-  return Promise.all(filteredAgents.map((agent) => buildDirectoryEntry(agent, context)))
+  const filtered = withCaps
+    .filter((entry) => entry.capabilities.some((c) => c.includes(target)))
+    .map((entry) => entry.agent)
+
+  return Promise.all(filtered.map((agent) => buildDirectoryEntry(agent, context)))
 }
 
 export async function listDirectoryCapabilities(teamId?: string): Promise<string[]> {
   const context = await loadDirectoryContext(teamId)
   const capabilitySet = new Set<string>()
 
-  for (const agent of context.agents) {
-    const { capabilities } = deriveCapabilities(agent, context.serverMap)
-    capabilities.forEach((capability) => capabilitySet.add(capability))
+  const caps = await Promise.all(
+    context.agents.map((agent) => deriveCapabilities(agent, context.serverMap))
+  )
+  for (const c of caps) {
+    c.capabilities.forEach((capability) => capabilitySet.add(capability))
   }
 
   return Array.from(capabilitySet).sort()

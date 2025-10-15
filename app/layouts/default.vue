@@ -46,14 +46,14 @@ const primaryLinks = computed<NavigationMenuItem[]>(() => {
             open.value = false
           }
         },
-        {
-          label: 'My Koompls',
-          icon: 'i-lucide-sparkles',
-          to: '/koompls/custom',
-          onSelect: () => {
-            open.value = false
-          }
-        },
+        // {
+        //   label: 'My Koompls',
+        //   icon: 'i-lucide-sparkles',
+        //   to: '/koompls/custom',
+        //   onSelect: () => {
+        //     open.value = false
+        //   }
+        // },
         {
           label: 'Mail Policies',
           icon: 'i-lucide-shield',

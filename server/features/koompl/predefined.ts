@@ -1,5 +1,5 @@
 import type { Agent } from '~/types'
-import { getPredefinedPublic } from '../../utils/predefinedKoompls'
+import agentConfig from '~~/agents.config'
 import { createAgentStorage } from '../../utils/shared'
 
 export interface PredefinedKoomplTemplate {
@@ -29,7 +29,14 @@ export interface PredefinedKoomplContext {
 export async function listPredefinedKoompls(
   context: PredefinedKoomplContext
 ): Promise<PredefinedKoomplStatus[]> {
-  const templates = getPredefinedPublic()
+  const templates = Object.values(agentConfig.predefined.agents).map((agent) => ({
+    id: agent.id,
+    role: agent.role,
+    description: agent.description,
+    mcpServerIds: agent.mcp_servers,
+    multiRoundConfig: agent.multiRoundConfig,
+    prompt: agent.system_prompt
+  }))
   const storage = createAgentStorage()
   const allAgents = await storage.read()
 
@@ -56,7 +63,14 @@ export async function getPredefinedKoompl(
   context: PredefinedKoomplContext,
   templateId: string
 ): Promise<PredefinedKoomplStatus | null> {
-  const templates = getPredefinedPublic()
+  const templates = Object.values(agentConfig.predefined.agents).map((agent) => ({
+    id: agent.id,
+    role: agent.role,
+    description: agent.description,
+    mcpServerIds: agent.mcp_servers,
+    multiRoundConfig: agent.multiRoundConfig,
+    prompt: agent.system_prompt
+  }))
   const template = templates.find((t) => t.id === templateId)
 
   if (!template) {
@@ -88,7 +102,14 @@ export async function enablePredefinedKoompl(
     email?: string
   }
 ): Promise<Agent> {
-  const templates = getPredefinedPublic()
+  const templates = Object.values(agentConfig.predefined.agents).map((agent) => ({
+    id: agent.id,
+    role: agent.role,
+    description: agent.description,
+    mcpServerIds: agent.mcp_servers,
+    multiRoundConfig: agent.multiRoundConfig,
+    prompt: agent.system_prompt
+  }))
   const template = templates.find((t) => t.id === templateId)
 
   if (!template) {

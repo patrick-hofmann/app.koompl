@@ -1,10 +1,5 @@
 import type { Agent } from '~/types'
-import {
-  createAgentStorage,
-  createAgentObject,
-  updateAgentObject,
-  extractUsername
-} from '../../utils/shared'
+import { createAgentStorage, extractUsername } from '../../utils/shared'
 import {
   listAgentDirectory,
   getAgentDirectoryEntry,
@@ -58,43 +53,39 @@ export async function getAgentByEmail(email: string, teamId?: string): Promise<A
 }
 
 /**
- * Create a new agent
+ * Create a new predefined agent
  */
 export async function createAgent(
   context: AgentContext,
   agentData: Partial<Agent>
 ): Promise<Agent> {
+  // Only allow predefined agents
+  if (!agentData.isPredefined || !agentData.id) {
+    throw createError({ statusCode: 400, statusMessage: 'Only predefined agents are supported' })
+  }
+
   const storage = createAgentStorage()
   const existingAgents = await storage.read()
 
   // Auto-assign teamId from context if not provided
   const teamId = agentData.teamId || context.teamId
 
-  // For predefined agents, check if already exists and use the provided ID
-  let agent: Agent
-  if (agentData.isPredefined && agentData.id) {
-    const existing = existingAgents.find((a) => a.id === agentData.id)
-    if (existing) {
-      throw createError({ statusCode: 409, statusMessage: 'Predefined agent already exists' })
-    }
+  // Check if predefined agent already exists
+  const existing = existingAgents.find((a) => a.id === agentData.id)
+  if (existing) {
+    throw createError({ statusCode: 409, statusMessage: 'Predefined agent already exists' })
+  }
 
-    const username = agentData.email ? extractUsername(agentData.email) : agentData.id
-    agent = {
-      id: agentData.id,
-      name: agentData.name || '',
-      email: username,
-      role: agentData.role || 'Agent',
-      prompt: agentData.prompt || '',
-      avatar: agentData.avatar,
-      mcpServerIds: agentData.mcpServerIds || [],
-      isPredefined: true
-    }
-  } else {
-    // For custom agents, generate ID and extract username
-    agent = createAgentObject(
-      agentData,
-      existingAgents.map((a) => a.id)
-    )
+  const username = agentData.email ? extractUsername(agentData.email) : agentData.id
+  const agent: Agent = {
+    id: agentData.id,
+    name: agentData.name || '',
+    email: username,
+    role: agentData.role || 'Agent',
+    prompt: agentData.prompt || '',
+    avatar: agentData.avatar,
+    mcpServerIds: agentData.mcpServerIds || [],
+    isPredefined: true
   }
 
   return await storage.create({
@@ -107,31 +98,28 @@ export async function createAgent(
 }
 
 /**
- * Update an existing agent
+ * Update an existing agent (no longer supported for custom agents)
  */
-export async function updateAgent(agentId: string, updates: Partial<Agent>): Promise<Agent | null> {
-  const storage = createAgentStorage()
-  const existing = await storage.findById(agentId)
-
-  if (!existing) {
-    return null
-  }
-
-  const updated = updateAgentObject(existing, updates)
-
-  return await storage.update(agentId, {
-    ...updated,
-    multiRoundConfig: updates.multiRoundConfig ?? existing.multiRoundConfig,
-    teamId: updates.teamId ?? existing.teamId,
-    updatedAt: new Date().toISOString()
+export async function updateAgent(): Promise<Agent | null> {
+  // Custom agent updates are no longer supported
+  throw createError({
+    statusCode: 403,
+    statusMessage: 'Agent updates are not allowed. Only predefined agents are supported.'
   })
 }
 
 /**
- * Delete an agent
+ * Delete an agent (only predefined agents can be deleted)
  */
 export async function deleteAgent(agentId: string): Promise<boolean> {
   const storage = createAgentStorage()
+  const existing = await storage.findById(agentId)
+
+  // Only allow deletion of predefined agents
+  if (!existing || !existing.isPredefined) {
+    throw createError({ statusCode: 403, statusMessage: 'Only predefined agents can be deleted' })
+  }
+
   return await storage.delete(agentId)
 }
 
@@ -209,17 +197,10 @@ export async function canCommunicateWith(
   const agent = await getAgent(agentId)
   if (!agent) return false
 
-  // Check if agent can communicate with other agents
-  if (!agent.multiRoundConfig?.canCommunicateWithAgents) return false
-
-  // Check if target agent is in allowed list
-  const allowedAgents = agent.multiRoundConfig.allowedAgentEmails || []
-  if (allowedAgents.length === 0) return true // No restrictions
-
-  const targetUsername = extractUsername(targetAgentEmail)
-  return allowedAgents.some(
-    (allowed) => extractUsername(allowed).toLowerCase() === targetUsername.toLowerCase()
-  )
+  // Use mail policy system to check if agent can send emails to target
+  const { evaluateOutboundMail } = await import('../../utils/mailPolicy')
+  const result = await evaluateOutboundMail(agent, targetAgentEmail)
+  return result.allowed
 }
 
 /**
@@ -228,18 +209,15 @@ export async function canCommunicateWith(
 export async function getAgentStats(context: AgentContext): Promise<{
   totalAgents: number
   predefinedAgents: number
-  customAgents: number
   agentsByTeam?: Record<string, number>
 }> {
   const agents = await listAgents(context)
 
   const predefinedAgents = agents.filter((a) => a.isPredefined).length
-  const customAgents = agents.filter((a) => !a.isPredefined).length
 
   const stats: ReturnType<typeof getAgentStats> extends Promise<infer T> ? T : never = {
-    totalAgents: agents.length,
-    predefinedAgents,
-    customAgents
+    totalAgents: predefinedAgents, // Only predefined agents are supported now
+    predefinedAgents
   }
 
   if (!context.teamId) {

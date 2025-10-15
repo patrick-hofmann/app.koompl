@@ -2,10 +2,9 @@ import { getRecentEmails } from '../../features/mail'
 
 export default defineEventHandler(async (_event) => {
   try {
-    // Get agents count
-    const agentsStorage = useStorage('agents')
-    const agentsData = await agentsStorage.getItem<Array<unknown>>('agents.json')
-    const agents = agentsData || []
+    // Get agents count using feature function
+    const { listAgents } = await import('../../features/agent')
+    const agents = await listAgents({})
 
     // Get Mailgun configuration from runtime config
     const config = useRuntimeConfig()

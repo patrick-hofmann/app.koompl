@@ -5,7 +5,7 @@ const route = useRoute()
 const agentId = computed(() => String(route.params.id))
 
 // Client-only lazy fetch to avoid SSR blocking on storage
-const { data: agent, refresh } = await useAsyncData(
+const { data: agent } = await useAsyncData(
   () => `agent-${agentId.value}`,
   () => $fetch<Agent>(`/api/agents/${agentId.value}`),
   { server: false, lazy: true }
@@ -128,25 +128,7 @@ function handleEmailSent() {
   selectedConversation.value = null
 }
 
-// Basic edit/delete mock actions
-const editOpen = ref(false)
-const editAgent = reactive<Partial<Agent>>({})
-
-function openEdit() {
-  Object.assign(editAgent, agent.value)
-  editOpen.value = true
-}
-
-function goToMailPolicy() {
-  navigateTo(`/agents/${agentId.value}/policy`)
-}
-
-// edit is handled by shared modal now
-
-async function deleteAgent() {
-  await $fetch(`/api/agents/${agentId.value}`, { method: 'DELETE' })
-  await navigateTo('/agents')
-}
+// Edit and delete functionality removed - only predefined agents are supported
 
 // Clear functions
 const clearingEmails = ref(false)
@@ -285,11 +267,6 @@ async function clearAll() {
           >
             Clear All
           </UButton>
-          <UButton icon="i-lucide-shield" color="neutral" variant="outline" @click="goToMailPolicy">
-            Mail Policy
-          </UButton>
-          <UButton icon="i-lucide-pencil" color="neutral" variant="outline" @click="openEdit" />
-          <UButton icon="i-lucide-trash" color="error" variant="outline" @click="deleteAgent" />
         </div>
       </template>
       <template #right>
@@ -614,16 +591,5 @@ async function clearAll() {
     :compose-data="composeData"
     @sent="handleEmailSent"
     @close="composeModalOpen = false"
-  />
-
-  <AgentsEditAgentModal
-    :open="editOpen"
-    :agent="editAgent"
-    @update:open="
-      (v: boolean) => {
-        editOpen = v
-      }
-    "
-    @saved="refresh"
   />
 </template>

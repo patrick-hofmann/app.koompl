@@ -67,13 +67,18 @@ async function runRoundTrip() {
   try {
     const res = await $fetch<{
       ok: boolean
+      testMessageId?: string
       messageId?: string
-      flowId?: string
-      newFlow?: boolean
-      resumed?: boolean
+      agentId?: string
       agentEmail?: string
-      outbound?: Record<string, unknown>
+      teamId?: string
+      conversationId?: string
+      attachments?: number
+      mcpProcessed?: boolean
+      policyAllowed?: boolean
+      policyReason?: string
       error?: string
+      details?: string
     }>(`/api/agents/${props.agentId}/roundtrip`, {
       method: 'POST',
       body: {
@@ -84,17 +89,7 @@ async function runRoundTrip() {
         attachments: attachments.value.length > 0 ? attachments.value : undefined
       }
     })
-    result.value = res.ok
-      ? {
-          success: true,
-          messageId: res.messageId,
-          flowId: res.flowId,
-          newFlow: res.newFlow,
-          resumed: res.resumed,
-          agentEmail: res.agentEmail,
-          outbound: res.outbound
-        }
-      : { error: res.error }
+    result.value = res
   } finally {
     loading.value = false
   }

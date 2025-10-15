@@ -4,7 +4,6 @@
  */
 
 import { getEmail, storeOutboundEmail, createConversationId } from '../../../features/mail'
-import type { Agent } from '~/types'
 
 interface ComposeRequest {
   to: string
@@ -35,10 +34,9 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Get agent details
-    const agentsStorage = useStorage('agents')
-    const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-    const agent = agents.find((a) => a.id === agentId)
+    // Get agent details using feature function
+    const { getAgent } = await import('../../../features/agent')
+    const agent = await getAgent(agentId)
 
     if (!agent) {
       throw createError({

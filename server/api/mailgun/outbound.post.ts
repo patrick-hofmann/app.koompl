@@ -3,7 +3,6 @@
  * This route handles ONLY real outgoing emails that are actually sent
  */
 
-import type { Agent } from '~/types'
 import { storeOutboundEmail } from '../../features/mail'
 import { agentLogger } from '../../utils/agentLogging'
 import { determineMailgunDomain, sendMailgunMessage } from '../../utils/mailgunHelpers'
@@ -176,8 +175,9 @@ export default defineEventHandler(async (event) => {
     }
 
     if (!isProduction) {
-      const agentsStorage = useStorage('agents')
-      const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
+      // Get all agents using feature function
+      const { listAgents } = await import('../../features/agent')
+      const agents = await listAgents({})
       const recipientEmail = extractEmail(to)
       const recipientAgent = agents.find((a) => a?.email?.toLowerCase().trim() === recipientEmail)
 

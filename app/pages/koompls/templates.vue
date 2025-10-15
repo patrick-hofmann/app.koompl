@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { PredefinedKoompl } from '~/composables/usePredefinedKoompls'
+import type { PredefinedKoompl } from '~/composables/useAgents'
 
 definePageMeta({
   title: 'Template Gallery'
@@ -7,8 +7,8 @@ definePageMeta({
 
 const toast = useToast()
 
-// Predefined Koompls from composable
-const { getPredefinedKoompls, predefinedToAgent } = usePredefinedKoompls()
+// Predefined Koompls from config
+const { getPredefinedKoompls, predefinedToAgent } = useAgents()
 const predefinedKoompls = getPredefinedKoompls()
 
 // Get team domain
@@ -159,6 +159,7 @@ function testRoundTrip(koompl: PredefinedKoompl & { enabled: boolean }) {
   <AgentsPredefinedKoomplInfoModal
     :open="infoOpen"
     :koompl="infoKoompl"
+    :team-domain="teamDomain"
     @update:open="(v: boolean) => (infoOpen = v)"
   />
 

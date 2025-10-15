@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { PredefinedKoompl } from '~/composables/usePredefinedKoompls'
+import type { PredefinedKoompl } from '~/composables/useAgents'
 
 interface Props {
   koompl: PredefinedKoompl
@@ -106,7 +106,7 @@ const mcpTools = computed(() => {
     }
   }
 
-  return (props.koompl.mcpServerIds || []).map((id) => toolMap[id]).filter(Boolean)
+  return (props.koompl.mcp_servers || []).map((id) => toolMap[id]).filter(Boolean)
 })
 
 const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}`)
@@ -169,9 +169,9 @@ const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}
         {{ koompl.role }}
       </UBadge>
 
-      <!-- Description -->
+      <!-- Description (short) -->
       <p class="text-sm text-muted leading-relaxed">
-        {{ koompl.description }}
+        {{ koompl.short_description || koompl.description }}
       </p>
 
       <!-- MCP Tools -->

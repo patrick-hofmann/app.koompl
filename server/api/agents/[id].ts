@@ -1,5 +1,4 @@
-import type { Agent } from '~/types'
-import { createAgentStorage, updateAgentObject } from '../../utils/shared'
+import { createAgentStorage } from '../../utils/shared'
 
 export default defineEventHandler(async (event) => {
   const agentStorage = createAgentStorage()
@@ -15,36 +14,27 @@ export default defineEventHandler(async (event) => {
     if (!agent) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
+    // Only return predefined agents
+    if (!agent.isPredefined) {
+      throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
+    }
     return agent
   }
 
   if (method === 'PUT' || method === 'PATCH') {
-    const body = await readBody<Partial<Agent>>(event)
-    const existing = await agentStorage.findById(id)
-    if (!existing) {
-      throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
-    }
-
-    // Prevent modification of predefined status
-    if (body.isPredefined !== undefined && body.isPredefined !== existing.isPredefined) {
-      throw createError({ statusCode: 400, statusMessage: 'Cannot change predefined status' })
-    }
-
-    const updated = updateAgentObject(existing, body)
-    return await agentStorage.update(id, {
-      ...updated,
-      isPredefined: existing.isPredefined, // Preserve isPredefined flag
-      teamId: body.teamId !== undefined ? body.teamId : existing.teamId,
-      updatedAt: new Date().toISOString()
+    // Custom agent updates are no longer supported
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Custom agent updates are not allowed. Only predefined agents are supported.'
     })
   }
 
   if (method === 'DELETE') {
-    const success = await agentStorage.delete(id)
-    if (!success) {
-      throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
-    }
-    return { ok: true }
+    // Custom agent deletion is no longer supported
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Custom agent deletion is not allowed. Only predefined agents are supported.'
+    })
   }
 
   throw createError({ statusCode: 405, statusMessage: 'Method not allowed' })

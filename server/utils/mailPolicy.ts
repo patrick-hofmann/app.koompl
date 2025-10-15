@@ -1,5 +1,6 @@
 import type { Agent, MailPolicyConfig, MailPolicyRule } from '~/types'
 import { getIdentity, type IdentityData } from '../features/team/storage'
+import { getAgentMailPolicy } from '../features/mail/policy'
 
 interface NormalizedMailPolicy {
   inbound: MailPolicyRule
@@ -43,8 +44,8 @@ function toAddressSet(list: string[] | undefined): Set<string> {
   return new Set(list.map((value) => value.toLowerCase().trim()).filter(Boolean))
 }
 
-export function normalizeMailPolicy(agent: Agent): NormalizedMailPolicy {
-  const config: MailPolicyConfig | undefined = agent.multiRoundConfig?.mailPolicy
+export async function normalizeMailPolicy(agent: Agent): Promise<NormalizedMailPolicy> {
+  const config: MailPolicyConfig = await getAgentMailPolicy(agent)
   return {
     inbound: normalizeRule(config?.inbound),
     outbound: normalizeRule(config?.outbound),
@@ -168,7 +169,7 @@ export async function evaluateInboundMail(
   fromEmail: string,
   overrides?: MailPolicyEvaluationOptions
 ): Promise<MailPolicyEvaluationResult> {
-  const policy = normalizeMailPolicy(agent)
+  const policy = await normalizeMailPolicy(agent)
   const context = await buildPolicyContext(agent, overrides)
   return evaluateRule(policy.inbound, fromEmail, policy, context, 'inbound')
 }
@@ -178,7 +179,7 @@ export async function evaluateOutboundMail(
   toEmail: string,
   overrides?: MailPolicyEvaluationOptions
 ): Promise<MailPolicyEvaluationResult> {
-  const policy = normalizeMailPolicy(agent)
+  const policy = await normalizeMailPolicy(agent)
   const context = await buildPolicyContext(agent, overrides)
   return evaluateRule(policy.outbound, toEmail, policy, context, 'outbound')
 }

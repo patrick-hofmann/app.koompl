@@ -5,9 +5,9 @@ export default defineEventHandler(async (_event) => {
     // Get all logs from unified storage
     const allLogs = await getAllLogs()
 
-    // Get existing agents
-    const agentsStorage = useStorage('agents')
-    const agents = (await agentsStorage.getItem<Array<{ id?: string }>>('agents.json')) || []
+    // Get existing agents using feature function
+    const { listAgents } = await import('../../features/agent')
+    const agents = await listAgents({})
     const existingAgentIds = new Set(agents.map((a) => a.id).filter(Boolean))
 
     // Find orphaned logs (no agentId or agentId doesn't exist)

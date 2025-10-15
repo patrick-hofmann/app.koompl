@@ -1,8 +1,7 @@
 /**
  * Koompl Management Feature
  *
- * Separates predefined templates from custom koompls for better organization.
+ * Manages predefined templates only.
  */
 
 export * from './predefined'
-export * from './custom'

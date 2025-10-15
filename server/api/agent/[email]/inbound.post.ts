@@ -15,6 +15,7 @@ import {
 import { agentLogger } from '../../../utils/agentLogging'
 import { evaluateInboundMail } from '../../../utils/mailPolicy'
 import { runMCPAgent } from '../../../utils/mcpAgentHelper'
+import agentConfig from '~~/agents.config'
 import type { Agent } from '~/types'
 
 export default defineEventHandler(async (event) => {
@@ -180,9 +181,9 @@ export default defineEventHandler(async (event) => {
       const storage = useStorage('settings')
       team = await storage.getItem(`teams/${forwardedTeamId}/settings.json`)
 
-      const agentsStorage = useStorage('agents')
-      const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-      agent = agents.find((a) => a.id === forwardedAgentId) || null
+      // Use feature function to get agent
+      const { getAgent } = await import('../../../features/agent')
+      agent = await getAgent(forwardedAgentId)
     } else {
       // Fallback: lookup by email (for direct calls or testing)
       console.log('[AgentInbound] Looking up agent by email (no forwarded headers)')
@@ -207,12 +208,9 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 404, statusMessage: 'Team not found for domain' })
       }
 
-      // Load agents and find the agent
-      const agentsStorage = useStorage('agents')
-      const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-      const teamAgents = agents.filter((a) => a.teamId === team!.id)
-      agent =
-        teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername) || null
+      // Use feature function to find agent by email
+      const { getAgentByEmail } = await import('../../../features/agent')
+      agent = await getAgentByEmail(recipientUsername, team.id)
 
       if (!agent) {
         throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
@@ -364,7 +362,7 @@ export default defineEventHandler(async (event) => {
       }
 
       // Build prompts
-      const baseEmailGuidelines = `\nEmail Communication Guidelines:\n- You have access to reply_to_email and forward_email tools to communicate with users\n- These tools require a message-id from the email storage\n- When you receive a request via email:\n  FIRST: Send a brief acknowledgment reply to the sender - if possible estimate a response time\n  Then, completing the action: Send a concise follow-up with key results in reply to the sender\n- Always use professional and friendly language\n- Be concise and direct\n\n⚠️  IMPORTANT - Attachment Handling:\n- NEVER download files using download_file and pass the base64 data through your context\n- NEVER include large base64 data in your responses\n- To send files: Use attachments array with datasafe_path reference (e.g., {datasafe_path: "path/to/file.pdf"})\n- The server will fetch files automatically - you just provide the path\n- For email attachments: Use email_message_id + email_filename reference\n`
+      const baseEmailGuidelines = agentConfig.behavior.emailGuidelines
 
       const agentInstructions = (agent as any).prompt || 'You are a helpful AI assistant.'
       const systemPrompt = `${agentInstructions}\n\n${baseEmailGuidelines}`

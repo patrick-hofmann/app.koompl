@@ -115,12 +115,6 @@ export interface MailPolicyConfig {
 }
 
 export interface MultiRoundConfig {
-  enabled: boolean // Always true in unified architecture (kept for backward compatibility)
-  maxRounds: number // Default: 1 for simple agents, 5-10 for coordinating agents
-  timeoutMinutes: number // Default: 30 minutes
-  canCommunicateWithAgents: boolean
-  allowedAgentEmails?: string[]
-  autoResumeOnResponse: boolean
   mailPolicy?: MailPolicyConfig
 }
 

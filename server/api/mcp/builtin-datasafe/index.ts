@@ -137,13 +137,19 @@ export default defineEventHandler(async (event) => {
           tools: [
             {
               name: 'list_folder',
-              description: 'List folders and files for a given Datasafe path',
+              description:
+                'List folders and files for a given Datasafe path with detailed metadata',
               inputSchema: {
                 type: 'object',
                 properties: {
                   path: {
                     type: 'string',
                     description: 'Optional folder path (defaults to root)'
+                  },
+                  includeMetadata: {
+                    type: 'boolean',
+                    description:
+                      'Include detailed file metadata (size, mimeType, dates) - default true'
                   },
                   teamId: { type: 'string' },
                   userId: { type: 'string' }
@@ -277,6 +283,80 @@ export default defineEventHandler(async (event) => {
               inputSchema: {
                 type: 'object',
                 properties: {
+                  teamId: { type: 'string' },
+                  userId: { type: 'string' }
+                },
+                additionalProperties: false
+              }
+            },
+            {
+              name: 'get_file_info',
+              description: 'Get detailed information about a specific file without downloading it',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  path: {
+                    type: 'string',
+                    description: 'Full path to the file'
+                  },
+                  teamId: { type: 'string' },
+                  userId: { type: 'string' }
+                },
+                required: ['path'],
+                additionalProperties: false
+              }
+            },
+            {
+              name: 'search_files',
+              description: 'Search for files by name, type, or other criteria without downloading',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'Search query (filename, extension, or keyword)'
+                  },
+                  fileType: {
+                    type: 'string',
+                    description:
+                      'Filter by file type: image, document, video, audio, text, or specific mime type'
+                  },
+                  maxResults: {
+                    type: 'number',
+                    description: 'Maximum number of results to return (default 20)'
+                  },
+                  sortBy: {
+                    type: 'string',
+                    enum: ['name', 'size', 'date', 'type'],
+                    description: 'Sort results by name, size, date, or type (default: date)'
+                  },
+                  teamId: { type: 'string' },
+                  userId: { type: 'string' }
+                },
+                required: ['query'],
+                additionalProperties: false
+              }
+            },
+            {
+              name: 'get_recent_files',
+              description: 'Get the most recently added or modified files without downloading',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  limit: {
+                    type: 'number',
+                    description: 'Number of recent files to return (default 10)'
+                  },
+                  fileType: {
+                    type: 'string',
+                    description:
+                      'Filter by file type: image, document, video, audio, text, or specific mime type'
+                  },
+                  sortBy: {
+                    type: 'string',
+                    enum: ['created', 'updated'],
+                    description: 'Sort by creation date or last updated date (default: updated)'
+                  },
                   teamId: { type: 'string' },
                   userId: { type: 'string' }
                 },

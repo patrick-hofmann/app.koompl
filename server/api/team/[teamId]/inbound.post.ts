@@ -54,27 +54,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Recipient email required' })
   }
 
-  // Find agent by email
-  const agentsStorage = useStorage('settings')
-  const allAgentKeys = await agentsStorage.getKeys('agents/')
+  // Extract agent username from full email
+  const agentUsername = agentEmail.split('@')[0]
 
-  let targetAgent: { id: string; email: string; teamId: string; name: string } | null = null
-
-  for (const key of allAgentKeys) {
-    if (!key.endsWith('/settings.json')) continue
-
-    const agent = await agentsStorage.getItem<{
-      id: string
-      email: string
-      teamId: string
-      name: string
-    }>(key)
-
-    if (agent && agent.email === agentEmail && agent.teamId === teamId) {
-      targetAgent = agent
-      break
-    }
-  }
+  // Find agent by email using feature function
+  const { getAgentByEmail } = await import('../../../features/agent')
+  const targetAgent = await getAgentByEmail(agentUsername, teamId)
 
   if (!targetAgent) {
     console.error(`[TeamInbound] No agent found for email: ${agentEmail} in team ${teamId}`)

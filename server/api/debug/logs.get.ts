@@ -21,12 +21,9 @@ export default defineEventHandler(async (_event) => {
     // Get unique agent IDs
     const uniqueAgentIds = Object.keys(logsByAgent)
 
-    // Get agents from storage
-    const agentsStorage = useStorage('agents')
-    const agents =
-      (await agentsStorage.getItem<Array<{ id?: string; name?: string; email?: string }>>(
-        'agents.json'
-      )) || []
+    // Get agents from storage using feature function
+    const { listAgents } = await import('../../features/agent')
+    const agents = await listAgents({})
     const existingAgentIds = agents.map((a) => a.id).filter(Boolean)
 
     return {

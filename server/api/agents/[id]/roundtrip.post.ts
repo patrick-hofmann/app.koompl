@@ -5,8 +5,6 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'Missing id' })
     }
 
-    const agentsStorage = useStorage('agents')
-
     const body = await readBody<{
       from?: string
       to?: string
@@ -21,8 +19,9 @@ export default defineEventHandler(async (event) => {
       }>
     }>(event)
 
-    const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-    const agent = agents.find((a) => a?.id === id)
+    // Use feature function to get agent
+    const { getAgent } = await import('../../../features/agent')
+    const agent = await getAgent(id)
     if (!agent) {
       throw createError({ statusCode: 404, statusMessage: 'Agent not found' })
     }
@@ -73,39 +72,36 @@ export default defineEventHandler(async (event) => {
     const inboundUrl = `${origin}/api/agent/${agentFullEmail}/inbound`
     console.log('[RoundTrip] Calling agent inbound route:', inboundUrl)
 
-    const res = await $fetch<{
+    const inboundResult = await $fetch<{
       ok: boolean
-      flowId?: string
-      newFlow?: boolean
-      resumed?: boolean
+      messageId?: string
+      agentId?: string
+      teamId?: string
+      conversationId?: string
+      attachments?: number
+      mcpProcessed?: boolean
+      policyAllowed?: boolean
+      policyReason?: string
+      error?: string
+      details?: string
     }>(inboundUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    }).catch((e) => ({ ok: false, error: String(e) }) as unknown as { ok: boolean })
+    }).catch((e) => ({
+      ok: false,
+      error: 'inbound_request_failed',
+      details: String(e)
+    }))
 
-    // Read the latest outbound snapshot for convenience feedback
-    const outbound = (await agentsStorage.getItem<Record<string, unknown>>('outbound.json')) || null
+    console.log('[RoundTrip] Inbound processing result:', inboundResult)
 
-    console.log('[RoundTrip] Inbound processing result:', res)
-
-    const typedRes = res as unknown as {
-      ok: boolean
-      flowId?: string
-      newFlow?: boolean
-      resumed?: boolean
-      error?: string
-    }
-
+    // Return the full inbound result with our roundtrip metadata
     return {
-      ok: Boolean(typedRes?.ok),
-      messageId,
-      flowId: typedRes?.flowId,
-      newFlow: typedRes?.newFlow,
-      resumed: typedRes?.resumed,
+      ok: Boolean(inboundResult?.ok),
+      testMessageId: messageId, // The message-id we generated for the test
       agentEmail: agentFullEmail,
-      outbound,
-      error: typedRes?.error
+      ...inboundResult // Spread all data from inbound (messageId, agentId, teamId, conversationId, etc.)
     }
   } catch (e) {
     return { ok: false, error: String(e) }

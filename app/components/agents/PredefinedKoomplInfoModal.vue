@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { PredefinedKoompl } from '~/composables/usePredefinedKoompls'
+import type { PredefinedKoompl } from '~/composables/useAgents'
 
 interface Props {
   open: boolean
   koompl: PredefinedKoompl | null
+  teamDomain?: string
 }
 
 const props = defineProps<Props>()
@@ -39,17 +40,19 @@ const iconBgClass = computed(() => {
             </div>
             <div class="flex-1">
               <h3 class="text-xl font-semibold text-highlighted mb-1">{{ koompl.name }}</h3>
-              <p class="text-sm text-muted mb-2">{{ koompl.email }}@{{ teamDomain }}</p>
+              <p class="text-sm text-muted mb-2">
+                {{ koompl.email }}@{{ teamDomain || 'agents.local' }}
+              </p>
               <UBadge :color="koompl.color" variant="subtle">
                 {{ koompl.role }}
               </UBadge>
             </div>
           </div>
 
-          <!-- Description -->
+          <!-- Description (long) -->
           <div>
             <h4 class="text-sm font-medium text-highlighted mb-2">Description</h4>
-            <p class="text-sm text-default">{{ koompl.description }}</p>
+            <p class="text-sm text-default">{{ koompl.long_description || koompl.description }}</p>
           </div>
 
           <USeparator />
@@ -62,7 +65,7 @@ const iconBgClass = computed(() => {
             </h4>
             <div class="bg-muted/30 rounded-lg p-4 border border-default">
               <pre class="text-xs text-default whitespace-pre-wrap font-mono leading-relaxed">{{
-                koompl.prompt
+                koompl.system_prompt
               }}</pre>
             </div>
           </div>
@@ -75,49 +78,21 @@ const iconBgClass = computed(() => {
             </h4>
             <div class="space-y-3 text-sm">
               <div class="flex items-center justify-between py-2 px-3 bg-muted/20 rounded-md">
-                <span class="text-muted">Max Rounds</span>
-                <span class="font-medium text-highlighted">{{
-                  koompl.multiRoundConfig.maxRounds
-                }}</span>
-              </div>
-              <div class="flex items-center justify-between py-2 px-3 bg-muted/20 rounded-md">
-                <span class="text-muted">Timeout</span>
-                <span class="font-medium text-highlighted"
-                  >{{ koompl.multiRoundConfig.timeoutMinutes }} minutes</span
-                >
-              </div>
-              <div class="flex items-center justify-between py-2 px-3 bg-muted/20 rounded-md">
-                <span class="text-muted">Inter-Agent Communication</span>
-                <UBadge
-                  :color="koompl.multiRoundConfig.canCommunicateWithAgents ? 'green' : 'gray'"
-                  variant="subtle"
-                  size="xs"
-                >
-                  {{ koompl.multiRoundConfig.canCommunicateWithAgents ? 'Enabled' : 'Disabled' }}
-                </UBadge>
-              </div>
-              <div class="flex items-center justify-between py-2 px-3 bg-muted/20 rounded-md">
-                <span class="text-muted">Auto-Resume</span>
-                <UBadge
-                  :color="koompl.multiRoundConfig.autoResumeOnResponse ? 'green' : 'gray'"
-                  variant="subtle"
-                  size="xs"
-                >
-                  {{ koompl.multiRoundConfig.autoResumeOnResponse ? 'Enabled' : 'Disabled' }}
-                </UBadge>
+                <span class="text-muted">Email Communication</span>
+                <UBadge color="blue" variant="subtle" size="xs"> Managed by Mail Policy </UBadge>
               </div>
             </div>
           </div>
 
           <!-- MCP Servers -->
-          <div v-if="koompl.mcpServerIds.length > 0">
+          <div v-if="koompl.mcp_servers.length > 0">
             <h4 class="text-sm font-medium text-highlighted mb-3 flex items-center gap-2">
               <UIcon name="i-lucide-plug" class="w-4 h-4" />
               MCP Servers
             </h4>
             <div class="flex flex-wrap gap-2">
               <UBadge
-                v-for="serverId in koompl.mcpServerIds"
+                v-for="serverId in koompl.mcp_servers"
                 :key="serverId"
                 variant="outline"
                 size="sm"

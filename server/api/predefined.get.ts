@@ -1,8 +1,15 @@
-import { getPredefinedPublic } from '../../server/utils/predefinedKoompls'
+import agentConfig from '~~/agents.config'
 
 export default defineEventHandler(async () => {
   try {
-    const data = getPredefinedPublic()
+    const data = Object.values(agentConfig.predefined.agents).map((agent) => ({
+      id: agent.id,
+      role: agent.role,
+      description: agent.description,
+      mcp_servers: agent.mcp_servers,
+      multiRoundConfig: agent.multiRoundConfig,
+      system_prompt: agent.system_prompt
+    }))
     return { ok: true, data }
   } catch (error) {
     console.error('[API] /api/predefined error:', error)

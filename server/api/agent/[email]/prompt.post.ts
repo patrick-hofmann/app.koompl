@@ -1,5 +1,6 @@
 import { runMCPAgent } from '../../../utils/mcpAgentHelper'
-import type { Agent } from '~/types'
+import agentConfig from '~~/agents.config'
+// import type { Agent } from '~/types' // Unused for now
 
 interface AgentPromptRequest {
   userPrompt: string
@@ -69,13 +70,9 @@ export default defineEventHandler(async (event) => {
     domain: recipientDomain
   })
 
-  // Load agents and filter by team
-  const agentsStorage = useStorage('agents')
-  const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-  const teamAgents = agents.filter((a) => a.teamId === team.id)
-
-  // Find agent by username within the team
-  const agent = teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername)
+  // Use feature function to find agent by email
+  const { getAgentByEmail } = await import('../../../features/agent')
+  const agent = await getAgentByEmail(recipientUsername, team.id)
 
   if (!agent) {
     throw createError({
@@ -84,9 +81,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Apply predefined agent overrides (if this is a predefined agent like Dara)
-  const { withPredefinedOverride } = await import('../../../utils/predefinedKoompls')
-  const effectiveAgent = withPredefinedOverride(agent)
+  // Use agent as-is (predefined agents are stored with their template values)
+  const effectiveAgent = agent
 
   console.log('[AgentPrompt] Found agent:', {
     agentId: effectiveAgent.id,
@@ -130,16 +126,7 @@ export default defineEventHandler(async (event) => {
   }))
 
   // Build system prompt with email communication guidelines
-  const baseEmailGuidelines = `
-Email Communication Guidelines:
-- You have access to reply_to_email and forward_email tools to communicate with users
-- These tools require a message-id from the email storage
-- When you receive a request via email:
-  FIRST: Send a brief acknowledgment reply to the sender - if possible estimate a response time
-  Then, completing the action: Send a concise follow-up with key results in reply to the sender
-- Always use professional and friendly language
-- Be concise and direct
-`
+  const baseEmailGuidelines = agentConfig.behavior.emailGuidelines
 
   // Use the agent's instructions as system prompt if not provided
   const agentInstructions =

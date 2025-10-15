@@ -24,6 +24,38 @@ interface RunMCPAgentOptions {
   currentMessageId?: string
 }
 
+// Simple in-memory cache for tool lists to reduce repeated calls
+// const toolListCache = new Map<string, { tools: any[], timestamp: number }>()
+// const CACHE_TTL = 30000 // 30 seconds cache
+
+/**
+ * Runs an MCP agent with streaming support for faster user feedback
+ * @param options Configuration options for the MCP agent
+ * @param onProgress Optional callback for progress updates
+ * @returns The final output from the agent
+ */
+export async function runMCPAgentStreaming(
+  options: RunMCPAgentOptions,
+  onProgress?: (update: {
+    type: 'acknowledgment' | 'progress' | 'completion'
+    message: string
+  }) => void
+): Promise<string> {
+  // For now, just call the regular function
+  // TODO: Implement actual streaming when OpenAI Agents SDK supports it
+  if (onProgress) {
+    onProgress({ type: 'acknowledgment', message: 'Processing your request...' })
+  }
+
+  const result = await runMCPAgent(options)
+
+  if (onProgress) {
+    onProgress({ type: 'completion', message: 'Request completed successfully' })
+  }
+
+  return result
+}
+
 /**
  * Runs an MCP agent with the provided configuration
  * @param options Configuration options for the MCP agent
@@ -141,7 +173,7 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
   )
 
   const model = 'gpt-4o-mini' // Fast, cost-effective model for agent tasks
-  const temperature = 0.3 // Lower temperature for more deterministic responses
+  const temperature = 0.1 // Lower temperature for more deterministic, faster responses
 
   console.log(`[MCPAgent] 🤖 Using model: ${model} (temperature: ${temperature})`)
 
@@ -150,11 +182,59 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     model,
     modelSettings: {
       temperature,
-      maxTokens: 16000 // Increased to handle large attachments in function calls
+      maxTokens: 8000, // Reduced for faster processing
+      maxSteps: 5 // Reduced to prevent overthinking and speed up execution
     },
     name: 'MCP Assistant',
-    instructions: systemPrompt,
-    mcpServers
+    instructions:
+      systemPrompt +
+      '\n\nIMPORTANT: You have access to all necessary tools. Use them directly when needed.',
+    mcpServers,
+    // Filter out tools that can cause context window overflow
+    toolFilter: (tools) => {
+      return tools.filter((tool) => {
+        // Prevent download_file tool to avoid context window overflow
+        if (tool.name === 'download_file') {
+          console.log(`[MCPAgent] 🚫 Filtered out tool: ${tool.name} (prevents context overflow)`)
+          return false
+        }
+        return true
+      })
+    }
+  })
+
+  // Add event listeners for tool calls to log results
+  agent.on('toolCall', (toolCall) => {
+    console.log(`[MCPAgent] 🔧 Tool called: ${toolCall.toolName}`, {
+      args: toolCall.args,
+      callId: toolCall.callId
+    })
+  })
+
+  agent.on('toolResult', (toolResult) => {
+    console.log(`[MCPAgent] ✅ Tool result: ${toolResult.toolName}`, {
+      callId: toolResult.callId,
+      success: toolResult.success,
+      result: toolResult.result
+        ? JSON.stringify(toolResult.result).substring(0, 200) + '...'
+        : null,
+      error: toolResult.error
+    })
+  })
+
+  // Add performance monitoring
+  const toolCallTimes = new Map<string, number>()
+  agent.on('toolCall', (toolCall) => {
+    toolCallTimes.set(toolCall.callId, Date.now())
+  })
+
+  agent.on('toolResult', (toolResult) => {
+    const startTime = toolCallTimes.get(toolResult.callId)
+    if (startTime) {
+      const duration = Date.now() - startTime
+      console.log(`[MCPAgent] ⏱️  Tool '${toolResult.toolName}' took ${duration}ms`)
+      toolCallTimes.delete(toolResult.callId)
+    }
   })
 
   const setupDuration = Date.now() - startTime
@@ -204,7 +284,14 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     // Log tool count that agent has access to
     console.log(`[MCPAgent] Agent has access to MCP tools from ${mcpServers.length} servers`)
 
-    const result = await run(agent, finalPrompt)
+    // Add timeout to prevent hanging - reduced for faster feedback
+    const AGENT_TIMEOUT = 20000 // 20 seconds max (reduced from 30s)
+    const result = (await Promise.race([
+      run(agent, finalPrompt),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Agent execution timeout')), AGENT_TIMEOUT)
+      )
+    ])) as Awaited<ReturnType<typeof run>>
 
     const afterRun = Date.now()
     const afterRunTimestamp = new Date().toISOString()
@@ -212,6 +299,47 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
       `[${afterRunTimestamp}] [MCPAgent] ⏱️  Agent run completed in ${afterRun - beforeRun}ms`
     )
     console.log(`[MCPAgent] Result output length: ${result.finalOutput?.length || 0} chars`)
+
+    // Log the full result for debugging
+    console.log(`[MCPAgent] 📋 Full result:`, {
+      finalOutput: result.finalOutput,
+      steps: result.steps?.length || 0,
+      hasError: !!result.error,
+      error: result.error
+    })
+
+    // Log each step for debugging
+    if (result.steps && result.steps.length > 0) {
+      console.log(`[MCPAgent] 📝 Execution steps (${result.steps.length}):`)
+      result.steps.forEach((step, index) => {
+        console.log(`  Step ${index + 1}:`, {
+          type: step.type,
+          content:
+            step.content?.substring(0, 100) +
+            (step.content && step.content.length > 100 ? '...' : ''),
+          toolCalls: step.toolCalls?.length || 0
+        })
+      })
+    }
+
+    // Log potential issues
+    if (
+      result.finalOutput &&
+      result.finalOutput.includes('image') &&
+      result.finalOutput.includes('Tobi')
+    ) {
+      console.log(
+        `[MCPAgent] ⚠️  Agent mentioned sending an image but may not have access to files. Consider checking datasafe for available files.`
+      )
+    }
+
+    // Log performance summary
+    const totalToolCalls = toolCallTimes.size
+    if (totalToolCalls > 0) {
+      console.log(
+        `[MCPAgent] ⚠️  ${totalToolCalls} tool calls still pending - possible timeout or error`
+      )
+    }
 
     const totalDuration = Date.now() - startTime
     const endTimestamp = new Date().toISOString()
@@ -222,6 +350,21 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     console.log(`  - Setup: ${setupDuration}ms`)
     console.log(`  - Agent execution: ${afterRun - beforeRun}ms`)
     console.log(`  - Total: ${totalDuration}ms`)
+
+    // Performance analysis with updated thresholds
+    if (totalDuration > 15000) {
+      console.log(
+        `[MCPAgent] ⚠️  SLOW EXECUTION: ${totalDuration}ms - consider optimizing agent instructions or reducing tool complexity`
+      )
+    } else if (totalDuration > 8000) {
+      console.log(
+        `[MCPAgent] ⚡ MODERATE EXECUTION: ${totalDuration}ms - acceptable but could be faster`
+      )
+    } else if (totalDuration > 3000) {
+      console.log(`[MCPAgent] 🚀 GOOD EXECUTION: ${totalDuration}ms - good performance`)
+    } else {
+      console.log(`[MCPAgent] ⚡ EXCELLENT EXECUTION: ${totalDuration}ms - excellent performance`)
+    }
 
     return result.finalOutput
   } finally {

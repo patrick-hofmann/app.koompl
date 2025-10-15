@@ -1,4 +1,4 @@
-import type { Agent } from '~/types'
+import agentConfig from '~~/agents.config'
 
 interface McpConfigResponse {
   mcpConfigs: Record<string, { url: string }>
@@ -6,13 +6,7 @@ interface McpConfigResponse {
 }
 
 // Only builtin MCP servers are supported
-const BUILTIN_SERVER_MAP: Record<string, string> = {
-  'builtin-kanban': '/api/mcp/builtin-kanban',
-  'builtin-datasafe': '/api/mcp/builtin-datasafe',
-  'builtin-agents': '/api/mcp/builtin-agents',
-  'builtin-calendar': '/api/mcp/builtin-calendar',
-  'builtin-email': '/api/mcp/builtin-email'
-}
+const BUILTIN_SERVER_MAP: Record<string, string> = agentConfig.mcp.servers
 
 export default defineEventHandler(async (event): Promise<McpConfigResponse> => {
   const agentEmail = getRouterParam(event, 'email')
@@ -48,13 +42,9 @@ export default defineEventHandler(async (event): Promise<McpConfigResponse> => {
     })
   }
 
-  // Load agents and filter by team
-  const agentsStorage = useStorage('agents')
-  const agents = (await agentsStorage.getItem<Agent[]>('agents.json')) || []
-  const teamAgents = agents.filter((a) => a.teamId === team.id)
-
-  // Find agent by username within the team
-  const agent = teamAgents.find((a) => String(a?.email || '').toLowerCase() === recipientUsername)
+  // Use feature function to find agent by email
+  const { getAgentByEmail } = await import('../../../features/agent')
+  const agent = await getAgentByEmail(recipientUsername, team.id)
 
   if (!agent) {
     throw createError({
