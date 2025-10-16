@@ -7,7 +7,6 @@ export default defineEventHandler(async () => {
       role: agent.role,
       description: agent.description,
       mcp_servers: agent.mcp_servers,
-      multiRoundConfig: agent.multiRoundConfig,
       system_prompt: agent.system_prompt
     }))
     return { ok: true, data }

@@ -1,5 +1,3 @@
-import type { MultiRoundConfig } from './index'
-
 export interface PredefinedAgent {
   id: string
   name: string
@@ -17,7 +15,6 @@ export interface PredefinedAgent {
   max_tokens: number
   max_steps: number
   mcp_servers: string[]
-  multiRoundConfig: MultiRoundConfig
 }
 
 export interface MCPServerMetadata {

@@ -21,7 +21,6 @@ max_steps: 3
 mcp_servers:
   - builtin-email
   - builtin-calendar
-multiRoundConfig: {}
 ---
 
 

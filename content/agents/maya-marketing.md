@@ -58,7 +58,6 @@ mcp_servers:
   - builtin-email
   - builtin-social
   - builtin-analytics
-multiRoundConfig: {}
 ---
 
 

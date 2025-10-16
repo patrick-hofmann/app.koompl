@@ -62,7 +62,6 @@ mcp_servers:
   - builtin-email
   - builtin-procurement
   - builtin-kanban
-multiRoundConfig: {}
 ---
 
 

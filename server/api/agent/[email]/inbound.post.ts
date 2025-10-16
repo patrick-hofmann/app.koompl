@@ -401,13 +401,13 @@ export default defineEventHandler(async (event) => {
       let fmMaxSteps: number | undefined
 
       try {
-        const items = await queryCollection('agents').where('id', '=', agent.id).limit(1).find()
-        const doc = items?.[0]
+        const { loadPredefinedAgentById } = await import('../../../features/koompl/predefined')
+        const doc = await loadPredefinedAgentById(agent.id)
         if (doc) {
-          fmModel = (doc as any).model
-          fmTemperature = (doc as any).temperature
-          fmMaxTokens = (doc as any).max_tokens
-          fmMaxSteps = (doc as any).max_steps
+          fmModel = doc.model
+          fmTemperature = doc.temperature
+          fmMaxTokens = doc.max_tokens
+          fmMaxSteps = doc.max_steps
         }
       } catch (e) {
         console.warn('[AgentInbound] Failed to load agent frontmatter from content:', e)

@@ -1,12 +1,23 @@
 import type { Agent } from '~/types'
 import { createAgentStorage } from '../../utils/shared'
 
+export interface PredefinedAgent {
+  id: string
+  role: string
+  description: string
+  mcp_servers: string[]
+  system_prompt: string
+  model?: string
+  temperature?: number
+  max_tokens?: number
+  max_steps?: number
+}
+
 export interface PredefinedKoomplTemplate {
   id: string
   role: string
   description: string
   mcpServerIds: string[]
-  multiRoundConfig: Agent['multiRoundConfig']
   prompt: string
 }
 
@@ -28,13 +39,12 @@ export interface PredefinedKoomplContext {
 export async function listPredefinedKoompls(
   context: PredefinedKoomplContext
 ): Promise<PredefinedKoomplStatus[]> {
-  const docs = await queryCollection('agents').all()
-  const templates = docs.map((doc: any) => ({
+  const docs = await loadPredefinedAgents()
+  const templates = docs.map((doc) => ({
     id: doc.id,
     role: doc.role,
     description: doc.description,
     mcpServerIds: doc.mcp_servers,
-    multiRoundConfig: doc.multiRoundConfig || {},
     prompt: doc.system_prompt
   }))
   const storage = createAgentStorage()
@@ -63,13 +73,12 @@ export async function getPredefinedKoompl(
   context: PredefinedKoomplContext,
   templateId: string
 ): Promise<PredefinedKoomplStatus | null> {
-  const docs = await queryCollection('agents').all()
-  const templates = docs.map((doc: any) => ({
+  const docs = await loadPredefinedAgents()
+  const templates = docs.map((doc) => ({
     id: doc.id,
     role: doc.role,
     description: doc.description,
     mcpServerIds: doc.mcp_servers,
-    multiRoundConfig: doc.multiRoundConfig || {},
     prompt: doc.system_prompt
   }))
   const template = templates.find((t) => t.id === templateId)
@@ -103,13 +112,12 @@ export async function enablePredefinedKoompl(
     email?: string
   }
 ): Promise<Agent> {
-  const docs = await queryCollection('agents').all()
-  const templates = docs.map((doc: any) => ({
+  const docs = await loadPredefinedAgents()
+  const templates = docs.map((doc) => ({
     id: doc.id,
     role: doc.role,
     description: doc.description,
     mcpServerIds: doc.mcp_servers,
-    multiRoundConfig: doc.multiRoundConfig || {},
     prompt: doc.system_prompt
   }))
   const template = templates.find((t) => t.id === templateId)
@@ -142,7 +150,6 @@ export async function enablePredefinedKoompl(
     role: template.role,
     prompt: template.prompt,
     mcpServerIds: template.mcpServerIds,
-    multiRoundConfig: template.multiRoundConfig,
     isPredefined: true,
     teamId: context.teamId,
     createdAt: new Date().toISOString(),
@@ -213,4 +220,30 @@ export async function updatePredefinedKoompl(
 
   await storage.write(allAgents)
   return agent
+}
+
+/**
+ * Load all predefined agents from content collection
+ * This abstracts the queryCollection implementation detail
+ */
+export async function loadPredefinedAgents(): Promise<PredefinedAgent[]> {
+  // @ts-expect-error injected by @nuxt/content at runtime
+  const docs = await queryCollection('agents').all()
+  return (docs || []) as PredefinedAgent[]
+}
+
+/**
+ * Load a specific predefined agent by ID from content collection
+ * This abstracts the queryCollection implementation detail
+ */
+export async function loadPredefinedAgentById(agentId: string): Promise<PredefinedAgent | null> {
+  try {
+    // @ts-expect-error injected by @nuxt/content at runtime
+    const items = await queryCollection('agents').where('id', '=', agentId).limit(1).find()
+    const doc = items?.[0]
+    return doc ? (doc as PredefinedAgent) : null
+  } catch (e) {
+    console.warn('[KoomplFeature] Failed to load agent frontmatter from content:', e)
+    return null
+  }
 }

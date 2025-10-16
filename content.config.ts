@@ -23,9 +23,7 @@ export default defineContentConfig({
         temperature: z.number(),
         max_tokens: z.number(),
         max_steps: z.number(),
-        mcp_servers: z.array(z.string()),
-        // Broadly-compatible permissive object; avoid defaults to prevent JSON schema conversion issues
-        multiRoundConfig: z.object({}).passthrough().optional()
+        mcp_servers: z.array(z.string())
       })
     })
   }

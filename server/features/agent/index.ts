@@ -90,7 +90,6 @@ export async function createAgent(
 
   return await storage.create({
     ...agent,
-    multiRoundConfig: agentData.multiRoundConfig,
     teamId,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

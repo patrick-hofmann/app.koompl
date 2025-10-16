@@ -31,7 +31,7 @@ function constructFullEmail(username: string): string {
 
 // All templates are considered active; compute display data only
 const displayTemplates = computed(() => {
-  return (predefinedKoompls.value as any[]).map((pk: any) => {
+  return (predefinedKoompls.value || ([] as any[])).map((pk: any) => {
     const username = pk.email.split('@')[0]
     return {
       ...pk,

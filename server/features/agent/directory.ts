@@ -167,18 +167,8 @@ async function buildDirectoryEntry(
 
   const { capabilities, summary } = await deriveCapabilities(agent, context.serverMap)
 
-  const _allowedAgents = agent.multiRoundConfig?.allowedAgentEmails
-    ?.map((email) => {
-      const trimmed = email.trim()
-      if (!trimmed) return ''
-      if (trimmed.includes('@')) {
-        return trimmed.toLowerCase()
-      }
-      return teamDomain
-        ? `${trimmed.toLowerCase()}@${teamDomain.toLowerCase()}`
-        : trimmed.toLowerCase()
-    })
-    .filter((value) => value.length > 0)
+  // Mock: No agent whitelist - all agents can communicate
+  const _allowedAgents: string[] = []
 
   const visibleServers = (agent.mcpServerIds || [])
     .map((serverId) => context.serverMap.get(serverId))

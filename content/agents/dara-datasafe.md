@@ -48,7 +48,6 @@ max_steps: 5
 mcp_servers:
   - builtin-email
   - builtin-datasafe
-multiRoundConfig: {}
 ---
 
 

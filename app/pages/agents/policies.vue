@@ -40,7 +40,7 @@ function formatAddressList(addresses?: string[]): string {
   return (addresses || []).join(', ')
 }
 
-function parseAddressList(raw: string): string[] {
+function _parseAddressList(raw: string): string[] {
   return raw
     .split(/[,\n]/)
     .map((entry) => entry.trim().toLowerCase())
@@ -57,28 +57,20 @@ interface AgentPolicyState {
   saving: boolean
 }
 
-const {
-  data: agentsData,
-  pending,
-  refresh
-} = await useAsyncData('agents-mail-policies', () => $fetch<Agent[]>('/api/agents'), {
-  server: false,
-  lazy: true
-})
+const { data: agentsData, pending } = await useAsyncData(
+  'agents-mail-policies',
+  () => $fetch<Agent[]>('/api/agents'),
+  {
+    server: false,
+    lazy: true
+  }
+)
 
 const policyState = reactive<Record<string, AgentPolicyState>>({})
 
-function resolveBasePolicy(agent: Agent): MailPolicyConfig {
-  const existing = agent.multiRoundConfig?.mailPolicy
-  if (!existing) {
-    return defaultPolicy()
-  }
-  return {
-    inbound: existing.inbound || DEFAULT_RULE,
-    outbound: existing.outbound || DEFAULT_RULE,
-    allowedInboundAddresses: existing.allowedInboundAddresses || [],
-    allowedOutboundAddresses: existing.allowedOutboundAddresses || []
-  }
+function resolveBasePolicy(_agent: Agent): MailPolicyConfig {
+  // Mock: Always return default policy (team_and_agents)
+  return defaultPolicy()
 }
 
 function ensurePolicyState(agent: Agent): AgentPolicyState {
@@ -173,40 +165,30 @@ async function savePolicy(agent: Agent) {
   state.saving = true
 
   try {
-    const payload: MailPolicyConfig = {
-      inbound: state.inbound,
-      outbound: state.outbound,
-      allowedInboundAddresses: parseAddressList(state.allowedInbound),
-      allowedOutboundAddresses: parseAddressList(state.allowedOutbound)
+    // Mock: Simulate save operation but don't actually save
+    // Mail policies are mocked to always use team_and_agents default
+    await new Promise((resolve) => setTimeout(resolve, 500)) // Simulate network delay
+
+    // Reset to default policy (mocked behavior)
+    const defaultPolicy = {
+      inbound: DEFAULT_RULE,
+      outbound: DEFAULT_RULE,
+      allowedInboundAddresses: [],
+      allowedOutboundAddresses: []
     }
 
-    const nextMultiRound = {
-      ...agent.multiRoundConfig,
-      mailPolicy: payload
-    }
-
-    await $fetch(`/api/agents/${agent.id}`, {
-      method: 'PATCH',
-      body: {
-        multiRoundConfig: nextMultiRound
-      }
-    })
-
-    state.base = {
-      inbound: payload.inbound,
-      outbound: payload.outbound,
-      allowedInboundAddresses: [...payload.allowedInboundAddresses],
-      allowedOutboundAddresses: [...payload.allowedOutboundAddresses]
-    }
+    state.base = defaultPolicy
+    state.inbound = defaultPolicy.inbound
+    state.outbound = defaultPolicy.outbound
+    state.allowedInbound = ''
+    state.allowedOutbound = ''
     state.dirty = false
 
     toast.add({
       title: `${agent.name} updated`,
-      description: 'Mail policy saved successfully.',
-      color: 'green'
+      description: 'Mail policy is mocked - using team_and_agents default.',
+      color: 'blue'
     })
-
-    await refresh()
   } catch (error) {
     console.error('Failed to save mail policy', error)
     toast.add({

@@ -29,7 +29,6 @@ max_steps: 5
 mcp_servers:
   - builtin-agents
   - builtin-email
-multiRoundConfig: {}
 ---
 
 

@@ -30,7 +30,6 @@ mcp_servers:
   - builtin-email
   - builtin-research
   - builtin-analytics
-multiRoundConfig: {}
 ---
 
 

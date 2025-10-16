@@ -51,7 +51,6 @@ mcp_servers:
   - builtin-email
   - builtin-crm
   - builtin-datasafe
-multiRoundConfig: {}
 ---
 
 

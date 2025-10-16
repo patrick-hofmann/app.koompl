@@ -30,7 +30,6 @@ mcp_servers:
   - builtin-email
   - builtin-ticketing
   - builtin-agents
-multiRoundConfig: {}
 ---
 
 

@@ -114,10 +114,6 @@ export interface MailPolicyConfig {
   allowedOutboundAddresses?: string[]
 }
 
-export interface MultiRoundConfig {
-  mailPolicy?: MailPolicyConfig
-}
-
 export interface Agent {
   id: string
   name: string
@@ -126,7 +122,6 @@ export interface Agent {
   prompt: string
   avatar?: AvatarProps | { src?: string; text?: string; alt?: string }
   mcpServerIds?: string[]
-  multiRoundConfig?: MultiRoundConfig
   teamId?: string // Team this agent belongs to
   isPredefined?: boolean // Whether this is a predefined Koompl
   createdAt?: string

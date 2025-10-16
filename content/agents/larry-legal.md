@@ -30,7 +30,6 @@ mcp_servers:
   - builtin-email
   - builtin-legal
   - builtin-datasafe
-multiRoundConfig: {}
 ---
 
 
