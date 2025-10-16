@@ -1,4 +1,5 @@
 import { Agent, run, MCPServerStreamableHttp } from '@openai/agents'
+import agentConfig from '~~/agents.config'
 import type { H3Event } from 'h3'
 
 interface MCPConfig {
@@ -22,6 +23,11 @@ interface RunMCPAgentOptions {
   event?: H3Event
   agentEmail?: string
   currentMessageId?: string
+  // Optional model overrides
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  maxSteps?: number
 }
 
 // Simple in-memory cache for tool lists to reduce repeated calls
@@ -75,7 +81,11 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     attachments,
     event,
     agentEmail,
-    currentMessageId
+    currentMessageId,
+    model,
+    temperature,
+    maxTokens,
+    maxSteps
   } = options
   const baseUrl = event ? getRequestURL(event).origin : 'http://localhost:3000'
 
@@ -138,6 +148,63 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
   }
 
   // Build MCP server clients with custom fetch
+  // Per-run cache for MCP tools/list to avoid repeated round-trips
+  const perRunToolListCache = new Map<string, { body: string; response: any }>()
+
+  // Wrap fetch to cache JSON-RPC tools/list responses for this run
+  const createCachedFetchForServer = (serverName: string): typeof sameOriginFetch => {
+    return async (path, init) => {
+      try {
+        const isPost = (init?.method || 'GET').toUpperCase() === 'POST'
+        const bodyString = typeof init?.body === 'string' ? init.body : undefined
+        if (isPost && bodyString) {
+          // Only intercept JSON-RPC requests
+          let parsed: any
+          try {
+            parsed = JSON.parse(bodyString)
+          } catch {
+            parsed = null
+          }
+          const isJsonRpcToolsList =
+            parsed && parsed.jsonrpc === '2.0' && parsed.method === 'tools/list'
+
+          if (isJsonRpcToolsList) {
+            const cacheKey = `${serverName}`
+            const cached = perRunToolListCache.get(cacheKey)
+            if (cached) {
+              // Serve cached response for this run
+              const cachedPayload = JSON.stringify({
+                jsonrpc: '2.0',
+                id: parsed.id ?? '0',
+                result: cached.response
+              })
+              return new Response(cachedPayload, {
+                status: 200,
+                headers: { 'content-type': 'application/json' }
+              })
+            }
+
+            // Call through, then cache
+            const res = await sameOriginFetch(path, init)
+            try {
+              const cloned = res.clone()
+              const json = await cloned.json()
+              if (json && json.result && json.result.tools) {
+                perRunToolListCache.set(cacheKey, { body: bodyString, response: json.result })
+              }
+            } catch {
+              // ignore caching failures
+            }
+            return res
+          }
+        }
+      } catch {
+        // fall through to underlying fetch on any parsing/caching error
+      }
+      return sameOriginFetch(path, init)
+    }
+  }
+
   const mcpServers = Object.entries(mcpConfigs).map(([name, config]) => {
     const headers: Record<string, string> = {
       'x-team-id': teamId
@@ -155,7 +222,7 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     return new MCPServerStreamableHttp({
       name,
       url: config.url.startsWith('http') ? config.url : baseUrl + config.url,
-      fetch: config.url.startsWith('http') ? undefined : sameOriginFetch,
+      fetch: config.url.startsWith('http') ? undefined : createCachedFetchForServer(name),
       requestInit: {
         headers
       }
@@ -171,19 +238,22 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
   console.log(
     `[MCPAgent] ⏱️  Connected to ${mcpServers.length} MCP servers in ${connectDuration}ms`
   )
+  // Resolve model settings with safe defaults from agents.config
+  const generalDefaults = (agentConfig as any)?.predefined?.general || {}
+  const effectiveModel = model || generalDefaults.model || 'gpt-4o-mini'
+  const effectiveTemperature = temperature ?? generalDefaults.temperature ?? 0.1
+  const effectiveMaxTokens = maxTokens ?? generalDefaults.max_tokens ?? 8000
+  const effectiveMaxSteps = maxSteps ?? generalDefaults.max_steps ?? 5
 
-  const model = 'gpt-4o-mini' // Fast, cost-effective model for agent tasks
-  const temperature = 0.1 // Lower temperature for more deterministic, faster responses
-
-  console.log(`[MCPAgent] 🤖 Using model: ${model} (temperature: ${temperature})`)
+  console.log(`[MCPAgent] 🤖 Using model: ${effectiveModel} (temperature: ${effectiveTemperature})`)
 
   // Create an agent that uses these MCP servers
   const agent = new Agent({
-    model,
+    model: effectiveModel,
     modelSettings: {
-      temperature,
-      maxTokens: 8000, // Reduced for faster processing
-      maxSteps: 5 // Reduced to prevent overthinking and speed up execution
+      temperature: effectiveTemperature,
+      maxTokens: effectiveMaxTokens,
+      maxSteps: effectiveMaxSteps
     },
     name: 'MCP Assistant',
     instructions:

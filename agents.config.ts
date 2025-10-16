@@ -163,7 +163,8 @@ export const agentConfig: AgentConfigHierarchy = {
   behavior: {
     emailGuidelines: `Email Guidelines:
 - Use reply_to_email and forward_email tools (require message-id)
-- Process: 1) Acknowledge request 2) Complete action 3) Send results
+- Prefer a single consolidated reply that includes the final results.
+- Only send an acknowledgment separately if results will be delayed or long-running.
 - Be professional, concise, direct
 
 File Handling:

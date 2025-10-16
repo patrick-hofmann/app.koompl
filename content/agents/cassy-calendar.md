@@ -17,7 +17,7 @@ provider: openai
 model: gpt-4o-mini
 temperature: 0.1
 max_tokens: 8000
-max_steps: 5
+max_steps: 3
 mcp_servers:
   - builtin-email
   - builtin-calendar

@@ -393,6 +393,32 @@ export default defineEventHandler(async (event) => {
         attachmentIds: emailAttachments.map((a) => a.id)
       })
 
+      // Resolve model settings: general defaults → agent frontmatter overrides
+      const generalDefaults = agentConfig.predefined?.general || ({} as any)
+      let fmModel: string | undefined
+      let fmTemperature: number | undefined
+      let fmMaxTokens: number | undefined
+      let fmMaxSteps: number | undefined
+
+      try {
+        const items = await queryCollection('agents').where('id', '=', agent.id).limit(1).find()
+        const doc = items?.[0]
+        if (doc) {
+          fmModel = (doc as any).model
+          fmTemperature = (doc as any).temperature
+          fmMaxTokens = (doc as any).max_tokens
+          fmMaxSteps = (doc as any).max_steps
+        }
+      } catch (e) {
+        console.warn('[AgentInbound] Failed to load agent frontmatter from content:', e)
+      }
+
+      const effectiveModel = fmModel || generalDefaults.model
+      const effectiveTemperature =
+        fmTemperature ?? (generalDefaults.temperature as number | undefined)
+      const effectiveMaxTokens = fmMaxTokens ?? (generalDefaults.max_tokens as number | undefined)
+      const effectiveMaxSteps = fmMaxSteps ?? (generalDefaults.max_steps as number | undefined)
+
       const result = await runMCPAgent({
         mcpConfigs,
         teamId: team.id,
@@ -402,7 +428,12 @@ export default defineEventHandler(async (event) => {
         attachments: undefined,
         event,
         agentEmail: fullAgentEmail,
-        currentMessageId: String(messageId || '')
+        currentMessageId: String(messageId || ''),
+        // Effective model settings for this agent
+        model: effectiveModel,
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        maxSteps: effectiveMaxSteps
       })
 
       const mcpDuration = Date.now() - mcpStart
