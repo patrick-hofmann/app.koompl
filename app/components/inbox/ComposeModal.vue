@@ -2,7 +2,7 @@
 import type { ComposeData } from '~/types'
 
 const props = defineProps<{
-  agentId: string
+  agentEmail: string
   composeData?: ComposeData
 }>()
 
@@ -35,7 +35,7 @@ async function handleSend() {
   try {
     const mode = props.composeData?.mode || 'new'
 
-    await $fetch(`/api/agents/${props.agentId}/compose`, {
+    await $fetch(`/api/agent/${props.agentEmail}/compose`, {
       method: 'POST',
       body: {
         to: form.to,
@@ -102,7 +102,7 @@ const modeLabel = computed(() => {
       </template>
 
       <form class="space-y-4" @submit.prevent="handleSend">
-        <UFormGroup label="To" required>
+        <UFormField label="To" name="to" required>
           <UInput
             v-model="form.to"
             type="email"
@@ -110,13 +110,13 @@ const modeLabel = computed(() => {
             :disabled="sending || composeData?.mode === 'reply'"
             required
           />
-        </UFormGroup>
+        </UFormField>
 
-        <UFormGroup label="Subject" required>
+        <UFormField label="Subject" name="subject" required>
           <UInput v-model="form.subject" placeholder="Email subject" :disabled="sending" required />
-        </UFormGroup>
+        </UFormField>
 
-        <UFormGroup label="Message" required>
+        <UFormField label="Message" name="body" required>
           <UTextarea
             v-model="form.body"
             placeholder="Write your message..."
@@ -125,7 +125,7 @@ const modeLabel = computed(() => {
             autoresize
             required
           />
-        </UFormGroup>
+        </UFormField>
 
         <div class="flex items-center justify-end gap-2 pt-4">
           <UButton

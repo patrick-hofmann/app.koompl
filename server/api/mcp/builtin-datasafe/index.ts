@@ -5,7 +5,14 @@
  */
 
 import { Buffer } from 'node:buffer'
-import { defineEventHandler, readBody, setResponseHeader, setResponseStatus, createError } from 'h3'
+import {
+  defineEventHandler,
+  readBody,
+  setResponseHeader,
+  setResponseStatus,
+  createError,
+  getRequestHeader
+} from 'h3'
 import type { H3Event } from 'h3'
 
 import {
@@ -464,6 +471,192 @@ export default defineEventHandler(async (event) => {
                       ok: false,
                       error: err.statusMessage || err.message || 'Failed to list folder',
                       path: args.path
+                    })
+                  }
+                ],
+                isError: true
+              }
+            }
+            break
+          }
+
+          case 'get_file_info': {
+            try {
+              if (typeof args.path !== 'string' || !args.path) {
+                throw new Error('File path is required')
+              }
+              const path = args.path as string
+              // Derive folder path and filename
+              const parts = path.split('/')
+              const filename = parts.pop() as string
+              const folderPath = parts.join('/') || undefined
+              const folder = await listDatasafeFolder(resolvedContext, folderPath)
+              const file = folder.children.find(
+                (child) => child.type === 'file' && child.name === filename
+              )
+              if (!file) {
+                throw new Error(`File not found: ${path}`)
+              }
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({ ok: true, data: file })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to get file info',
+                      path: args.path
+                    })
+                  }
+                ],
+                isError: true
+              }
+            }
+            break
+          }
+
+          case 'search_files': {
+            try {
+              if (typeof args.query !== 'string' || !args.query) {
+                throw new Error('Search query is required')
+              }
+              const { flattenFiles } = await import('./helpers')
+              const query = (args.query as string).toLowerCase()
+              const fileType =
+                typeof args.fileType === 'string' ? (args.fileType as string) : undefined
+              const maxResults =
+                typeof args.maxResults === 'number' ? (args.maxResults as number) : 20
+              const sortBy = (args.sortBy as string) || 'date'
+
+              const tree = await listDatasafeFolder(resolvedContext)
+              const allFiles = flattenFiles(tree)
+
+              const filtered = allFiles.filter((file) => {
+                const matchesQuery = file.path.toLowerCase().includes(query)
+                if (!matchesQuery) return false
+                if (!fileType) return true
+                // fileType support is limited here due to minimal file object; rely on path extension
+                if (fileType === 'image') return /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(file.path)
+                if (fileType === 'document') return /\.(pdf|docx?|txt|rtf|odt)$/i.test(file.path)
+                if (fileType === 'video') return /\.(mp4|mov|avi|mkv|webm)$/i.test(file.path)
+                if (fileType === 'audio') return /\.(mp3|wav|m4a|aac|flac)$/i.test(file.path)
+                if (fileType === 'text') return /\.(txt|md|csv|log)$/i.test(file.path)
+                return file.path.toLowerCase().endsWith(`.${fileType.toLowerCase()}`)
+              })
+
+              filtered.sort((a, b) => {
+                switch (sortBy) {
+                  case 'name':
+                    return a.path.localeCompare(b.path)
+                  case 'size':
+                    return b.size - a.size
+                  case 'type':
+                    return a.path.localeCompare(b.path)
+                  case 'date':
+                  default:
+                    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+                }
+              })
+
+              const results = filtered.slice(0, maxResults)
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: true,
+                      data: {
+                        query,
+                        results,
+                        totalFound: filtered.length,
+                        returned: results.length
+                      }
+                    })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to search files',
+                      query: args.query
+                    })
+                  }
+                ],
+                isError: true
+              }
+            }
+            break
+          }
+
+          case 'get_recent_files': {
+            try {
+              const limit = typeof args.limit === 'number' ? (args.limit as number) : 10
+              const fileType =
+                typeof args.fileType === 'string' ? (args.fileType as string) : undefined
+              const sortBy = (args.sortBy as string) === 'created' ? 'created' : 'updated'
+              const { flattenFiles } = await import('./helpers')
+              const tree = await listDatasafeFolder(resolvedContext)
+              const allFiles = flattenFiles(tree)
+
+              let filtered = allFiles
+              if (fileType) {
+                filtered = allFiles.filter((file) => {
+                  if (fileType === 'image') return /\.(png|jpg|jpeg|gif|webp|bmp)$/i.test(file.path)
+                  if (fileType === 'document') return /\.(pdf|docx?|txt|rtf|odt)$/i.test(file.path)
+                  if (fileType === 'video') return /\.(mp4|mov|avi|mkv|webm)$/i.test(file.path)
+                  if (fileType === 'audio') return /\.(mp3|wav|m4a|aac|flac)$/i.test(file.path)
+                  if (fileType === 'text') return /\.(txt|md|csv|log)$/i.test(file.path)
+                  return file.path.toLowerCase().endsWith(`.${fileType.toLowerCase()}`)
+                })
+              }
+
+              filtered.sort((a, b) => {
+                const dateA = new Date(sortBy === 'created' ? a.updatedAt : a.updatedAt) // fallback to updatedAt
+                const dateB = new Date(sortBy === 'created' ? b.updatedAt : b.updatedAt)
+                return dateB.getTime() - dateA.getTime()
+              })
+
+              const results = filtered.slice(0, limit)
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: true,
+                      data: {
+                        results,
+                        sortBy,
+                        totalFiles: allFiles.length,
+                        filteredFiles: filtered.length
+                      }
+                    })
+                  }
+                ],
+                isError: false
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to get recent files'
                     })
                   }
                 ],

@@ -7,9 +7,11 @@ definePageMeta({
 
 // No toasts needed for templates anymore
 
-// Predefined Koompls from config
+// Load predefined Koompls via composable
 const { getPredefinedKoompls } = useAgents()
-const predefinedKoompls = getPredefinedKoompls()
+const { data: predefinedKoompls } = await useAsyncData('content-agents', () =>
+  getPredefinedKoompls()
+)
 
 // Get team domain
 const { session } = await useUserSession()
@@ -29,7 +31,7 @@ function constructFullEmail(username: string): string {
 
 // All templates are considered active; compute display data only
 const displayTemplates = computed(() => {
-  return predefinedKoompls.map((pk) => {
+  return (predefinedKoompls.value as any[]).map((pk: any) => {
     const username = pk.email.split('@')[0]
     return {
       ...pk,
@@ -52,17 +54,17 @@ function showInfo(koompl: PredefinedKoompl) {
 
 // Test modals
 const testOpen = ref(false)
-const testAgentId = ref<string | null>(null)
+const testAgentEmail = ref<string | null>(null)
 const roundTripOpen = ref(false)
-const roundTripAgentId = ref<string | null>(null)
+const roundTripAgentEmail = ref<string | null>(null)
 
 function testPrompt(koompl: PredefinedKoompl) {
-  testAgentId.value = koompl.id
+  testAgentEmail.value = koompl.email
   testOpen.value = true
 }
 
 function testRoundTrip(koompl: PredefinedKoompl) {
-  roundTripAgentId.value = koompl.id
+  roundTripAgentEmail.value = koompl.email
   roundTripOpen.value = true
 }
 </script>
@@ -95,6 +97,7 @@ function testRoundTrip(koompl: PredefinedKoompl) {
             :key="pk.id"
             :koompl="pk"
             :team-domain="teamDomain"
+            :mail-link="`/agents/${pk.email}`"
             @info="showInfo(pk)"
             @test-prompt="testPrompt(pk)"
             @test-round-trip="testRoundTrip(pk)"
@@ -115,14 +118,14 @@ function testRoundTrip(koompl: PredefinedKoompl) {
   <!-- Test Agent Modal -->
   <AgentsTestAgentModal
     :open="testOpen"
-    :agent-id="testAgentId"
+    :agent-email="testAgentEmail"
     @update:open="(v: boolean) => (testOpen = v)"
   />
 
   <!-- Round-trip Test Modal -->
   <AgentsRoundTripAgentModal
     :open="roundTripOpen"
-    :agent-id="roundTripAgentId"
+    :agent-email="roundTripAgentEmail"
     @update:open="(v: boolean) => (roundTripOpen = v)"
   />
 </template>

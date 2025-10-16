@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ open: boolean; agentId: string | null }>()
+const props = defineProps<{ open: boolean; agentEmail: string | null }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
 // Get current user session
@@ -52,16 +52,15 @@ function formatFileSize(bytes: number): string {
 }
 
 watch(
-  () => props.agentId,
-  (id) => {
-    if (!id) return
+  () => props.agentEmail,
+  () => {
     // Leave "to" empty to default to agent email on server; user can override
   },
   { immediate: true }
 )
 
 async function runRoundTrip() {
-  if (!props.agentId) return
+  if (!props.agentEmail) return
   loading.value = true
   result.value = null
   try {
@@ -79,7 +78,7 @@ async function runRoundTrip() {
       policyReason?: string
       error?: string
       details?: string
-    }>(`/api/agents/${props.agentId}/roundtrip`, {
+    }>(`/api/agent/${props.agentEmail}/roundtrip`, {
       method: 'POST',
       body: {
         from: form.from,

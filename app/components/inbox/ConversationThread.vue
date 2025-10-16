@@ -4,7 +4,7 @@ import type { EmailMessage, EmailConversation } from '~/types'
 
 const props = defineProps<{
   conversation: EmailConversation
-  agentId: string
+  agentEmail: string
 }>()
 
 const emits = defineEmits(['close', 'compose'])
@@ -17,7 +17,7 @@ const {
   `conversation-${props.conversation.id}`,
   async () => {
     const res = await $fetch<{ emails: Array<any> }>(
-      `/api/agents/${props.agentId}/conversations/${props.conversation.id}`
+      `/api/agent/${props.agentEmail}/conversations/${props.conversation.id}`
     )
     return res.emails.map(
       (email): EmailMessage => ({
@@ -39,7 +39,7 @@ const {
   {
     server: false,
     immediate: true,
-    watch: [() => props.conversation.id, () => props.agentId]
+    watch: [() => props.conversation.id, () => props.agentEmail]
   }
 )
 

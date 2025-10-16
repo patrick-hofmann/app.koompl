@@ -30,15 +30,11 @@ const iconBgClass = computed(() => {
   return colors[props.koompl.color] || colors.blue
 })
 
-// No checkbox anymore
-
 const teamDomain = computed(() => {
-  return props.teamDomain || 'agents.local'
+  return props.teamDomain
 })
 
-// (removed) Former MCP tools mapping; tile now shows raw server IDs
-
-const mailboxLink = computed(() => props.mailLink || `/agents/${props.koompl.id}`)
+const mailboxLink = computed(() => props.mailLink)
 </script>
 
 <template>

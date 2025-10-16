@@ -43,7 +43,7 @@ const enabledPredefined = computed(() => {
       email: username,
       fullEmail: constructFullEmail(username),
       enabled: !!actualAgent,
-      mailLink: actualAgent ? `/agents/${actualAgent.id}` : undefined
+      mailLink: actualAgent ? `/agents/${username}` : undefined
     }
   })
 })
@@ -72,17 +72,17 @@ watch([agents, enabledPredefined], updateActions, { immediate: true })
 
 // Test modal state
 const testOpen = ref(false)
-const testAgentId = ref<string | null>(null)
+const testAgentEmail = ref<string | null>(null)
 const roundTripOpen = ref(false)
-const roundTripAgentId = ref<string | null>(null)
+const roundTripAgentEmail = ref<string | null>(null)
 
-function testPredefined(id: string) {
-  testAgentId.value = id
+function testPredefined(email: string) {
+  testAgentEmail.value = email
   testOpen.value = true
 }
 
-function testPredefinedRoundTrip(id: string) {
-  roundTripAgentId.value = id
+function testPredefinedRoundTrip(email: string) {
+  roundTripAgentEmail.value = email
   roundTripOpen.value = true
 }
 
@@ -126,8 +126,8 @@ function openInfo(koompl: PredefinedKoompl) {
               :key="pk.id"
               :koompl="pk"
               @info="openInfo(pk)"
-              @test-prompt="testPredefined(pk.id)"
-              @test-round-trip="testPredefinedRoundTrip(pk.id)"
+              @test-prompt="testPredefined(pk.email)"
+              @test-round-trip="testPredefinedRoundTrip(pk.email)"
             />
           </div>
         </div>
@@ -138,14 +138,14 @@ function openInfo(koompl: PredefinedKoompl) {
   <!-- Test Agent Modal -->
   <AgentsTestAgentModal
     :open="testOpen"
-    :agent-id="testAgentId"
+    :agent-email="testAgentEmail"
     @update:open="(v: boolean) => (testOpen = v)"
   />
 
   <!-- Round-trip Test Modal -->
   <AgentsRoundTripAgentModal
     :open="roundTripOpen"
-    :agent-id="roundTripAgentId"
+    :agent-email="roundTripAgentEmail"
     @update:open="(v: boolean) => (roundTripOpen = v)"
   />
 

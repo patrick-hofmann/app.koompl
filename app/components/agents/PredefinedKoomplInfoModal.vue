@@ -30,6 +30,13 @@ const iconBgClass = computed(() => {
     :title="koompl?.name || 'Predefined Koompl'"
     @update:open="emit('update:open', $event)"
   >
+    <template #description>
+      {{
+        koompl?.short_description ||
+        koompl?.description ||
+        'View details and configuration for this predefined Koompl agent.'
+      }}
+    </template>
     <template #content>
       <UCard v-if="koompl">
         <div class="max-h-[70vh] overflow-y-auto space-y-6">

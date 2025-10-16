@@ -1,5 +1,4 @@
 import type { Agent } from '~/types'
-import agentConfig from '~~/agents.config'
 import { createAgentStorage } from '../../utils/shared'
 
 export interface PredefinedKoomplTemplate {
@@ -29,13 +28,14 @@ export interface PredefinedKoomplContext {
 export async function listPredefinedKoompls(
   context: PredefinedKoomplContext
 ): Promise<PredefinedKoomplStatus[]> {
-  const templates = Object.values(agentConfig.predefined.agents).map((agent) => ({
-    id: agent.id,
-    role: agent.role,
-    description: agent.description,
-    mcpServerIds: agent.mcp_servers,
-    multiRoundConfig: agent.multiRoundConfig,
-    prompt: agent.system_prompt
+  const docs = await queryCollection('agents').all()
+  const templates = docs.map((doc: any) => ({
+    id: doc.id,
+    role: doc.role,
+    description: doc.description,
+    mcpServerIds: doc.mcp_servers,
+    multiRoundConfig: doc.multiRoundConfig || {},
+    prompt: doc.system_prompt
   }))
   const storage = createAgentStorage()
   const allAgents = await storage.read()
@@ -63,13 +63,14 @@ export async function getPredefinedKoompl(
   context: PredefinedKoomplContext,
   templateId: string
 ): Promise<PredefinedKoomplStatus | null> {
-  const templates = Object.values(agentConfig.predefined.agents).map((agent) => ({
-    id: agent.id,
-    role: agent.role,
-    description: agent.description,
-    mcpServerIds: agent.mcp_servers,
-    multiRoundConfig: agent.multiRoundConfig,
-    prompt: agent.system_prompt
+  const docs = await queryCollection('agents').all()
+  const templates = docs.map((doc: any) => ({
+    id: doc.id,
+    role: doc.role,
+    description: doc.description,
+    mcpServerIds: doc.mcp_servers,
+    multiRoundConfig: doc.multiRoundConfig || {},
+    prompt: doc.system_prompt
   }))
   const template = templates.find((t) => t.id === templateId)
 
@@ -102,13 +103,14 @@ export async function enablePredefinedKoompl(
     email?: string
   }
 ): Promise<Agent> {
-  const templates = Object.values(agentConfig.predefined.agents).map((agent) => ({
-    id: agent.id,
-    role: agent.role,
-    description: agent.description,
-    mcpServerIds: agent.mcp_servers,
-    multiRoundConfig: agent.multiRoundConfig,
-    prompt: agent.system_prompt
+  const docs = await queryCollection('agents').all()
+  const templates = docs.map((doc: any) => ({
+    id: doc.id,
+    role: doc.role,
+    description: doc.description,
+    mcpServerIds: doc.mcp_servers,
+    multiRoundConfig: doc.multiRoundConfig || {},
+    prompt: doc.system_prompt
   }))
   const template = templates.find((t) => t.id === templateId)
 

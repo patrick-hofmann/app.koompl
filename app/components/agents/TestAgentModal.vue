@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ open: boolean; agentId: string | null }>()
+const props = defineProps<{ open: boolean; agentEmail: string | null }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
 // Get current user session (single session ref for stability across pages)
@@ -16,27 +16,23 @@ const form = reactive<{ subject: string; text: string }>({
 })
 const loading = ref(false)
 const result = ref<string | null>(null)
-const agentEmail = ref<string | null>(null)
+const agentFullEmail = ref<string | null>(null)
 
 // Load agent data when modal opens
 watch(
   () => props.open,
   async (isOpen) => {
-    if (isOpen && props.agentId) {
-      try {
-        const agent = await $fetch<any>(`/api/agents/${props.agentId}`)
-        if (agent && agent.email && teamDomain.value) {
-          agentEmail.value = `${agent.email}@${teamDomain.value}`
-        }
-      } catch (error) {
-        console.error('Failed to load agent:', error)
-      }
+    if (isOpen && props.agentEmail) {
+      agentFullEmail.value = props.agentEmail.includes('@')
+        ? props.agentEmail
+        : `${props.agentEmail}@${teamDomain.value}`
     }
-  }
+  },
+  { immediate: true }
 )
 
 async function runTest() {
-  if (!agentEmail.value) return
+  if (!agentFullEmail.value) return
   loading.value = true
   result.value = null
   try {
@@ -45,7 +41,7 @@ async function runTest() {
       response?: string
       result?: string
       error?: string
-    }>(`/api/agent/${agentEmail.value}/respond`, {
+    }>(`/api/agent/${agentFullEmail.value}/respond`, {
       method: 'POST',
       body: {
         subject: form.subject,
@@ -74,7 +70,7 @@ async function runTest() {
     <template #content>
       <UCard>
         <div class="space-y-3">
-          <p class="text-sm text-muted">Agent Email: {{ agentEmail || 'Loading...' }}</p>
+          <p class="text-sm text-muted">Agent Email: {{ agentFullEmail || 'Loading...' }}</p>
           <p class="text-sm text-muted">Team ID: {{ teamId }}</p>
           <p class="text-sm text-muted">User ID: {{ userId }}</p>
           <UForm :state="form" @submit="runTest">

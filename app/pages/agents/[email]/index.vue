@@ -2,14 +2,39 @@
 import type { Agent, EmailConversation, ComposeData } from '~/types'
 
 const route = useRoute()
-const agentId = computed(() => String(route.params.id))
+const agentUsername = computed(() => String(route.params.email))
+
+if (!agentUsername.value) {
+  throw createError({ statusCode: 404, statusMessage: 'Agent username is required' })
+}
+
+// Construct full email from username and team domain
+const { data: teamDomain } = await useAsyncData('team-domain', () => $fetch('/api/team/domain'))
+const agentEmail = computed(() => `${agentUsername.value}@${teamDomain.value}`)
 
 // Client-only lazy fetch to avoid SSR blocking on storage
-const { data: agent } = await useAsyncData(
-  () => `agent-${agentId.value}`,
-  () => $fetch<Agent>(`/api/agents/${agentId.value}`),
+const { data: agent, error: agentError } = await useAsyncData(
+  () => `agent-${agentEmail.value}`,
+  async () => {
+    try {
+      return await $fetch<Agent>(`/api/agent/${agentEmail.value}/get`)
+    } catch (error: any) {
+      if (error.statusCode === 404) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: `Agent '${agentUsername.value}' not found`
+        })
+      }
+      throw error
+    }
+  },
   { server: false, lazy: true }
 )
+
+// Handle 404 case
+if (agentError.value) {
+  throw createError({ statusCode: 404, statusMessage: `Agent '${agentUsername.value}' not found` })
+}
 
 // Conversation-based email data for this agent
 const {
@@ -17,13 +42,24 @@ const {
   pending: conversationsPending,
   refresh: refreshConversations
 } = await useAsyncData(
-  () => `agent-conversations-${agentId.value}`,
+  () => `agent-conversations-${agentEmail.value}`,
   async () => {
-    const res = await $fetch<{ conversations: EmailConversation[] }>(
-      `/api/agents/${agentId.value}/conversations`,
-      { query: { limit: 100 } }
-    )
-    return res.conversations
+    if (!agent.value) return []
+    try {
+      const res = await $fetch<{ conversations: EmailConversation[] }>(
+        `/api/agent/${agentEmail.value}/conversations`,
+        { query: { limit: 100 } }
+      )
+      return res.conversations
+    } catch (error: any) {
+      if (error.statusCode === 404) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: `Agent '${agentUsername.value}' not found`
+        })
+      }
+      throw error
+    }
   },
   { server: false, lazy: true }
 )
@@ -89,15 +125,26 @@ const {
   pending: logsPending,
   refresh: refreshLogs
 } = await useAsyncData(
-  () => `agent-activity-logs-${agentId.value}`,
+  () => `agent-activity-logs-${agentEmail.value}`,
   async () => {
-    const res = await $fetch<{ ok: boolean; count: number; logs: AgentLogEntry[] }>(
-      `/api/agents/${agentId.value}/logs`,
-      {
-        query: { type: 'all', limit: 200 }
+    if (!agent.value) return []
+    try {
+      const res = await $fetch<{ ok: boolean; count: number; logs: AgentLogEntry[] }>(
+        `/api/agent/${agentEmail.value}/logs`,
+        {
+          query: { type: 'all', limit: 200 }
+        }
+      )
+      return res.logs || []
+    } catch (error: any) {
+      if (error.statusCode === 404) {
+        throw createError({
+          statusCode: 404,
+          statusMessage: `Agent '${agentUsername.value}' not found`
+        })
       }
-    )
-    return res.logs || []
+      throw error
+    }
   },
   { server: false, lazy: true }
 )
@@ -128,6 +175,12 @@ function handleEmailSent() {
   selectedConversation.value = null
 }
 
+// Defer loading/pending UI to client to avoid SSR/CSR hydration mismatches
+const isHydrated = ref(false)
+onMounted(() => {
+  isHydrated.value = true
+})
+
 // Edit and delete functionality removed - only predefined agents are supported
 
 // Clear functions
@@ -147,7 +200,7 @@ async function clearEmails() {
 
   clearingEmails.value = true
   try {
-    const result = await $fetch(`/api/agents/${agentId.value}/clear-emails`, { method: 'POST' })
+    const result = await $fetch(`/api/agent/${agentEmail.value}/clear-emails`, { method: 'POST' })
     console.log('Emails cleared:', result)
 
     // Refresh the conversation data
@@ -183,7 +236,7 @@ async function clearLogs() {
 
   clearingLogs.value = true
   try {
-    const result = await $fetch(`/api/agents/${agentId.value}/clear-logs`, { method: 'POST' })
+    const result = await $fetch(`/api/agent/${agentEmail.value}/clear-logs`, { method: 'POST' })
     console.log('Logs cleared:', result)
 
     // Refresh the logs data
@@ -220,11 +273,11 @@ async function clearAll() {
 
   clearingAll.value = true
   try {
-    const result = await $fetch(`/api/agents/${agentId.value}/clear-all`, { method: 'POST' })
+    const result = await $fetch(`/api/agent/${agentEmail.value}/clear-all`, { method: 'POST' })
     console.log('All data cleared:', result)
 
     // Refresh both email and logs data
-    await refreshEmails()
+    await refreshConversations()
     await refreshLogs()
 
     // Show success message
@@ -296,7 +349,7 @@ async function clearAll() {
                 label="Refresh"
                 color="neutral"
                 variant="outline"
-                :loading="conversationsPending"
+                :loading="isHydrated && conversationsPending"
                 @click="refreshConversations"
               />
               <UButton
@@ -304,13 +357,13 @@ async function clearAll() {
                 label="Clear"
                 color="red"
                 variant="outline"
-                :loading="clearingEmails"
+                :loading="isHydrated && clearingEmails"
                 @click="clearEmails"
               />
             </div>
           </div>
           <div class="mt-4">
-            <div v-if="conversationsPending" class="space-y-2">
+            <div v-if="isHydrated && conversationsPending" class="space-y-2">
               <USkeleton class="h-4 w-full" />
               <USkeleton class="h-4 w-3/4" />
               <USkeleton class="h-4 w-2/3" />
@@ -349,7 +402,7 @@ async function clearAll() {
                 icon="i-lucide-refresh-cw"
                 size="xs"
                 variant="ghost"
-                :loading="logsPending"
+                :loading="isHydrated && logsPending"
                 @click="refreshLogs"
                 >Refresh</UButton
               >
@@ -358,13 +411,13 @@ async function clearAll() {
                 size="xs"
                 color="red"
                 variant="outline"
-                :loading="clearingLogs"
+                :loading="isHydrated && clearingLogs"
                 @click="clearLogs"
                 >Clear Logs</UButton
               >
             </div>
           </div>
-          <div v-if="logsPending" class="mt-4 space-y-2">
+          <div v-if="isHydrated && logsPending" class="mt-4 space-y-2">
             <USkeleton class="h-4 w-full" />
             <USkeleton class="h-4 w-3/4" />
             <USkeleton class="h-4 w-2/3" />
@@ -579,7 +632,7 @@ async function clearAll() {
   <InboxConversationThread
     v-if="selectedConversation"
     :conversation="selectedConversation"
-    :agent-id="agentId"
+    :agent-email="agentEmail"
     @close="selectedConversation = null"
     @compose="handleCompose"
   />
@@ -587,7 +640,7 @@ async function clearAll() {
   <InboxComposeModal
     v-if="composeModalOpen"
     v-model="composeModalOpen"
-    :agent-id="agentId"
+    :agent-email="agentEmail"
     :compose-data="composeData"
     @sent="handleEmailSent"
     @close="composeModalOpen = false"

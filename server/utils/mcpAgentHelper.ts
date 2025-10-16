@@ -285,7 +285,7 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     console.log(`[MCPAgent] Agent has access to MCP tools from ${mcpServers.length} servers`)
 
     // Add timeout to prevent hanging - reduced for faster feedback
-    const AGENT_TIMEOUT = 20000 // 20 seconds max (reduced from 30s)
+    const AGENT_TIMEOUT = 45000 // 45 seconds to allow tool completion and cleanup
     const result = (await Promise.race([
       run(agent, finalPrompt),
       new Promise((_, reject) =>

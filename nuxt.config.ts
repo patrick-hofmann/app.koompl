@@ -119,6 +119,7 @@ export const ORDER_KEYS = [
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
+    '@nuxt/content',
     '@nuxt/ui',
     '@vueuse/nuxt',
     'nuxt-auth-utils'

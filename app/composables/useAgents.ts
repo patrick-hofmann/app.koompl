@@ -1,36 +1,18 @@
-import type { Agent, PredefinedAgent } from '~/types'
-import agentConfig from '~~/agents.config'
+import type { PredefinedAgent } from '~/types'
 
 // Re-export the PredefinedAgent type as PredefinedKoompl for backward compatibility
 export type PredefinedKoompl = PredefinedAgent
 
-// Get predefined agents directly from config
-export const PREDEFINED_KOOMPLS: PredefinedKoompl[] = Object.values(agentConfig.predefined.agents)
+// Load predefined agents from Nuxt Content 'agents' collection
+async function loadPredefinedFromContent(): Promise<PredefinedKoompl[]> {
+  // @ts-expect-error injected by @nuxt/content at runtime
+  const docs = await queryCollection('agents').all()
+  return (docs || []) as PredefinedKoompl[]
+}
 
 export function useAgents() {
-  function getPredefinedKoompls() {
-    return PREDEFINED_KOOMPLS
-  }
-
-  function getPredefinedKoompl(id: string) {
-    return PREDEFINED_KOOMPLS.find((k) => k.id === id)
-  }
-
-  function predefinedToAgentConverter(
-    predefined: PredefinedKoompl,
-    teamId?: string
-  ): Partial<Agent> {
-    return {
-      id: predefined.id,
-      name: predefined.name,
-      email: predefined.email,
-      role: predefined.role,
-      prompt: predefined.system_prompt,
-      mcpServerIds: predefined.mcp_servers,
-      multiRoundConfig: predefined.multiRoundConfig,
-      isPredefined: true,
-      teamId
-    }
+  async function getPredefinedKoompls() {
+    return await loadPredefinedFromContent()
   }
 
   async function getPredefinedKoomplsMerged() {
@@ -46,10 +28,11 @@ export function useAgents() {
           system_prompt: string
         }>
       }>('/api/predefined')
-      if (!res?.ok || !Array.isArray(res.data)) return PREDEFINED_KOOMPLS
+      const base = await loadPredefinedFromContent()
+      if (!res?.ok || !Array.isArray(res.data)) return base
 
       const map = new Map(res.data.map((p) => [p.id, p]))
-      return PREDEFINED_KOOMPLS.map((k) => {
+      return base.map((k) => {
         const s = map.get(k.id)
         return s
           ? {
@@ -64,19 +47,12 @@ export function useAgents() {
           : k
       })
     } catch {
-      return PREDEFINED_KOOMPLS
+      return await loadPredefinedFromContent()
     }
-  }
-
-  function isPredefinedEnabled(predefinedId: string, agents: Agent[]) {
-    return agents.some((agent) => agent.id === predefinedId && agent.isPredefined)
   }
 
   return {
     getPredefinedKoompls,
-    getPredefinedKoompl,
-    predefinedToAgent: predefinedToAgentConverter,
-    getPredefinedKoomplsMerged,
-    isPredefinedEnabled
+    getPredefinedKoomplsMerged
   }
 }
