@@ -28,10 +28,21 @@ export async function authenticateMcpRequest(event: H3Event): Promise<McpAuthRes
   const headers = getRequestHeaders(event)
   const isDevelopment = process.env.NODE_ENV === 'development'
 
+  // Check if authentication is disabled for inbound requests
+  const disableInboundAuth = process.env.DISABLE_INBOUND_AUTH === 'true'
+  if (disableInboundAuth) {
+    console.log('[MCP Auth] Inbound authentication disabled via DISABLE_INBOUND_AUTH=true')
+    return {
+      teamId: String(headers['x-team-id'] || '1'),
+      userId: String(headers['x-user-id'] || '1'),
+      isDevelopmentMode: true
+    }
+  }
+
   // Check if this is a relayed request from mailgun inbound (bypass auth)
   const forwardedBy = getRequestHeader(event, 'x-forwarded-by')
-  if (forwardedBy === 'mailgun-inbound') {
-    console.log('[MCP Auth] Relayed request from mailgun: bypassing authentication')
+  if (forwardedBy === 'mailgun-inbound' || forwardedBy === 'mcp-agent-service') {
+    console.log(`[MCP Auth] Relayed request from ${forwardedBy}: bypassing authentication`)
     return {
       teamId: String(headers['x-team-id'] || '1'),
       userId: String(headers['x-user-id'] || '1'),
