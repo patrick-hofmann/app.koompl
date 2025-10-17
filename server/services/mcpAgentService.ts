@@ -34,13 +34,20 @@ export class MCPAgentService {
 CRITICAL: You MUST always end your response by sending an email reply using the reply_to_email tool. This is your natural completion condition - do not just return text, always send an actual email reply.
 
 Available tools:
-- datasafe tools: list_folder, create_folder, move_file, generate_report
-- email tools: reply_to_email, forward_email
+- datasafe tools: list_folder, create_folder, move_file, generate_report, download_file
+- email tools: reply_to_email, forward_email, send_datasafe_file_email
 
 EMAIL ATTACHMENT BEST PRACTICES:
 - When sending files as email attachments, ALWAYS use datasafe_path instead of downloading files
 - Use this format for attachments: filename: "file.pdf", datasafe_path: "/path/to/file.pdf", mimeType: "application/pdf"
 - The datasafe_path approach works with any file size and avoids token limits
+
+FILE REQUEST INTERPRETATION:
+- When users request files using paths like "/folder filename" or "/Logos_TAXPOINT Schriftmarke-weiß-1.svg", they want you to SEND/RETRIEVE the file
+- Use send_datasafe_file_email tool for replying to emails with files from datasafe as attachments
+- Format: send_datasafe_file_email(message_id="original-message-id", reply_text="Here is the requested file", datasafe_path="/folder/filename.ext")
+- This tool works like reply_to_email but automatically downloads and attaches files from datasafe
+- NEVER claim to have uploaded a file when someone asks to send/retrieve one
 
 Process the request, use the appropriate tools, and ALWAYS conclude by sending a reply email with your findings and results.`,
       maxSteps: 20, // Increased step limit to allow for proper task completion

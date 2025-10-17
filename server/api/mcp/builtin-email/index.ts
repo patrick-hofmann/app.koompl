@@ -305,6 +305,36 @@ export default defineEventHandler(async (event) => {
                 required: ['message_id', 'to'],
                 additionalProperties: false
               }
+            },
+            {
+              name: 'send_datasafe_file_email',
+              description:
+                'Reply to an existing email by message-id with a file from datasafe as attachment. This tool is specifically designed for sending files when users request them via file paths (e.g., "/folder filename"). Automatically quotes the original email and sets proper threading headers.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  message_id: {
+                    type: 'string',
+                    description: 'The message-id of the email to reply to'
+                  },
+                  reply_text: {
+                    type: 'string',
+                    description:
+                      'Your reply text (original email will be automatically quoted below)'
+                  },
+                  datasafe_path: {
+                    type: 'string',
+                    description:
+                      'Path to the file in datasafe (e.g., "/Logos_TAXPOINT/Schriftmarke-weiß-1.svg")'
+                  },
+                  from: {
+                    type: 'string',
+                    description: 'Optional sender email (defaults to agent email)'
+                  }
+                },
+                required: ['message_id', 'reply_text', 'datasafe_path'],
+                additionalProperties: false
+              }
             }
           ]
         }
@@ -758,6 +788,203 @@ ${originalEmail.body}`
             throw createError({
               statusCode: 500,
               statusMessage: `Failed to forward email: ${sendError instanceof Error ? sendError.message : String(sendError)}`
+            })
+          }
+        } else if (toolName === 'send_datasafe_file_email') {
+          // Validate required fields
+          if (
+            (!args.message_id || typeof args.message_id !== 'string') &&
+            !currentMessageIdHeader
+          ) {
+            throw createError({ statusCode: 400, statusMessage: 'message_id is required' })
+          }
+          if (!args.reply_text || typeof args.reply_text !== 'string') {
+            throw createError({ statusCode: 400, statusMessage: 'reply_text is required' })
+          }
+          if (!args.datasafe_path || typeof args.datasafe_path !== 'string') {
+            throw createError({ statusCode: 400, statusMessage: 'datasafe_path is required' })
+          }
+
+          const messageId = String(
+            (args.message_id as string) || currentMessageIdHeader || ''
+          ).trim()
+          const replyText = String(args.reply_text)
+          const datasafePath = String(args.datasafe_path).trim()
+          const explicitFrom = args.from ? String(args.from) : undefined
+
+          console.log('[BuiltinEmailMCP] Sending datasafe file reply:', {
+            messageId,
+            datasafePath,
+            teamId,
+            userId
+          })
+
+          // Load the original email from storage
+          const { getEmail } = await import('../../../features/mail')
+          const storedEmail = await getEmail(messageId)
+
+          console.log('[BuiltinEmailMCP] Original email lookup:', {
+            messageId,
+            found: !!storedEmail,
+            type: storedEmail?.type
+          })
+
+          if (!storedEmail || storedEmail.type !== 'inbound') {
+            throw createError({
+              statusCode: 404,
+              statusMessage: `Email not found in storage for message-id: ${messageId}. Can only reply to emails we have received.`
+            })
+          }
+
+          const originalEmail = storedEmail.email
+
+          // Resolve agent metadata (fallback to stored email if not provided)
+          const effectiveAgentId = agentId || originalEmail.agentId
+          let effectiveAgentEmail = agentEmail || explicitFrom || originalEmail.agentEmail
+
+          if (!effectiveAgentEmail && effectiveAgentId && teamDomain) {
+            effectiveAgentEmail = `${effectiveAgentId}@${teamDomain}`
+          }
+
+          if (!effectiveAgentId || !effectiveAgentEmail) {
+            throw createError({
+              statusCode: 400,
+              statusMessage:
+                'Unable to determine agent identity for send_datasafe_file_email (agentId/agentEmail missing)'
+            })
+          }
+
+          // Reply to the sender of the original email
+          const recipientEmail = extractEmail(originalEmail.from) || originalEmail.from
+          const validation = validateRecipient(recipientEmail)
+
+          if (!validation.isAllowed) {
+            throw createError({
+              statusCode: 403,
+              statusMessage: `Email sending restricted: recipient must be in team domain (${teamDomain}) or be a team member`
+            })
+          }
+
+          // Download the file from datasafe
+          const { downloadDatasafeFile } = await import('../builtin-datasafe/operations')
+          const datasafeContext = {
+            teamId,
+            userId,
+            agentId: effectiveAgentId
+          }
+
+          try {
+            const fileData = await downloadDatasafeFile(datasafeContext, datasafePath)
+            // Create attachment from datasafe file
+            const attachments = [
+              {
+                filename: datasafePath.split('/').pop() || 'file',
+                data: fileData.base64,
+                mimeType: fileData.node.mimeType || 'application/octet-stream',
+                size: fileData.node.size || 0
+              }
+            ]
+
+            console.log('[BuiltinEmailMCP] Downloaded file from datasafe:', {
+              path: datasafePath,
+              filename: attachments[0].filename,
+              size: fileData.node.size,
+              mimeType: fileData.node.mimeType
+            })
+
+            // Format reply with quoted original (same as reply_to_email)
+            const originalDate = new Date(originalEmail.timestamp).toLocaleString('en-US', {
+              dateStyle: 'medium',
+              timeStyle: 'short'
+            })
+            const quotedBody = originalEmail.body
+              .split(/\r?\n/)
+              .map((line) => `> ${line}`)
+              .join('\n')
+
+            const formattedReply = `${replyText}
+
+On ${originalDate}, ${originalEmail.from} wrote:
+${quotedBody}`
+
+            // Build proper threading headers (same as reply_to_email)
+            const inReplyTo = originalEmail.messageId
+            const references = [
+              ...(originalEmail.references || []),
+              ...(originalEmail.inReplyTo || []),
+              originalEmail.messageId
+            ]
+              .filter((id): id is string => Boolean(id))
+              .reduce((acc, id) => {
+                if (!acc.includes(id)) acc.push(id)
+                return acc
+              }, [] as string[])
+
+            // Send reply with file attachment via Mailgun
+            const { sendMailgunEmail } = await import('../../../utils/mailgunHelpers')
+
+            await sendMailgunEmail({
+              from: effectiveAgentEmail,
+              to: recipientEmail,
+              subject: originalEmail.subject.startsWith('Re: ')
+                ? originalEmail.subject
+                : `Re: ${originalEmail.subject}`,
+              text: formattedReply,
+              attachments,
+              headers: {
+                'In-Reply-To': inReplyTo,
+                References: references.join(' ')
+              }
+            })
+
+            // Record reply in storage (same as reply_to_email)
+            const replyConversationId =
+              originalEmail.conversationId ||
+              (await import('../../../features/mail/threading').then(({ buildConversationId }) =>
+                buildConversationId(originalEmail.messageId, originalEmail.from, originalEmail.to)
+              ))
+
+            const replyMessageId = `<reply-${Date.now()}-${Math.random().toString(36).slice(2)}@${teamDomain}>`
+
+            await import('../../../features/mail/storage').then(({ mailStorage }) =>
+              mailStorage.storeOutboundEmail({
+                messageId: replyMessageId,
+                from: effectiveAgentEmail,
+                to: recipientEmail,
+                subject: originalEmail.subject.startsWith('Re: ')
+                  ? originalEmail.subject
+                  : `Re: ${originalEmail.subject}`,
+                body: formattedReply,
+                agentId: effectiveAgentId,
+                agentEmail: effectiveAgentEmail,
+                conversationId: replyConversationId,
+                inReplyTo: [inReplyTo],
+                references,
+                attachments: attachments.map((att, index) => ({
+                  id: `reply-attachment-${index}-${Date.now()}`,
+                  filename: att.filename,
+                  mimeType: att.mimeType,
+                  size: att.size || 0,
+                  base64: att.data
+                }))
+              })
+            )
+
+            // Return success response
+            result = {
+              content: [
+                {
+                  type: 'text',
+                  text: `Successfully sent file "${attachments[0].filename}" from datasafe path "${datasafePath}" as reply to ${recipientEmail}`
+                }
+              ],
+              isError: false
+            }
+          } catch (datasafeError) {
+            console.error('[BuiltinEmailMCP] Failed to download file from datasafe:', datasafeError)
+            throw createError({
+              statusCode: 404,
+              statusMessage: `File not found in datasafe: ${datasafePath}. ${datasafeError instanceof Error ? datasafeError.message : String(datasafeError)}`
             })
           }
         } else {

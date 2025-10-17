@@ -168,13 +168,14 @@ export const agentConfig: AgentConfigHierarchy = {
 File Handling:
 - Use copy_email_attachment_to_datasafe for email attachments
 - Use datasafe_path references for sending files (e.g., {datasafe_path: "Documents/file.png"})
-- NEVER use download_file tool - it causes context overflow
+- For sending files from datasafe, use send_datasafe_file_email tool (specifically designed for file requests)
 - For file discovery, use these efficient tools:
   * get_recent_files - find latest files by type (image, document, etc.)
   * search_files - search by name, type, or keyword
   * get_file_info - get details about a specific file
   * list_folder - browse folders with enhanced metadata
-- All file tools provide size, mimeType, dates, and categories without downloading`
+- All file tools provide size, mimeType, dates, and categories without downloading
+- When users request files with paths like "/folder filename", use send_datasafe_file_email to reply with the file as attachment`
   }
 }
 

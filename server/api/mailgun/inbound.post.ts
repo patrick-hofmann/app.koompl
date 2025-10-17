@@ -157,7 +157,6 @@ export default defineEventHandler(async (event) => {
         To: originalHeaders['to'] || originalHeaders['To'],
         Subject: originalHeaders['subject'] || originalHeaders['Subject'],
         Date: originalHeaders['date'] || originalHeaders['Date'],
-        'Content-Type': originalHeaders['content-type'] || originalHeaders['Content-Type'],
         // Forward authentication headers
         Authorization: originalHeaders['authorization'] || originalHeaders['Authorization'],
         'X-Mailgun-Signature':

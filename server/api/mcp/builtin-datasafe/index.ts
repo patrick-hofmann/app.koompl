@@ -531,7 +531,20 @@ export default defineEventHandler(async (event) => {
           case 'get_file_info': {
             try {
               if (typeof args.path !== 'string' || !args.path) {
-                throw new Error('File path is required')
+                toolResult = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: formatJson({
+                        ok: false,
+                        error: 'File path is required',
+                        path: args.path
+                      })
+                    }
+                  ],
+                  isError: true
+                }
+                break
               }
               const path = args.path as string
               // Derive folder path and filename
@@ -543,7 +556,20 @@ export default defineEventHandler(async (event) => {
                 (child) => child.type === 'file' && child.name === filename
               )
               if (!file) {
-                throw new Error(`File not found: ${path}`)
+                toolResult = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: formatJson({
+                        ok: false,
+                        error: `File not found: ${path}`,
+                        path: path
+                      })
+                    }
+                  ],
+                  isError: true
+                }
+                break
               }
               toolResult = {
                 content: [
@@ -575,7 +601,20 @@ export default defineEventHandler(async (event) => {
           case 'search_files': {
             try {
               if (typeof args.query !== 'string' || !args.query) {
-                throw new Error('Search query is required')
+                toolResult = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: formatJson({
+                        ok: false,
+                        error: 'Search query is required',
+                        query: args.query
+                      })
+                    }
+                  ],
+                  isError: true
+                }
+                break
               }
               const { flattenFiles } = await import('./helpers')
               const query = (args.query as string).toLowerCase()
@@ -778,7 +817,21 @@ export default defineEventHandler(async (event) => {
                   ? (args.mimeType as string)
                   : 'application/octet-stream'
               if (!path || !base64) {
-                throw new Error('Path and base64 payload are required')
+                toolResult = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: formatJson({
+                        ok: false,
+                        error: 'Path and base64 payload are required',
+                        path: args.path,
+                        hasBase64: !!base64
+                      })
+                    }
+                  ],
+                  isError: true
+                }
+                break
               }
               const size =
                 typeof args.size === 'number'
@@ -823,7 +876,20 @@ export default defineEventHandler(async (event) => {
           case 'create_folder': {
             try {
               if (typeof args.path !== 'string' || !args.path) {
-                throw new Error('Folder path is required')
+                toolResult = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: formatJson({
+                        ok: false,
+                        error: 'Folder path is required',
+                        path: args.path
+                      })
+                    }
+                  ],
+                  isError: true
+                }
+                break
               }
               const folder = await createDatasafeFolder(resolvedContext, args.path)
               toolResult = {
