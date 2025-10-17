@@ -9,6 +9,7 @@ export default defineContentConfig({
       source: 'agents/*.md',
       schema: z.object({
         id: z.string(),
+        agentId: z.string(), // This will map to the frontmatter 'id' field
         name: z.string(),
         email: z.string(),
         role: z.string(),

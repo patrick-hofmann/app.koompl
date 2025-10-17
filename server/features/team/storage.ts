@@ -58,7 +58,8 @@ const DEFAULT_DATA: IdentityData = {
     {
       id: '1',
       name: 'Team 1',
-      description: 'Team 1 description'
+      description: 'Team 1 description',
+      domain: 'agents.delta-mind.at'
     },
     {
       id: '2',

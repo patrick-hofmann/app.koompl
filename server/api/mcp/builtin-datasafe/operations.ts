@@ -1,4 +1,4 @@
-import * as datasafe from '../../../features/datasafe'
+import * as datasafe from '~~/server/features/datasafe'
 import type {
   DatasafeAttachmentContext,
   DatasafeFileNode,
@@ -50,6 +50,13 @@ export async function createDatasafeFolder(
   path: string
 ): Promise<DatasafeFolderNode> {
   return await datasafe.createFolder(context, path)
+}
+
+export async function deleteDatasafeFolder(
+  context: DatasafeMcpContext,
+  path: string
+): Promise<{ deleted: boolean; path: string }> {
+  return await datasafe.deleteDatasafeFolder(context, path)
 }
 
 export async function recommendDatasafePlacement(

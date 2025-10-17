@@ -1,8 +1,57 @@
-import { generateText, experimental_createMCPClient, stepCountIs } from 'ai'
+import { generateText, tool } from 'ai'
 import { openai } from '@ai-sdk/openai'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
+import { z } from 'zod'
 import agentConfig from '~~/agents.config'
 import type { H3Event } from 'h3'
+
+// Helper function to convert JSON Schema to Zod schema
+function createZodSchemaFromJsonSchema(jsonSchema: any): z.ZodSchema {
+  if (!jsonSchema || jsonSchema.type !== 'object') {
+    return z.object({}).describe('No parameters required')
+  }
+
+  const properties = jsonSchema.properties || {}
+  const required = jsonSchema.required || []
+
+  const zodProperties: Record<string, z.ZodSchema> = {}
+
+  for (const [key, prop] of Object.entries(properties)) {
+    const propSchema = prop as any
+    let zodProp: z.ZodSchema
+
+    switch (propSchema.type) {
+      case 'string':
+        zodProp = z.string()
+        break
+      case 'number':
+        zodProp = z.number()
+        break
+      case 'boolean':
+        zodProp = z.boolean()
+        break
+      case 'array':
+        zodProp = z.array(z.any())
+        break
+      case 'object':
+        zodProp = z.object({})
+        break
+      default:
+        zodProp = z.any()
+    }
+
+    if (propSchema.description) {
+      zodProp = zodProp.describe(propSchema.description)
+    }
+
+    if (!required.includes(key)) {
+      zodProp = zodProp.optional()
+    }
+
+    zodProperties[key] = zodProp
+  }
+
+  return z.object(zodProperties).describe(jsonSchema.description || '')
+}
 
 interface MCPConfig {
   url: string
@@ -76,80 +125,120 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
 
   const {
     mcpConfigs,
-    teamId,
-    userId,
+    teamId: _teamId,
+    userId: _userId,
     systemPrompt,
     userPrompt,
     attachments,
     event,
-    agentEmail,
-    currentMessageId,
+    agentEmail: _agentEmail,
+    currentMessageId: _currentMessageId,
     model,
     temperature,
-    maxTokens,
-    maxSteps
+    maxTokens
   } = options
-  const baseUrl = event ? getRequestURL(event).origin : 'http://localhost:3000'
+  const _baseUrl = event ? getRequestURL(event).origin : 'http://localhost:3000'
 
   // Resolve model settings with safe defaults from agents.config
   const generalDefaults = (agentConfig as any)?.predefined?.general || {}
   const effectiveModel = model || generalDefaults.model || 'gpt-4o-mini'
   const effectiveTemperature = temperature ?? generalDefaults.temperature ?? 0.1
   const effectiveMaxTokens = maxTokens ?? generalDefaults.max_tokens ?? 8000
-  const effectiveMaxSteps = maxSteps ?? generalDefaults.max_steps ?? 5
 
   console.log(`[MCPAgent] 🤖 Using model: ${effectiveModel} (temperature: ${effectiveTemperature})`)
 
-  // Create MCP clients for each server
-  const mcpClients: any[] = []
-  const tools: Record<string, any> = {}
-
   try {
-    // Initialize MCP clients for each server
+    // Load MCP tools using direct HTTP calls and custom tool definitions
+    const tools: Record<string, any> = {}
+
+    console.log(
+      `[MCPAgent] 🔧 Loading MCP tools from ${Object.keys(mcpConfigs).length} servers using direct HTTP calls`
+    )
+
     for (const [serverName, config] of Object.entries(mcpConfigs)) {
       try {
-        const serverUrl = config.url.startsWith('http') ? config.url : baseUrl + config.url
+        const serverUrl = config.url.startsWith('http') ? config.url : _baseUrl + config.url
+        console.log(`[MCPAgent] 📡 Connecting to MCP server ${serverName}: ${serverUrl}`)
 
-        // Create custom headers for authentication
-        const headers: Record<string, string> = {
-          'x-team-id': teamId
-        }
-        if (userId) {
-          headers['x-user-id'] = userId
-        }
-        if (agentEmail) {
-          headers['x-agent-email'] = agentEmail
-        }
-        if (currentMessageId) {
-          headers['x-current-message-id'] = currentMessageId
-        }
-
-        // Create HTTP transport with custom headers
-        const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
-          headers
+        // Get available tools from the MCP server
+        const toolsResponse = await fetch(serverUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer test-token'
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'list-tools',
+            method: 'tools/list',
+            params: {}
+          })
         })
 
-        // Create MCP client
-        const client = await experimental_createMCPClient({
-          transport
-        })
-
-        mcpClients.push(client)
-
-        // Get tools from this MCP server
-        const serverTools = await client.tools()
-
-        // Merge tools with server name prefix to avoid conflicts
-        for (const [toolName, toolDef] of Object.entries(serverTools)) {
-          const prefixedToolName = `${serverName}_${toolName}`
-          tools[prefixedToolName] = toolDef
+        if (!toolsResponse.ok) {
+          console.log(
+            `[MCPAgent] ⚠️  Failed to list tools from ${serverName}:`,
+            toolsResponse.status
+          )
+          continue
         }
 
+        const toolsResult = await toolsResponse.json()
+        const mcpTools = toolsResult.result?.tools || []
         console.log(
-          `[MCPAgent] ✅ Connected to ${serverName}: ${Object.keys(serverTools).length} tools`
+          `[MCPAgent] 🔧 Available MCP tools from ${serverName}:`,
+          mcpTools.map((t: any) => t.name)
         )
+
+        // Create AI SDK tools that call the MCP server
+        for (const mcpTool of mcpTools) {
+          const prefixedToolName = `${serverName}_${mcpTool.name}`
+
+          // Create a custom tool that calls the MCP server
+          const aiTool = tool({
+            description: mcpTool.description || `Call ${mcpTool.name} on ${serverName}`,
+            inputSchema: mcpTool.inputSchema
+              ? createZodSchemaFromJsonSchema(mcpTool.inputSchema)
+              : z.object({}).describe('No parameters required'),
+            execute: async (args) => {
+              console.log(`[MCPAgent] 🔧 Calling MCP tool ${prefixedToolName} with args:`, args)
+
+              const response = await fetch(serverUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: 'Bearer test-token'
+                },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: `call-${Date.now()}`,
+                  method: 'tools/call',
+                  params: {
+                    name: mcpTool.name,
+                    arguments: args
+                  }
+                })
+              })
+
+              if (response.ok) {
+                const result = await response.json()
+                console.log(`[MCPAgent] 🔧 MCP tool ${prefixedToolName} response:`, result.result)
+                return result.result
+              } else {
+                const error = await response.text()
+                console.log(`[MCPAgent] ❌ MCP tool ${prefixedToolName} error:`, error)
+                throw new Error(`MCP tool failed: ${error}`)
+              }
+            }
+          })
+
+          tools[prefixedToolName] = aiTool
+          console.log(`[MCPAgent] ✅ Created AI SDK tool ${prefixedToolName}`)
+        }
+
+        console.log(`[MCPAgent] ✅ Loaded ${mcpTools.length} tools from ${serverName}`)
       } catch (error) {
-        console.log(`[MCPAgent] ⚠️  Failed to connect to ${serverName}:`, error)
+        console.log(`[MCPAgent] ⚠️  Error loading tools from ${serverName}:`, error)
       }
     }
 
@@ -211,8 +300,8 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
         prompt: finalPrompt,
         tools,
         temperature: effectiveTemperature,
-        maxTokens: effectiveMaxTokens,
-        stopWhen: stepCountIs(effectiveMaxSteps)
+        maxTokens: effectiveMaxTokens
+        // No cleanup needed for direct HTTP calls
       }),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Agent execution timeout')), AGENT_TIMEOUT)
@@ -230,8 +319,25 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
     console.log(`[MCPAgent] 📋 Full result:`, {
       text: result.text,
       finishReason: result.finishReason,
-      usage: result.usage
+      usage: result.usage,
+      steps: result.steps?.length || 0,
+      hasError: !!result.error,
+      error: result.error
     })
+
+    // Log each step for debugging
+    if (result.steps && result.steps.length > 0) {
+      console.log(`[MCPAgent] 📝 Execution steps (${result.steps.length}):`)
+      result.steps.forEach((step, index) => {
+        console.log(`  Step ${index + 1}:`, {
+          type: step.type,
+          content:
+            step.content?.substring(0, 100) +
+            (step.content && step.content.length > 100 ? '...' : ''),
+          toolCalls: step.toolCalls?.length || 0
+        })
+      })
+    }
 
     // Log tool calls if any
     if (result.toolCalls && result.toolCalls.length > 0) {
@@ -239,7 +345,19 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
       result.toolCalls.forEach((toolCall, index) => {
         console.log(`  Tool call ${index + 1}:`, {
           toolName: toolCall.toolName,
-          args: toolCall.args
+          args: toolCall.args,
+          result: toolCall.result
+        })
+      })
+    }
+
+    // Log tool results if any
+    if (result.toolResults && result.toolResults.length > 0) {
+      console.log(`[MCPAgent] 📝 Tool results (${result.toolResults.length}):`)
+      result.toolResults.forEach((toolResult, index) => {
+        console.log(`  Tool result ${index + 1}:`, {
+          toolCallId: toolResult.toolCallId,
+          result: toolResult.result
         })
       })
     }
@@ -273,19 +391,5 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
   } catch (error) {
     console.error(`[MCPAgent] ❌ Error during agent execution:`, error)
     throw error
-  } finally {
-    // Always cleanup: close all MCP clients
-    const cleanupStart = Date.now()
-    await Promise.all(
-      mcpClients.map(async (client) => {
-        try {
-          await client.close()
-        } catch (error) {
-          console.log(`[MCPAgent] ⚠️  Error closing MCP client:`, error)
-        }
-      })
-    )
-    const cleanupDuration = Date.now() - cleanupStart
-    console.log(`[MCPAgent] ⏱️  Cleanup completed in ${cleanupDuration}ms`)
   }
 }

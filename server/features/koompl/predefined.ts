@@ -226,24 +226,86 @@ export async function updatePredefinedKoompl(
  * Load all predefined agents from content collection
  * This abstracts the queryCollection implementation detail
  */
-export async function loadPredefinedAgents(): Promise<PredefinedAgent[]> {
-  // @ts-expect-error injected by @nuxt/content at runtime
-  const docs = await queryCollection('agents').all()
-  return (docs || []) as PredefinedAgent[]
+export async function loadPredefinedAgents(event?: any): Promise<PredefinedAgent[]> {
+  console.log('[KoomplFeature] About to call queryCollection("agents").all()')
+  try {
+    // Check if queryCollection is available
+    console.log('[KoomplFeature] queryCollection available:', typeof queryCollection)
+    if (typeof queryCollection === 'undefined') {
+      console.error('[KoomplFeature] queryCollection is undefined - this might be the issue')
+      return []
+    }
+
+    // For server-side usage, pass the event object as the first argument
+    // @ts-expect-error injected by @nuxt/content at runtime
+    const docs = event
+      ? await queryCollection(event, 'agents').all()
+      : await queryCollection('agents').all()
+    console.log(
+      '[KoomplFeature] queryCollection("agents").all() completed successfully, found',
+      docs?.length || 0,
+      'agents'
+    )
+    return (docs || []) as PredefinedAgent[]
+  } catch (error) {
+    console.error('[KoomplFeature] queryCollection("agents").all() failed:', error)
+    console.error('[KoomplFeature] Error stack:', error.stack)
+    console.error('[KoomplFeature] Falling back to empty array due to cloudflare error')
+    // Fallback to empty array to prevent the error from breaking the application
+    return []
+  }
 }
 
 /**
  * Load a specific predefined agent by ID from content collection
  * This abstracts the queryCollection implementation detail
  */
-export async function loadPredefinedAgentById(agentId: string): Promise<PredefinedAgent | null> {
+export async function loadPredefinedAgentById(
+  agentId: string,
+  event?: any
+): Promise<PredefinedAgent | null> {
   try {
-    // @ts-expect-error injected by @nuxt/content at runtime
-    const items = await queryCollection('agents').where('id', '=', agentId).limit(1).find()
-    const doc = items?.[0]
-    return doc ? (doc as PredefinedAgent) : null
+    console.log(`[KoomplFeature] Loading agent by ID: ${agentId}`)
+    console.log(`[KoomplFeature] About to call loadPredefinedAgents() from loadPredefinedAgentById`)
+    // Load all agents and find by ID (since .where().find() doesn't work in server context)
+    const docs = await loadPredefinedAgents(event)
+    console.log(`[KoomplFeature] Loaded ${docs.length} predefined agents`)
+
+    // Log all available agent IDs for debugging
+    const agentIds = docs.map((doc) => {
+      // Extract agent ID from file path like "agents/agents/dara-datasafe.md"
+      return doc.id.split('/').pop()?.replace('.md', '') || doc.id
+    })
+    console.log(`[KoomplFeature] Available agent IDs:`, agentIds)
+
+    // Find by extracting agent ID from file path
+    const found = docs.find((doc) => {
+      const extractedId = doc.id.split('/').pop()?.replace('.md', '') || doc.id
+      return extractedId === agentId
+    })
+
+    console.log(`[KoomplFeature] Found agent:`, found ? 'YES' : 'NO')
+    if (found) {
+      console.log(`[KoomplFeature] Agent details:`, {
+        id: found.id,
+        name: found.name,
+        description: found.description?.substring(0, 100) + '...',
+        systemPrompt: found.system_prompt?.substring(0, 100) + '...',
+        mcpServers: found.mcp_servers,
+        hasMcpServers: !!found.mcp_servers,
+        mcpServersLength: found.mcp_servers?.length || 0
+      })
+    } else {
+      console.log(`[KoomplFeature] Agent with ID '${agentId}' not found in loaded agents`)
+    }
+    return found || null
   } catch (e) {
-    console.warn('[KoomplFeature] Failed to load agent frontmatter from content:', e)
+    console.error('[KoomplFeature] Failed to load agent frontmatter from content:', e)
+    console.error('[KoomplFeature] Error details:', {
+      message: e.message,
+      stack: e.stack,
+      name: e.name
+    })
     return null
   }
 }

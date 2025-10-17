@@ -1,10 +1,8 @@
 /**
- * Agent-Specific Inbound Email Handler (Simplified Storage)
+ * Agent-Specific Inbound Email Handler with MCP-Use Framework
  *
- * Receives emails for a specific agent (either from team/inbound relay or direct),
- * stores the email and attachments, and processes with MCP if enabled.
- *
- * Flow: ... → team/[teamId]/inbound → agent/[email]/inbound (storage)
+ * This version uses the new MCP agent service with mcp-use framework
+ * and Nitro storage for task management.
  */
 
 import {
@@ -21,7 +19,7 @@ import type { Agent } from '~/types'
 export default defineEventHandler(async (event) => {
   const requestStartTime = Date.now()
   const requestStartTimestamp = new Date().toISOString()
-  console.log(`[${requestStartTimestamp}] [AgentInbound] ⏱️  Request started`)
+  console.log(`[${requestStartTimestamp}] [AgentInboundMCP] ⏱️  Request started`)
 
   try {
     const agentEmail = getRouterParam(event, 'email')
@@ -38,7 +36,7 @@ export default defineEventHandler(async (event) => {
     const forwardedTeamId = getHeader(event, 'x-team-id')
     const forwardedAgentId = getHeader(event, 'x-agent-id')
 
-    console.log('[AgentInbound] Processing email for:', agentEmail, {
+    console.log('[AgentInboundMCP] Processing email for:', agentEmail, {
       forwardedBy,
       hasTeamId: !!forwardedTeamId,
       hasAgentId: !!forwardedAgentId
@@ -53,9 +51,9 @@ export default defineEventHandler(async (event) => {
 
     if (contentType.includes('application/json')) {
       payload = await readBody(event)
-      console.log('[AgentInbound] Parsed as JSON payload')
+      console.log('[AgentInboundMCP] Parsed as JSON payload')
     } else if (contentType.includes('multipart/form-data')) {
-      console.log('[AgentInbound] Parsing multipart form data...')
+      console.log('[AgentInboundMCP] Parsing multipart form data...')
       try {
         const formData = await readMultipartFormData(event)
         if (formData) {
@@ -78,7 +76,7 @@ export default defineEventHandler(async (event) => {
           }
         }
       } catch (error) {
-        console.error('[AgentInbound] Failed to parse multipart form data:', error)
+        console.error('[AgentInboundMCP] Failed to parse multipart form data:', error)
         const body = await readBody<Record<string, string>>(event)
         payload = body
       }
@@ -161,7 +159,7 @@ export default defineEventHandler(async (event) => {
 
     const html = firstString(payload['stripped-html'], payload.html, payload['body-html'])
 
-    console.log('[AgentInbound] Email fields:', {
+    console.log('[AgentInboundMCP] Email fields:', {
       messageId: messageId.slice(0, 30),
       from,
       subject
@@ -176,7 +174,7 @@ export default defineEventHandler(async (event) => {
 
     // If relayed from team/inbound, use forwarded IDs
     if (forwardedBy === 'team-inbound' && forwardedTeamId && forwardedAgentId) {
-      console.log('[AgentInbound] Using forwarded team/agent IDs')
+      console.log('[AgentInboundMCP] Using forwarded team/agent IDs')
 
       const { getIdentity } = await import('../../../features/team/storage')
       const identity = await getIdentity()
@@ -189,16 +187,16 @@ export default defineEventHandler(async (event) => {
       // If agent not found but it's a predefined agent, try to enable it
       if (!agent && forwardedAgentId) {
         console.log(
-          `[AgentInbound] Agent ${forwardedAgentId} not found, checking if it's a predefined agent`
+          `[AgentInboundMCP] Agent ${forwardedAgentId} not found, checking if it's a predefined agent`
         )
         const { loadPredefinedAgentById, enablePredefinedKoompl } = await import(
           '../../../features/koompl/predefined'
         )
-        const predefinedAgent = await loadPredefinedAgentById(forwardedAgentId)
+        const predefinedAgent = await loadPredefinedAgentById(forwardedAgentId, event)
 
         if (predefinedAgent) {
           console.log(
-            `[AgentInbound] Found predefined agent ${forwardedAgentId}, enabling for team ${forwardedTeamId}`
+            `[AgentInboundMCP] Found predefined agent ${forwardedAgentId}, enabling for team ${forwardedTeamId}`
           )
           try {
             agent = await enablePredefinedKoompl(
@@ -206,10 +204,12 @@ export default defineEventHandler(async (event) => {
               forwardedAgentId,
               { name: predefinedAgent.name, email: predefinedAgent.email }
             )
-            console.log(`[AgentInbound] Successfully enabled predefined agent ${forwardedAgentId}`)
+            console.log(
+              `[AgentInboundMCP] Successfully enabled predefined agent ${forwardedAgentId}`
+            )
           } catch (error) {
             console.error(
-              `[AgentInbound] Failed to enable predefined agent ${forwardedAgentId}:`,
+              `[AgentInboundMCP] Failed to enable predefined agent ${forwardedAgentId}:`,
               error
             )
           }
@@ -217,7 +217,7 @@ export default defineEventHandler(async (event) => {
       }
     } else {
       // Fallback: lookup by email (for direct calls or testing)
-      console.log('[AgentInbound] Looking up agent by email (no forwarded headers)')
+      console.log('[AgentInboundMCP] Looking up agent by email (no forwarded headers)')
 
       const emailParts = agentEmail.split('@')
       if (emailParts.length !== 2) {
@@ -254,7 +254,7 @@ export default defineEventHandler(async (event) => {
 
     const fullAgentEmail = agent.email.includes('@') ? agent.email : `${agent.email}@${team.domain}`
 
-    console.log('[AgentInbound] ✓ Resolved:', {
+    console.log('[AgentInboundMCP] ✓ Resolved:', {
       teamId: team.id,
       teamName: team.name,
       agentId: agent.id,
@@ -275,7 +275,7 @@ export default defineEventHandler(async (event) => {
       threadHeaders.references
     )
 
-    console.log('[AgentInbound] Threading:', {
+    console.log('[AgentInboundMCP] Threading:', {
       conversationId,
       inReplyTo: threadHeaders.inReplyTo
     })
@@ -302,7 +302,9 @@ export default defineEventHandler(async (event) => {
     })
 
     const emailStoredTime = Date.now()
-    console.log(`[AgentInbound] ✓ Email stored (${emailStoredTime - requestStartTime}ms elapsed)`)
+    console.log(
+      `[AgentInboundMCP] ✓ Email stored (${emailStoredTime - requestStartTime}ms elapsed)`
+    )
 
     // ═══════════════════════════════════════════════════════════════════
     // PROCESS ATTACHMENTS TO MAIL STORAGE
@@ -330,7 +332,7 @@ export default defineEventHandler(async (event) => {
 
     const attachmentDuration = Date.now() - attachmentStart
     console.log(
-      `[AgentInbound] ⏱️  Attachment processing: ${attachmentDuration}ms (${storedCount} stored)`
+      `[AgentInboundMCP] ⏱️  Attachment processing: ${attachmentDuration}ms (${storedCount} stored)`
     )
 
     // ═══════════════════════════════════════════════════════════════════
@@ -354,7 +356,7 @@ export default defineEventHandler(async (event) => {
         }
       })
     } catch (logErr) {
-      console.error('[AgentInbound] Failed to log email activity:', logErr)
+      console.error('[AgentInboundMCP] Failed to log email activity:', logErr)
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -368,7 +370,7 @@ export default defineEventHandler(async (event) => {
     const policyDecision = await evaluateInboundMail(agent, fromEmail)
 
     console.log(
-      '[AgentInbound] Policy decision:',
+      '[AgentInboundMCP] Policy decision:',
       policyDecision.allowed ? 'allowed' : 'blocked',
       policyDecision.reason || ''
     )
@@ -376,7 +378,7 @@ export default defineEventHandler(async (event) => {
     if (policyDecision.allowed) {
       const mcpStart = Date.now()
       console.log(
-        `[AgentInbound] 🤖 Calling MCP agent... (${mcpStart - requestStartTime}ms elapsed so far)`
+        `[AgentInboundMCP] 🤖 Calling MCP agent with mcp-use... (${mcpStart - requestStartTime}ms elapsed so far)`
       )
 
       // Load MCP configuration for this agent
@@ -386,9 +388,9 @@ export default defineEventHandler(async (event) => {
           method: 'GET'
         })
         mcpConfigs = configResponse.mcpConfigs
-        console.log('[AgentInbound] Loaded MCP config for inbound:', Object.keys(mcpConfigs))
+        console.log('[AgentInboundMCP] Loaded MCP config for inbound:', Object.keys(mcpConfigs))
       } catch (error) {
-        console.error('[AgentInbound] Failed to load MCP config for inbound:', error)
+        console.error('[AgentInboundMCP] Failed to load MCP config for inbound:', error)
         mcpConfigs = {}
       }
 
@@ -418,7 +420,7 @@ export default defineEventHandler(async (event) => {
         userPrompt += `\n\nExample: copy_email_attachment_to_datasafe(message_id="${String(messageId || '')}", filename="${emailAttachments[0]?.filename}", target_path="Documents/${emailAttachments[0]?.filename}")`
       }
 
-      console.log('[AgentInbound] Prompt includes:', {
+      console.log('[AgentInboundMCP] Prompt includes:', {
         hasAttachments: emailAttachments.length > 0,
         attachmentCount: emailAttachments.length,
         attachmentIds: emailAttachments.map((a) => a.id)
@@ -432,7 +434,9 @@ export default defineEventHandler(async (event) => {
       let fmMaxSteps: number | undefined
 
       try {
-        console.log('[AgentInbound] About to call loadPredefinedAgentById from inbound.post.ts')
+        console.log(
+          '[AgentInboundMCP] About to call loadPredefinedAgentById from inbound-mcp.post.ts'
+        )
         const { loadPredefinedAgentById } = await import('../../../features/koompl/predefined')
         const doc = await loadPredefinedAgentById(agent.id, event)
         if (doc) {
@@ -442,7 +446,7 @@ export default defineEventHandler(async (event) => {
           fmMaxSteps = doc.max_steps
         }
       } catch (e) {
-        console.warn('[AgentInbound] Failed to load agent frontmatter from content:', e)
+        console.warn('[AgentInboundMCP] Failed to load agent frontmatter from content:', e)
       }
 
       const effectiveModel = fmModel || generalDefaults.model
@@ -451,13 +455,19 @@ export default defineEventHandler(async (event) => {
       const effectiveMaxTokens = fmMaxTokens ?? (generalDefaults.max_tokens as number | undefined)
       const effectiveMaxSteps = fmMaxSteps ?? (generalDefaults.max_steps as number | undefined)
 
+      // Use the new MCP agent service
       const result = await runMCPAgentV2({
         mcpConfigs,
         teamId: team.id,
         userId: undefined,
         systemPrompt,
         userPrompt,
-        attachments: undefined,
+        attachments: emailAttachments.map((att) => ({
+          type: 'file' as const,
+          url: att.url,
+          base64: att.base64,
+          mimeType: att.mimeType
+        })),
         event,
         agentEmail: fullAgentEmail,
         currentMessageId: String(messageId || ''),
@@ -471,10 +481,10 @@ export default defineEventHandler(async (event) => {
       const mcpDuration = Date.now() - mcpStart
       const totalDuration = Date.now() - requestStartTime
       console.log(
-        `[AgentInbound] ⏱️  MCP agent completed in ${mcpDuration}ms (total: ${totalDuration}ms)`
+        `[AgentInboundMCP] ⏱️  MCP agent completed in ${mcpDuration}ms (total: ${totalDuration}ms)`
       )
       console.log(
-        '[AgentInbound] MCP result:',
+        '[AgentInboundMCP] MCP result:',
         typeof result === 'string' ? result.substring(0, 160) + '...' : result
       )
 
@@ -486,10 +496,11 @@ export default defineEventHandler(async (event) => {
         conversationId,
         attachments: storedCount,
         mcpProcessed: true,
-        policyAllowed: policyDecision.allowed
+        policyAllowed: policyDecision.allowed,
+        result
       }
     } else {
-      console.log('[AgentInbound] Email blocked by policy:', policyDecision.reason)
+      console.log('[AgentInboundMCP] Email blocked by policy:', policyDecision.reason)
 
       return {
         ok: true,
@@ -504,7 +515,7 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error) {
-    console.error('[AgentInbound] Error processing email:', error)
+    console.error('[AgentInboundMCP] Error processing email:', error)
 
     // Return success to Mailgun even on error (don't retry)
     return {

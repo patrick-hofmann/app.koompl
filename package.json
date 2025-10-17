@@ -36,6 +36,7 @@
     "better-sqlite3": "^12.4.1",
     "date-fns": "^4.1.0",
     "mcp-use": "^0.1.18",
+    "mcp-use-ts": "1.0.2-ts.0",
     "nanoid": "^5.1.6",
     "nuxt": "^4.0.3",
     "nuxt-auth-utils": "^0.5.25",

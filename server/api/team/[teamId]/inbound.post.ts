@@ -14,7 +14,9 @@ export default defineEventHandler(async (event) => {
   // Get the same Mailgun payload that was forwarded from mailgun/inbound
   const payload = await readBody(event)
 
-  const recipient = String(payload.recipient || '')
+  const recipient = String(
+    payload.recipient || payload.to || payload.To || payload.recipients || payload.Recipients || ''
+  )
   const from = String(payload.from || payload.From || payload.sender || '')
   const subject = String(payload.subject || payload.Subject || '')
 
@@ -24,16 +26,24 @@ export default defineEventHandler(async (event) => {
     subject
   })
 
-  // Load team data
-  const storage = useStorage('settings')
-  const team = await storage.getItem<{ id: string; name: string; domains: string[] }>(
-    `teams/${teamId}/settings.json`
-  )
+  // Load team data using the identity storage system
+  const { getIdentity } = await import('../../../features/team/storage')
+  const identity = await getIdentity()
+  const team = identity.teams.find((t) => t.id === teamId)
 
   if (!team) {
     console.error(`[TeamInbound] Team ${teamId} not found`)
     throw createError({ statusCode: 404, statusMessage: 'Team not found' })
   }
+
+  // Ensure team has domain information for compatibility
+  const teamWithDomain = {
+    id: team.id,
+    name: team.name,
+    domains: team.domain ? [team.domain] : []
+  }
+
+  console.log(`[TeamInbound] ✓ Found team:`, teamWithDomain)
 
   // TODO: Implement team inbound rules validation
   // For now, we allow all emails. Future rules could include:
@@ -74,7 +84,7 @@ export default defineEventHandler(async (event) => {
   // Relay the entire payload to agent/[email]/inbound
   // We use $fetch to make an internal API call
   try {
-    const response = await $fetch(`/api/agent/${encodeURIComponent(agentEmail)}/inbound`, {
+    const response = await $fetch(`/api/agent/${encodeURIComponent(agentEmail)}/inbound-mcp`, {
       method: 'POST',
       body: payload,
       headers: {

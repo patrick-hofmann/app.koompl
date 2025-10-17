@@ -1,4 +1,4 @@
-import { runMCPAgent } from '../../../utils/mcpAgentHelper'
+import { runMCPAgentV2 } from '../../../utils/mcpAgentHelperV2'
 import agentConfig from '~~/agents.config'
 // import type { Agent } from '~/types' // Unused for now
 
@@ -155,7 +155,7 @@ ${baseEmailGuidelines}`
   })
 
   // Execute the agent
-  const result = await runMCPAgent({
+  const result = await runMCPAgentV2({
     mcpConfigs,
     teamId: team.id,
     userId: body.userId,

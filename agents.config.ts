@@ -12,11 +12,9 @@ export const agentConfig: AgentConfigHierarchy = {
       temperature: 0.1,
       max_tokens: 8000,
       max_steps: 5,
-      mcp_servers: ['builtin-email'] as const,
       system_prompt:
         'This is the general system prompt for all agents. It is prepended to the system prompt of each agent.'
-    },
-    agents: {}
+    }
   },
   mcp: {
     servers: {

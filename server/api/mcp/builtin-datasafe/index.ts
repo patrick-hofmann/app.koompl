@@ -20,6 +20,7 @@ import {
   downloadDatasafeFile,
   uploadDatasafeFile,
   createDatasafeFolder,
+  deleteDatasafeFolder,
   recommendDatasafePlacement,
   storeDatasafeAttachment,
   listDatasafeRules,
@@ -210,6 +211,29 @@ export default defineEventHandler(async (event) => {
                   userId: { type: 'string' }
                 },
                 required: ['path'],
+                additionalProperties: false
+              }
+            },
+            {
+              name: 'delete_folders',
+              description:
+                'Delete one or many folders from the Datasafe. Use with caution - this action cannot be undone.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  paths: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Array of folder paths to delete'
+                  },
+                  teamId: { type: 'string' },
+                  userId: { type: 'string' },
+                  force: {
+                    type: 'boolean',
+                    description: 'Force deletion even if folders contain files (default: false)'
+                  }
+                },
+                required: ['paths'],
                 additionalProperties: false
               }
             },
@@ -463,18 +487,42 @@ export default defineEventHandler(async (event) => {
                 isError: false
               }
             } catch (err) {
-              toolResult = {
-                content: [
-                  {
-                    type: 'text',
-                    text: formatJson({
-                      ok: false,
-                      error: err.statusMessage || err.message || 'Failed to list folder',
-                      path: args.path
-                    })
-                  }
-                ],
-                isError: true
+              // Handle "folder not found" more gracefully - don't treat as error
+              if (err.statusMessage?.includes('not found') || err.message?.includes('not found')) {
+                toolResult = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: formatJson({
+                        ok: true,
+                        summary: `Folder '${args.path}' does not exist or has been deleted`,
+                        data: {
+                          id: 'not-found',
+                          name: args.path || 'Unknown',
+                          path: args.path || '',
+                          type: 'folder',
+                          children: [],
+                          note: 'Folder not found - may have been deleted'
+                        }
+                      })
+                    }
+                  ],
+                  isError: false
+                }
+              } else {
+                toolResult = {
+                  content: [
+                    {
+                      type: 'text',
+                      text: formatJson({
+                        ok: false,
+                        error: err.statusMessage || err.message || 'Failed to list folder',
+                        path: args.path
+                      })
+                    }
+                  ],
+                  isError: true
+                }
               }
             }
             break
@@ -613,6 +661,10 @@ export default defineEventHandler(async (event) => {
               const tree = await listDatasafeFolder(resolvedContext)
               const allFiles = flattenFiles(tree)
 
+              console.log(
+                `[BuiltinDatasafeMCP] get_recent_files: Found ${allFiles.length} total files`
+              )
+
               let filtered = allFiles
               if (fileType) {
                 filtered = allFiles.filter((file) => {
@@ -632,24 +684,42 @@ export default defineEventHandler(async (event) => {
               })
 
               const results = filtered.slice(0, limit)
+              console.log(
+                `[BuiltinDatasafeMCP] get_recent_files: Returning ${results.length} results`
+              )
+
               toolResult = {
                 content: [
                   {
                     type: 'text',
-                    text: formatJson({
-                      ok: true,
-                      data: {
-                        results,
-                        sortBy,
-                        totalFiles: allFiles.length,
-                        filteredFiles: filtered.length
-                      }
-                    })
+                    text: `Found ${results.length} recent files in datasafe. Total files: ${allFiles.length}`
                   }
                 ],
                 isError: false
               }
+
+              console.log(`[BuiltinDatasafeMCP] get_recent_files: Tool result prepared:`, {
+                hasContent: !!toolResult.content,
+                contentLength: toolResult.content?.[0]?.text?.length || 0,
+                isError: toolResult.isError
+              })
+
+              // Debug: Log the actual tool result structure
+              console.log(`[BuiltinDatasafeMCP] get_recent_files: Full tool result structure:`, {
+                toolResultType: typeof toolResult,
+                toolResultKeys: Object.keys(toolResult || {}),
+                contentType: typeof toolResult.content,
+                contentLength: toolResult.content?.length,
+                firstContentItem: toolResult.content?.[0]
+                  ? {
+                      type: toolResult.content[0].type,
+                      textLength: toolResult.content[0].text?.length,
+                      textPreview: toolResult.content[0].text?.substring(0, 200) + '...'
+                    }
+                  : null
+              })
             } catch (err) {
+              console.error(`[BuiltinDatasafeMCP] get_recent_files error:`, err)
               toolResult = {
                 content: [
                   {
@@ -774,6 +844,122 @@ export default defineEventHandler(async (event) => {
                       ok: false,
                       error: err.statusMessage || err.message || 'Failed to create folder',
                       path: args.path
+                    })
+                  }
+                ],
+                isError: true
+              }
+            }
+            break
+          }
+
+          case 'delete_folders': {
+            try {
+              if (!Array.isArray(args.paths) || args.paths.length === 0) {
+                throw new Error('Paths array is required and must not be empty')
+              }
+
+              const results = []
+              const errors = []
+              const force = args.force === true
+
+              for (const path of args.paths) {
+                if (typeof path !== 'string' || !path) {
+                  errors.push({ path, error: 'Invalid path provided' })
+                  continue
+                }
+
+                try {
+                  // Check if folder exists and has contents (unless force is true)
+                  if (!force) {
+                    try {
+                      const folderContents = await listDatasafeFolder(resolvedContext, path)
+                      if (
+                        folderContents &&
+                        folderContents.files &&
+                        folderContents.files.length > 0
+                      ) {
+                        errors.push({
+                          path,
+                          error: 'Folder contains files. Use force=true to delete anyway.'
+                        })
+                        continue
+                      }
+                    } catch (listErr) {
+                      // If folder doesn't exist, that's fine - it's already "deleted"
+                      if (
+                        listErr.statusMessage?.includes('not found') ||
+                        listErr.message?.includes('not found')
+                      ) {
+                        results.push({
+                          path,
+                          deleted: true,
+                          data: {
+                            deleted: true,
+                            path,
+                            note: 'Folder was already deleted or does not exist'
+                          }
+                        })
+                        continue
+                      }
+                      // Re-throw other errors
+                      throw listErr
+                    }
+                  }
+
+                  // Delete the folder
+                  const deleted = await deleteDatasafeFolder(resolvedContext, path)
+                  results.push({ path, deleted: true, data: deleted })
+                } catch (err) {
+                  // Handle "folder not found" as success (already deleted)
+                  if (
+                    err.statusMessage?.includes('not found') ||
+                    err.message?.includes('not found')
+                  ) {
+                    results.push({
+                      path,
+                      deleted: true,
+                      data: {
+                        deleted: true,
+                        path,
+                        note: 'Folder was already deleted or does not exist'
+                      }
+                    })
+                  } else {
+                    errors.push({
+                      path,
+                      error: err.statusMessage || err.message || 'Failed to delete folder'
+                    })
+                  }
+                }
+              }
+
+              const summary = {
+                ok: errors.length === 0,
+                deleted: results.length,
+                failed: errors.length,
+                results,
+                errors: errors.length > 0 ? errors : undefined
+              }
+
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson(summary)
+                  }
+                ],
+                isError: errors.length > 0
+              }
+            } catch (err) {
+              toolResult = {
+                content: [
+                  {
+                    type: 'text',
+                    text: formatJson({
+                      ok: false,
+                      error: err.statusMessage || err.message || 'Failed to delete folders',
+                      paths: args.paths
                     })
                   }
                 ],
@@ -1026,6 +1212,18 @@ export default defineEventHandler(async (event) => {
 
         const toolDuration = Date.now() - toolStartTime
         console.log(`[BuiltinDatasafeMCP] ⏱️  Tool '${toolName}' completed in ${toolDuration}ms`)
+        console.log(`[BuiltinDatasafeMCP] Final tool result:`, {
+          hasContent: !!toolResult.content,
+          contentLength: toolResult.content?.[0]?.text?.length || 0,
+          isError: toolResult.isError,
+          resultType: typeof toolResult
+        })
+
+        // Debug: Log the complete tool result structure
+        console.log(
+          `[BuiltinDatasafeMCP] Complete tool result for '${toolName}':`,
+          JSON.stringify(toolResult, null, 2)
+        )
 
         result = toolResult
         break

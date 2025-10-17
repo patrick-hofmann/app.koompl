@@ -3,7 +3,7 @@
  */
 
 import { nanoid } from 'nanoid'
-import { createHash } from 'node:crypto'
+// import { createHash } from 'crypto' // Removed for build compatibility
 import type { Agent } from '~/types'
 
 /**
@@ -20,8 +20,14 @@ export function normalizeMcpServerIds(value: unknown, fallback: string[] = []): 
  */
 export function generateAvatar(name: string, email: string | undefined, id: string) {
   const basis = email || name || id
-  const hash = createHash('sha256').update(basis).digest('hex').slice(0, 16)
-  const seed = encodeURIComponent(hash)
+  // Simple hash function for deterministic avatar generation
+  let hash = 0
+  for (let i = 0; i < basis.length; i++) {
+    const char = basis.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash // Convert to 32-bit integer
+  }
+  const seed = encodeURIComponent(Math.abs(hash).toString(36))
   // Use Pravatar for person-like avatars, deterministic via seed
   const src = `https://i.pravatar.cc/256?u=${seed}`
   const text = (

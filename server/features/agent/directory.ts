@@ -170,7 +170,22 @@ async function buildDirectoryEntry(
   // Mock: No agent whitelist - all agents can communicate
   const _allowedAgents: string[] = []
 
-  const visibleServers = (agent.mcpServerIds || [])
+  // Get MCP servers from content files for predefined agents, database for custom agents
+  let mcpServerIds: string[] = []
+  if (agent.isPredefined) {
+    // Load from content files for predefined agents
+    console.log('[AgentDirectory] About to call loadPredefinedAgentById from directory.ts')
+    const { loadPredefinedAgentById } = await import('../koompl/predefined')
+    const predefinedAgent = await loadPredefinedAgentById(agent.id)
+    if (predefinedAgent?.mcp_servers) {
+      mcpServerIds = [...predefinedAgent.mcp_servers]
+    }
+  } else {
+    // Fallback to database for custom agents
+    mcpServerIds = agent.mcpServerIds || []
+  }
+
+  const visibleServers = mcpServerIds
     .map((serverId) => context.serverMap.get(serverId))
     .filter((server): server is BuiltinServer => Boolean(server))
 

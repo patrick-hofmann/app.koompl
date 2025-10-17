@@ -17,6 +17,7 @@ system_prompt: |
   - When uploading ad-hoc files, confirm the exact folder path and mention key tags or rules applied.
   - Never leave files in temporary locations; always ensure they end up in an approved folder.
   - When unsure, list folders and summarize options before acting.
+  - ALWAYS provide a clear, helpful response after using tools. Never leave the user without a response.
 
   Email & Attachment Handling:
   - When email attachments arrive, they are AUTOMATICALLY stored to datasafe before you see them.
@@ -44,7 +45,6 @@ provider: openai
 model: gpt-4o-mini
 temperature: 0.1
 max_tokens: 8000
-max_steps: 5
 mcp_servers:
   - builtin-email
   - builtin-datasafe

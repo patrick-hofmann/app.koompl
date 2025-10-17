@@ -13,6 +13,7 @@ import {
   readFile,
   storeFile,
   createFolder as createFolderStorage,
+  removeNode as removeNodeStorage,
   recommendPlacement as recommendPlacementStorage,
   storeAttachment as storeAttachmentStorage,
   moveFileNode,
@@ -75,6 +76,15 @@ export async function createFolder(
 ): Promise<DatasafeFolderNode> {
   await ensureTeamDatasafe(context.teamId)
   return await createFolderStorage(context.teamId, path)
+}
+
+export async function deleteDatasafeFolder(
+  context: DatasafeContext,
+  path: string
+): Promise<{ deleted: boolean; path: string }> {
+  await ensureTeamDatasafe(context.teamId)
+  await removeNodeStorage(context.teamId, path)
+  return { deleted: true, path }
 }
 
 export async function recommendPlacement(

@@ -33,7 +33,6 @@ export interface AgentConfig {
     temperature: number
     max_tokens: number
     max_steps: number
-    mcp_servers: readonly string[]
     system_prompt: string
   }
   mcpServers: Record<string, string>

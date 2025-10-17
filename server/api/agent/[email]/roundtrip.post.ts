@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
 
     const base = getRequestURL(event)
     const origin = `${base.protocol}//${base.host}`
-    const inboundUrl = `${origin}/api/agent/${agentFullEmail}/inbound`
+    const inboundUrl = `${origin}/api/agent/${agentFullEmail}/inbound-mcp`
 
     const inboundResult = await $fetch<{
       ok: boolean

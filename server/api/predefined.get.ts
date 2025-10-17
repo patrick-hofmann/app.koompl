@@ -1,14 +1,20 @@
-import agentConfig from '~~/agents.config'
-
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   try {
-    const data = Object.values(agentConfig.predefined.agents).map((agent) => ({
+    // Load predefined agents from content files
+    console.log('[API] About to call loadPredefinedAgents from predefined.get.ts')
+    const { loadPredefinedAgents } = await import('~~/server/features/koompl/predefined')
+    const agents = await loadPredefinedAgents(event)
+
+    const data = agents.map((agent) => ({
       id: agent.id,
+      name: agent.name,
       role: agent.role,
       description: agent.description,
       mcp_servers: agent.mcp_servers,
       system_prompt: agent.system_prompt
     }))
+
+    console.log('[API] /api/predefined loaded agents:', data.length)
     return { ok: true, data }
   } catch (error) {
     console.error('[API] /api/predefined error:', error)

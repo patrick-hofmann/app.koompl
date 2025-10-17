@@ -53,10 +53,52 @@ export default defineEventHandler(async (event): Promise<McpConfigResponse> => {
     })
   }
 
-  // Get agent's MCP server IDs (only builtin servers supported)
-  const mcpServerIds = agent.mcpServerIds || []
+  // Load predefined agent from content files to get mcp_servers
+  let mcpServerIds: string[] = []
+
+  if (agent.isPredefined) {
+    // Load from content files for predefined agents
+    console.log('[MCP Config] About to call loadPredefinedAgentById from mcp-config.get.ts')
+    const { loadPredefinedAgentById } = await import('../../../features/koompl/predefined')
+    const predefinedAgent = await loadPredefinedAgentById(agent.id, event)
+
+    console.log('[MCP Config] Agent loading details:', {
+      agentId: agent.id,
+      isPredefined: agent.isPredefined,
+      predefinedAgentFound: !!predefinedAgent,
+      predefinedAgentData: predefinedAgent
+        ? {
+            id: predefinedAgent.id,
+            name: predefinedAgent.name,
+            description: predefinedAgent.description,
+            systemPrompt: predefinedAgent.system_prompt?.substring(0, 100) + '...',
+            mcpServers: predefinedAgent.mcp_servers
+          }
+        : null,
+      databaseAgentData: {
+        id: agent.id,
+        name: agent.name,
+        mcpServerIds: agent.mcpServerIds
+      }
+    })
+
+    if (predefinedAgent?.mcp_servers) {
+      mcpServerIds = [...predefinedAgent.mcp_servers]
+      console.log('[MCP Config] Using mcp_servers from content file:', mcpServerIds)
+    } else {
+      // Fallback to database if content file doesn't have mcp_servers
+      mcpServerIds = agent.mcpServerIds || []
+      console.log('[MCP Config] Fallback to database mcp_servers:', mcpServerIds)
+    }
+  } else {
+    // Fallback to database for custom agents
+    mcpServerIds = agent.mcpServerIds || []
+    console.log('[MCP Config] Using database mcp_servers for custom agent:', mcpServerIds)
+  }
+
+  // Ensure all agents have email support
   if (!mcpServerIds.includes('builtin-email')) {
-    mcpServerIds.push('builtin-email') // all agents have email support
+    mcpServerIds.push('builtin-email')
   }
 
   // Build MCP configs - only builtin servers
