@@ -1,5 +1,4 @@
-/**
- * Mailgun Inbound Email Handler (Simplified Relay)
+/* * Mailgun Inbound Email Handler (Simplified Relay)
  *
  * Receives emails from Mailgun webhook, identifies team by domain,
  * and relays to team-level inbound handler.
@@ -169,6 +168,8 @@ export default defineEventHandler(async (event) => {
         // Our custom headers
         'x-forwarded-by': 'mailgun-inbound',
         'x-source-domain': recipientDomain,
+        'x-team-id': team.id,
+        'x-user-id': '1', // Default user ID for mailgun requests
         'Content-Type': 'application/json'
       }
 

@@ -28,6 +28,17 @@ export async function authenticateMcpRequest(event: H3Event): Promise<McpAuthRes
   const headers = getRequestHeaders(event)
   const isDevelopment = process.env.NODE_ENV === 'development'
 
+  // Check if this is a relayed request from mailgun inbound (bypass auth)
+  const forwardedBy = getRequestHeader(event, 'x-forwarded-by')
+  if (forwardedBy === 'mailgun-inbound') {
+    console.log('[MCP Auth] Relayed request from mailgun: bypassing authentication')
+    return {
+      teamId: String(headers['x-team-id'] || '1'),
+      userId: String(headers['x-user-id'] || '1'),
+      isDevelopmentMode: true
+    }
+  }
+
   // Check for debug authorization bearer token (development only)
   if (isDevelopment) {
     const authHeader = getRequestHeader(event, 'authorization')
