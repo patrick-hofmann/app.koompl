@@ -130,14 +130,17 @@ Message ID: ${emailRequest.messageId}
 
 Please process this email request using the available MCP tools. You have access to:
 - datasafe tools: list_folder, create_folder, move_file, generate_report, download_file
-- email tools: reply_to_email, forward_email
+- email tools: reply_to_email, forward_email, send_datasafe_file_email
 
 CRITICAL INSTRUCTIONS:
 1. The message ID for replying is: "${emailRequest.messageId}" (use this exact value)
-2. You MUST end your response by sending a reply email using reply_to_email with message_id="${emailRequest.messageId}"
-3. This is your natural completion condition - the conversation ends when you send the email
-4. If you encounter any errors with tools, report them in your response and try alternative approaches
-5. Always use the exact message ID provided above, never use "undefined"
+2. You MUST end your response by sending EITHER:
+   - A reply email using reply_to_email with message_id="${emailRequest.messageId}", OR
+   - A file using send_datasafe_file_email with message_id="${emailRequest.messageId}"
+3. DO NOT send both - choose the appropriate method based on the user's request
+4. This is your natural completion condition - the conversation ends when you send the email or file
+5. If you encounter any errors with tools, report them in your response and try alternative approaches
+6. Always use the exact message ID provided above, never use "undefined"
 
 EMAIL ATTACHMENT RULES:
 - When sending files as email attachments, use datasafe_path format: filename: "file.pdf", datasafe_path: "/path/to/file.pdf", mimeType: "application/pdf"
