@@ -68,6 +68,18 @@ export default defineEventHandler(async (event) => {
 
     console.log('[MailgunInbound] Payload keys:', Object.keys(payload))
 
+    // Log signature and token if present
+    if (payload.signature) {
+      console.log('[MailgunInbound] Signature:', payload.signature)
+    }
+    if (payload.token) {
+      console.log('[MailgunInbound] Token:', payload.token)
+    }
+
+    // Log header data
+    const headers = getHeaders(event)
+    console.log('[MailgunInbound] Request headers:', headers)
+
     // ═══════════════════════════════════════════════════════════════════
     // EXTRACT RECIPIENT AND IDENTIFY TEAM BY DOMAIN
     // ═══════════════════════════════════════════════════════════════════
