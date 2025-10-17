@@ -12,9 +12,11 @@ export class MCPAgentService {
   private agent: MCPAgent
   private client: MCPClient
   private storage: any // Nitro storage will be injected
+  private forbiddenTools: string[] = []
 
-  constructor(storage: any) {
+  constructor(storage: any, forbiddenTools: string[] = []) {
     this.storage = storage
+    this.forbiddenTools = forbiddenTools
     this.client = new MCPClient()
 
     // Create LLM for the agent
@@ -32,18 +34,19 @@ export class MCPAgentService {
 CRITICAL: You MUST always end your response by sending an email reply using the reply_to_email tool. This is your natural completion condition - do not just return text, always send an actual email reply.
 
 Available tools:
-- datasafe tools: list_folder, create_folder, move_file, generate_report, download_file
+- datasafe tools: list_folder, create_folder, move_file, generate_report
 - email tools: reply_to_email, forward_email
 
 EMAIL ATTACHMENT BEST PRACTICES:
 - When sending files as email attachments, ALWAYS use datasafe_path instead of downloading files
 - Use this format for attachments: filename: "file.pdf", datasafe_path: "/path/to/file.pdf", mimeType: "application/pdf"
-- NEVER use download_file + base64 data for email attachments - this wastes tokens and has size limits
 - The datasafe_path approach works with any file size and avoids token limits
 
 Process the request, use the appropriate tools, and ALWAYS conclude by sending a reply email with your findings and results.`,
       maxSteps: 20, // Increased step limit to allow for proper task completion
-      autoInitialize: false
+      autoInitialize: false,
+      // Use native mcp-use tool restriction
+      disallowed_tools: forbiddenTools
     })
   }
 
@@ -74,6 +77,10 @@ Process the request, use the appropriate tools, and ALWAYS conclude by sending a
       await this.agent.initialize()
 
       console.log('✅ MCP Agent Service initialized with servers:', this.client.getServerNames())
+
+      if (this.forbiddenTools.length > 0) {
+        console.log(`🔒 [MCP Agent] Disallowed tools: ${this.forbiddenTools.join(', ')}`)
+      }
     } catch (error) {
       console.error('❌ Failed to initialize MCP Agent Service:', error)
       throw error
@@ -114,7 +121,6 @@ CRITICAL INSTRUCTIONS:
 
 EMAIL ATTACHMENT RULES:
 - When sending files as email attachments, use datasafe_path format: filename: "file.pdf", datasafe_path: "/path/to/file.pdf", mimeType: "application/pdf"
-- DO NOT download files with download_file and then use base64 data for email attachments
 - The datasafe_path approach is more efficient and works with any file size`
 
       // Use the MCP agent directly

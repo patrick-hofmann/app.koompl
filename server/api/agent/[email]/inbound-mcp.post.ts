@@ -432,6 +432,7 @@ export default defineEventHandler(async (event) => {
       let fmTemperature: number | undefined
       let fmMaxTokens: number | undefined
       let fmMaxSteps: number | undefined
+      let fmForbiddenTools: string[] | undefined
 
       try {
         console.log(
@@ -444,6 +445,7 @@ export default defineEventHandler(async (event) => {
           fmTemperature = doc.temperature
           fmMaxTokens = doc.max_tokens
           fmMaxSteps = doc.max_steps
+          fmForbiddenTools = doc.forbidden_tools
         }
       } catch (e) {
         console.warn('[AgentInboundMCP] Failed to load agent frontmatter from content:', e)
@@ -475,7 +477,9 @@ export default defineEventHandler(async (event) => {
         model: effectiveModel,
         temperature: effectiveTemperature,
         maxTokens: effectiveMaxTokens,
-        maxSteps: effectiveMaxSteps
+        maxSteps: effectiveMaxSteps,
+        // Tool restrictions
+        forbiddenTools: fmForbiddenTools || []
       })
 
       const mcpDuration = Date.now() - mcpStart

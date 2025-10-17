@@ -30,6 +30,8 @@ interface RunMCPAgentOptions {
   temperature?: number
   maxTokens?: number
   maxSteps?: number
+  // Tool restrictions
+  forbiddenTools?: string[]
 }
 
 /**
@@ -49,14 +51,14 @@ export async function runMCPAgentStreamingV2(
   const startTimestamp = new Date().toISOString()
   console.log(`[${startTimestamp}] [MCPAgentV2] ⏱️  Starting MCP agent execution with mcp-use`)
 
-  const { userPrompt, attachments, agentEmail, currentMessageId } = options
+  const { userPrompt, attachments, agentEmail, currentMessageId, forbiddenTools = [] } = options
 
   try {
     // Get Nitro storage
     const storage = useStorage('mcp-tasks')
 
     // Initialize MCP agent service
-    const agentService = new MCPAgentService(storage)
+    const agentService = new MCPAgentService(storage, forbiddenTools)
     await agentService.initialize()
 
     if (onProgress) {
