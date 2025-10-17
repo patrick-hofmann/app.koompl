@@ -1,4 +1,6 @@
-import { Agent, run, MCPServerStreamableHttp } from '@openai/agents'
+import { generateText, experimental_createMCPClient, stepCountIs } from 'ai'
+import { openai } from '@ai-sdk/openai'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
 import agentConfig from '~~/agents.config'
 import type { H3Event } from 'h3'
 
@@ -48,7 +50,7 @@ export async function runMCPAgentStreaming(
   }) => void
 ): Promise<string> {
   // For now, just call the regular function
-  // TODO: Implement actual streaming when OpenAI Agents SDK supports it
+  // TODO: Implement actual streaming when Vercel AI SDK supports it
   if (onProgress) {
     onProgress({ type: 'acknowledgment', message: 'Processing your request...' })
   }
@@ -63,7 +65,7 @@ export async function runMCPAgentStreaming(
 }
 
 /**
- * Runs an MCP agent with the provided configuration
+ * Runs an MCP agent with the provided configuration using Vercel AI SDK
  * @param options Configuration options for the MCP agent
  * @returns The final output from the agent
  */
@@ -89,155 +91,6 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
   } = options
   const baseUrl = event ? getRequestURL(event).origin : 'http://localhost:3000'
 
-  // Create a custom fetch function for same-origin requests
-  let localFetch:
-    | undefined
-    | ((
-        path: string,
-        init?: {
-          method?: string
-          headers?: Record<string, string>
-          body?: any
-          signal?: AbortSignal
-        }
-      ) => Promise<Response>)
-
-  // Try to get Nitro's localFetch at runtime (Nuxt server alias)
-  try {
-    const nitro = await import('#internal/nitro')
-    const app = nitro.useNitroApp ? nitro.useNitroApp() : nitro.default?.useNitroApp?.()
-    localFetch = app?.localFetch
-  } catch {
-    // ignore; we'll fall back to global fetch
-  }
-
-  // WHATWG-compatible fetch that forwards cookies and uses localFetch when available
-  const sameOriginFetch: typeof fetch = async (input, init) => {
-    const href = typeof input === 'string' || input instanceof URL ? input.toString() : input.url
-    const origin = event ? getRequestURL(event).origin : baseUrl
-    const u = new URL(href, origin)
-
-    // Flatten headers
-    const headersObj = init?.headers
-      ? Object.fromEntries(new Headers(init.headers as HeadersInit).entries())
-      : {}
-
-    // Forward cookie from event if available
-    if (event) {
-      const cookie = getRequestHeader(event, 'cookie')
-      if (cookie) (headersObj as any).cookie = cookie
-    }
-
-    if (localFetch) {
-      // Zero-hop, in-process call; returns a native Response
-      console.log('localFetch', `${u.pathname}${u.search}`)
-      return localFetch(`${u.pathname}${u.search}`, {
-        method: init?.method,
-        headers: headersObj,
-        body: init?.body as any,
-        signal: init?.signal as any
-      })
-    }
-
-    // Fallback: regular HTTP (native fetch)
-    console.log('fallback globalThis.fetch', u.toString())
-    return globalThis.fetch(u.toString(), {
-      ...init,
-      headers: headersObj
-    })
-  }
-
-  // Build MCP server clients with custom fetch
-  // Per-run cache for MCP tools/list to avoid repeated round-trips
-  const perRunToolListCache = new Map<string, { body: string; response: any }>()
-
-  // Wrap fetch to cache JSON-RPC tools/list responses for this run
-  const createCachedFetchForServer = (serverName: string): typeof sameOriginFetch => {
-    return async (path, init) => {
-      try {
-        const isPost = (init?.method || 'GET').toUpperCase() === 'POST'
-        const bodyString = typeof init?.body === 'string' ? init.body : undefined
-        if (isPost && bodyString) {
-          // Only intercept JSON-RPC requests
-          let parsed: any
-          try {
-            parsed = JSON.parse(bodyString)
-          } catch {
-            parsed = null
-          }
-          const isJsonRpcToolsList =
-            parsed && parsed.jsonrpc === '2.0' && parsed.method === 'tools/list'
-
-          if (isJsonRpcToolsList) {
-            const cacheKey = `${serverName}`
-            const cached = perRunToolListCache.get(cacheKey)
-            if (cached) {
-              // Serve cached response for this run
-              const cachedPayload = JSON.stringify({
-                jsonrpc: '2.0',
-                id: parsed.id ?? '0',
-                result: cached.response
-              })
-              return new Response(cachedPayload, {
-                status: 200,
-                headers: { 'content-type': 'application/json' }
-              })
-            }
-
-            // Call through, then cache
-            const res = await sameOriginFetch(path, init)
-            try {
-              const cloned = res.clone()
-              const json = await cloned.json()
-              if (json && json.result && json.result.tools) {
-                perRunToolListCache.set(cacheKey, { body: bodyString, response: json.result })
-              }
-            } catch {
-              // ignore caching failures
-            }
-            return res
-          }
-        }
-      } catch {
-        // fall through to underlying fetch on any parsing/caching error
-      }
-      return sameOriginFetch(path, init)
-    }
-  }
-
-  const mcpServers = Object.entries(mcpConfigs).map(([name, config]) => {
-    const headers: Record<string, string> = {
-      'x-team-id': teamId
-    }
-    if (userId) {
-      headers['x-user-id'] = userId
-    }
-    if (agentEmail) {
-      headers['x-agent-email'] = agentEmail
-    }
-    if (currentMessageId) {
-      headers['x-current-message-id'] = currentMessageId
-    }
-
-    return new MCPServerStreamableHttp({
-      name,
-      url: config.url.startsWith('http') ? config.url : baseUrl + config.url,
-      fetch: config.url.startsWith('http') ? undefined : createCachedFetchForServer(name),
-      requestInit: {
-        headers
-      }
-    })
-  })
-
-  // Connect all servers
-  const connectStart = Date.now()
-  for (const server of mcpServers) {
-    await server.connect()
-  }
-  const connectDuration = Date.now() - connectStart
-  console.log(
-    `[MCPAgent] ⏱️  Connected to ${mcpServers.length} MCP servers in ${connectDuration}ms`
-  )
   // Resolve model settings with safe defaults from agents.config
   const generalDefaults = (agentConfig as any)?.predefined?.general || {}
   const effectiveModel = model || generalDefaults.model || 'gpt-4o-mini'
@@ -247,85 +100,78 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
 
   console.log(`[MCPAgent] 🤖 Using model: ${effectiveModel} (temperature: ${effectiveTemperature})`)
 
-  // Create an agent that uses these MCP servers
-  const agent = new Agent({
-    model: effectiveModel,
-    modelSettings: {
-      temperature: effectiveTemperature,
-      maxTokens: effectiveMaxTokens,
-      maxSteps: effectiveMaxSteps
-    },
-    name: 'MCP Assistant',
-    instructions:
-      systemPrompt +
-      '\n\nIMPORTANT: You have access to all necessary tools. Use them directly when needed.',
-    mcpServers,
-    // Filter out tools that can cause context window overflow
-    toolFilter: (tools) => {
-      return tools.filter((tool) => {
-        // Prevent download_file tool to avoid context window overflow
-        if (tool.name === 'download_file') {
-          console.log(`[MCPAgent] 🚫 Filtered out tool: ${tool.name} (prevents context overflow)`)
-          return false
-        }
-        return true
-      })
-    }
-  })
-
-  // Add event listeners for tool calls to log results
-  agent.on('toolCall', (toolCall) => {
-    console.log(`[MCPAgent] 🔧 Tool called: ${toolCall.toolName}`, {
-      args: toolCall.args,
-      callId: toolCall.callId
-    })
-  })
-
-  agent.on('toolResult', (toolResult) => {
-    console.log(`[MCPAgent] ✅ Tool result: ${toolResult.toolName}`, {
-      callId: toolResult.callId,
-      success: toolResult.success,
-      result: toolResult.result
-        ? JSON.stringify(toolResult.result).substring(0, 200) + '...'
-        : null,
-      error: toolResult.error
-    })
-  })
-
-  // Add performance monitoring
-  const toolCallTimes = new Map<string, number>()
-  agent.on('toolCall', (toolCall) => {
-    toolCallTimes.set(toolCall.callId, Date.now())
-  })
-
-  agent.on('toolResult', (toolResult) => {
-    const startTime = toolCallTimes.get(toolResult.callId)
-    if (startTime) {
-      const duration = Date.now() - startTime
-      console.log(`[MCPAgent] ⏱️  Tool '${toolResult.toolName}' took ${duration}ms`)
-      toolCallTimes.delete(toolResult.callId)
-    }
-  })
-
-  const setupDuration = Date.now() - startTime
-  const setupEndTimestamp = new Date().toISOString()
-  console.log(`[${setupEndTimestamp}] [MCPAgent] ⏱️  Setup completed in ${setupDuration}ms`)
-  console.log(`[MCPAgent] Agent config:`, {
-    model,
-    mcpServerCount: mcpServers.length,
-    serverNames: mcpServers.map((s) => s['name']),
-    systemPromptLength: systemPrompt.length,
-    userPromptLength: userPrompt.length,
-    hasAttachments: !!attachments && attachments.length > 0
-  })
-
-  // Log the actual prompts (truncated for readability)
-  console.log(`[MCPAgent] 📝 System Prompt (${systemPrompt.length} chars):`)
-  console.log(systemPrompt.substring(0, 500) + (systemPrompt.length > 500 ? '...' : ''))
-  console.log(`[MCPAgent] 📝 User Prompt (${userPrompt.length} chars):`)
-  console.log(userPrompt.substring(0, 500) + (userPrompt.length > 500 ? '...' : ''))
+  // Create MCP clients for each server
+  const mcpClients: any[] = []
+  const tools: Record<string, any> = {}
 
   try {
+    // Initialize MCP clients for each server
+    for (const [serverName, config] of Object.entries(mcpConfigs)) {
+      try {
+        const serverUrl = config.url.startsWith('http') ? config.url : baseUrl + config.url
+
+        // Create custom headers for authentication
+        const headers: Record<string, string> = {
+          'x-team-id': teamId
+        }
+        if (userId) {
+          headers['x-user-id'] = userId
+        }
+        if (agentEmail) {
+          headers['x-agent-email'] = agentEmail
+        }
+        if (currentMessageId) {
+          headers['x-current-message-id'] = currentMessageId
+        }
+
+        // Create HTTP transport with custom headers
+        const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
+          headers
+        })
+
+        // Create MCP client
+        const client = await experimental_createMCPClient({
+          transport
+        })
+
+        mcpClients.push(client)
+
+        // Get tools from this MCP server
+        const serverTools = await client.tools()
+
+        // Merge tools with server name prefix to avoid conflicts
+        for (const [toolName, toolDef] of Object.entries(serverTools)) {
+          const prefixedToolName = `${serverName}_${toolName}`
+          tools[prefixedToolName] = toolDef
+        }
+
+        console.log(
+          `[MCPAgent] ✅ Connected to ${serverName}: ${Object.keys(serverTools).length} tools`
+        )
+      } catch (error) {
+        console.log(`[MCPAgent] ⚠️  Failed to connect to ${serverName}:`, error)
+      }
+    }
+
+    const setupDuration = Date.now() - startTime
+    const setupEndTimestamp = new Date().toISOString()
+    console.log(`[${setupEndTimestamp}] [MCPAgent] ⏱️  Setup completed in ${setupDuration}ms`)
+    console.log(`[MCPAgent] Agent config:`, {
+      model: effectiveModel,
+      mcpServerCount: Object.keys(mcpConfigs).length,
+      serverNames: Object.keys(mcpConfigs),
+      toolCount: Object.keys(tools).length,
+      systemPromptLength: systemPrompt.length,
+      userPromptLength: userPrompt.length,
+      hasAttachments: !!attachments && attachments.length > 0
+    })
+
+    // Log the actual prompts (truncated for readability)
+    console.log(`[MCPAgent] 📝 System Prompt (${systemPrompt.length} chars):`)
+    console.log(systemPrompt.substring(0, 500) + (systemPrompt.length > 500 ? '...' : ''))
+    console.log(`[MCPAgent] 📝 User Prompt (${userPrompt.length} chars):`)
+    console.log(userPrompt.substring(0, 500) + (userPrompt.length > 500 ? '...' : ''))
+
     let finalPrompt = userPrompt
 
     // If attachments are provided, include them in the prompt text
@@ -348,67 +194,54 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
 
     const beforeRun = Date.now()
     const beforeRunTimestamp = new Date().toISOString()
-    console.log(`[${beforeRunTimestamp}] [MCPAgent] 🚀 Running OpenAI agent...`)
+    console.log(`[${beforeRunTimestamp}] [MCPAgent] 🚀 Running Vercel AI SDK agent...`)
     console.log(`[MCPAgent] Final prompt length: ${finalPrompt.length} chars`)
 
     // Log tool count that agent has access to
-    console.log(`[MCPAgent] Agent has access to MCP tools from ${mcpServers.length} servers`)
+    console.log(`[MCPAgent] Agent has access to ${Object.keys(tools).length} MCP tools`)
 
     // Add timeout to prevent hanging - reduced for faster feedback
     const AGENT_TIMEOUT = 45000 // 45 seconds to allow tool completion and cleanup
     const result = (await Promise.race([
-      run(agent, finalPrompt),
+      generateText({
+        model: openai(effectiveModel),
+        system:
+          systemPrompt +
+          '\n\nIMPORTANT: You have access to all necessary tools. Use them directly when needed.',
+        prompt: finalPrompt,
+        tools,
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
+        stopWhen: stepCountIs(effectiveMaxSteps)
+      }),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Agent execution timeout')), AGENT_TIMEOUT)
       )
-    ])) as Awaited<ReturnType<typeof run>>
+    ])) as Awaited<ReturnType<typeof generateText>>
 
     const afterRun = Date.now()
     const afterRunTimestamp = new Date().toISOString()
     console.log(
       `[${afterRunTimestamp}] [MCPAgent] ⏱️  Agent run completed in ${afterRun - beforeRun}ms`
     )
-    console.log(`[MCPAgent] Result output length: ${result.finalOutput?.length || 0} chars`)
+    console.log(`[MCPAgent] Result output length: ${result.text?.length || 0} chars`)
 
     // Log the full result for debugging
     console.log(`[MCPAgent] 📋 Full result:`, {
-      finalOutput: result.finalOutput,
-      steps: result.steps?.length || 0,
-      hasError: !!result.error,
-      error: result.error
+      text: result.text,
+      finishReason: result.finishReason,
+      usage: result.usage
     })
 
-    // Log each step for debugging
-    if (result.steps && result.steps.length > 0) {
-      console.log(`[MCPAgent] 📝 Execution steps (${result.steps.length}):`)
-      result.steps.forEach((step, index) => {
-        console.log(`  Step ${index + 1}:`, {
-          type: step.type,
-          content:
-            step.content?.substring(0, 100) +
-            (step.content && step.content.length > 100 ? '...' : ''),
-          toolCalls: step.toolCalls?.length || 0
+    // Log tool calls if any
+    if (result.toolCalls && result.toolCalls.length > 0) {
+      console.log(`[MCPAgent] 📝 Tool calls (${result.toolCalls.length}):`)
+      result.toolCalls.forEach((toolCall, index) => {
+        console.log(`  Tool call ${index + 1}:`, {
+          toolName: toolCall.toolName,
+          args: toolCall.args
         })
       })
-    }
-
-    // Log potential issues
-    if (
-      result.finalOutput &&
-      result.finalOutput.includes('image') &&
-      result.finalOutput.includes('Tobi')
-    ) {
-      console.log(
-        `[MCPAgent] ⚠️  Agent mentioned sending an image but may not have access to files. Consider checking datasafe for available files.`
-      )
-    }
-
-    // Log performance summary
-    const totalToolCalls = toolCallTimes.size
-    if (totalToolCalls > 0) {
-      console.log(
-        `[MCPAgent] ⚠️  ${totalToolCalls} tool calls still pending - possible timeout or error`
-      )
     }
 
     const totalDuration = Date.now() - startTime
@@ -436,13 +269,22 @@ export async function runMCPAgent(options: RunMCPAgentOptions): Promise<string> 
       console.log(`[MCPAgent] ⚡ EXCELLENT EXECUTION: ${totalDuration}ms - excellent performance`)
     }
 
-    return result.finalOutput
+    return result.text
+  } catch (error) {
+    console.error(`[MCPAgent] ❌ Error during agent execution:`, error)
+    throw error
   } finally {
-    // Always cleanup: close all MCP servers
+    // Always cleanup: close all MCP clients
     const cleanupStart = Date.now()
-    for (const server of mcpServers) {
-      await server.close()
-    }
+    await Promise.all(
+      mcpClients.map(async (client) => {
+        try {
+          await client.close()
+        } catch (error) {
+          console.log(`[MCPAgent] ⚠️  Error closing MCP client:`, error)
+        }
+      })
+    )
     const cleanupDuration = Date.now() - cleanupStart
     console.log(`[MCPAgent] ⏱️  Cleanup completed in ${cleanupDuration}ms`)
   }
