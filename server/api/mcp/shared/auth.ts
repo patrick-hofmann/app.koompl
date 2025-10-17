@@ -30,8 +30,13 @@ export async function authenticateMcpRequest(event: H3Event): Promise<McpAuthRes
 
   // Check if authentication is disabled for inbound requests
   const disableInboundAuth = process.env.DISABLE_INBOUND_AUTH === 'true'
-  if (disableInboundAuth) {
-    console.log('[MCP Auth] Inbound authentication disabled via DISABLE_INBOUND_AUTH=true')
+  const isVercelDeployment =
+    process.env.VERCEL_URL || process.env.NUXT_PUBLIC_BASE_URL?.includes('vercel.app')
+
+  if (disableInboundAuth || isVercelDeployment) {
+    console.log(
+      `[MCP Auth] Inbound authentication disabled via ${disableInboundAuth ? 'DISABLE_INBOUND_AUTH=true' : 'Vercel deployment detected'}`
+    )
     return {
       teamId: String(headers['x-team-id'] || '1'),
       userId: String(headers['x-user-id'] || '1'),
