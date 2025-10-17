@@ -149,13 +149,33 @@ export default defineEventHandler(async (event) => {
     )
 
     try {
+      // Forward relevant original headers plus our custom ones
+      const originalHeaders = getHeaders(event)
+      const forwardedHeaders = {
+        // Forward important Mailgun headers
+        'Message-Id': originalHeaders['message-id'] || originalHeaders['Message-Id'],
+        From: originalHeaders['from'] || originalHeaders['From'],
+        To: originalHeaders['to'] || originalHeaders['To'],
+        Subject: originalHeaders['subject'] || originalHeaders['Subject'],
+        Date: originalHeaders['date'] || originalHeaders['Date'],
+        'Content-Type': originalHeaders['content-type'] || originalHeaders['Content-Type'],
+        // Forward authentication headers
+        Authorization: originalHeaders['authorization'] || originalHeaders['Authorization'],
+        'X-Mailgun-Signature':
+          originalHeaders['x-mailgun-signature'] || originalHeaders['X-Mailgun-Signature'],
+        'X-Mailgun-Timestamp':
+          originalHeaders['x-mailgun-timestamp'] || originalHeaders['X-Mailgun-Timestamp'],
+        'X-Mailgun-Token': originalHeaders['x-mailgun-token'] || originalHeaders['X-Mailgun-Token'],
+        // Our custom headers
+        'x-forwarded-by': 'mailgun-inbound',
+        'x-source-domain': recipientDomain,
+        'Content-Type': 'application/json'
+      }
+
       const response = await $fetch(`/api/team/${team.id}/inbound`, {
         method: 'POST',
-        body: payload,
-        headers: {
-          'x-forwarded-by': 'mailgun-inbound',
-          'x-source-domain': recipientDomain
-        }
+        body: JSON.stringify(payload),
+        headers: forwardedHeaders
       })
 
       console.log('[MailgunInbound] ✓ Successfully relayed to team handler')

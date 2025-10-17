@@ -11,8 +11,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Team ID required' })
   }
 
-  // Get the same Mailgun payload that was forwarded from mailgun/inbound
-  const payload = await readBody(event)
+  // Check if this is a forwarded request from mailgun/inbound
+  const forwardedBy = getHeader(event, 'x-forwarded-by')
+
+  let payload: Record<string, unknown>
+
+  if (forwardedBy === 'mailgun-inbound') {
+    // For forwarded requests, the payload is sent as JSON
+    payload = (await readBody(event)) as Record<string, unknown>
+  } else {
+    // For direct requests, parse the raw body
+    payload = await readBody(event)
+  }
 
   const recipient = String(
     payload.recipient || payload.to || payload.To || payload.recipients || payload.Recipients || ''
