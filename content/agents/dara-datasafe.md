@@ -48,6 +48,8 @@ max_tokens: 8000
 mcp_servers:
   - builtin-email
   - builtin-datasafe
+forbidden_tools:
+  - download_file
 ---
 
 

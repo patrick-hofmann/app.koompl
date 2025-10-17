@@ -55,20 +55,23 @@ Process the request, use the appropriate tools, and ALWAYS conclude by sending a
    */
   async initialize() {
     try {
-      // Get the base URL dynamically
+      // Get the base URL dynamically - prioritize localhost for development
       const baseUrl =
-        process.env.NUXT_PUBLIC_BASE_URL || process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : 'http://localhost:3000'
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:3000'
+          : process.env.NUXT_PUBLIC_BASE_URL ||
+            (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
-      console.log(`🔗 [MCP Agent] Using base URL: ${baseUrl}`)
+      console.log(`🔗 [MCP Agent] Using base URL: ${baseUrl} (NODE_ENV: ${process.env.NODE_ENV})`)
 
       // Add builtin-datasafe MCP server configuration
       this.client.addServer('datasafe', {
         url: `${baseUrl}/api/mcp/builtin-datasafe`,
         headers: {
-          Authorization: 'Bearer test-token',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-team-id': '1',
+          'x-user-id': '1',
+          'x-forwarded-by': 'mcp-agent-service'
         }
       })
 
@@ -76,8 +79,10 @@ Process the request, use the appropriate tools, and ALWAYS conclude by sending a
       this.client.addServer('email', {
         url: `${baseUrl}/api/mcp/builtin-email`,
         headers: {
-          Authorization: 'Bearer test-token',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-team-id': '1',
+          'x-user-id': '1',
+          'x-forwarded-by': 'mcp-agent-service'
         }
       })
 
