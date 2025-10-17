@@ -55,9 +55,17 @@ Process the request, use the appropriate tools, and ALWAYS conclude by sending a
    */
   async initialize() {
     try {
+      // Get the base URL dynamically
+      const baseUrl =
+        process.env.NUXT_PUBLIC_BASE_URL || process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000'
+
+      console.log(`🔗 [MCP Agent] Using base URL: ${baseUrl}`)
+
       // Add builtin-datasafe MCP server configuration
       this.client.addServer('datasafe', {
-        url: 'http://localhost:3000/api/mcp/builtin-datasafe',
+        url: `${baseUrl}/api/mcp/builtin-datasafe`,
         headers: {
           Authorization: 'Bearer test-token',
           'Content-Type': 'application/json'
@@ -66,7 +74,7 @@ Process the request, use the appropriate tools, and ALWAYS conclude by sending a
 
       // Add builtin-email MCP server configuration
       this.client.addServer('email', {
-        url: 'http://localhost:3000/api/mcp/builtin-email',
+        url: `${baseUrl}/api/mcp/builtin-email`,
         headers: {
           Authorization: 'Bearer test-token',
           'Content-Type': 'application/json'

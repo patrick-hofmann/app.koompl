@@ -9,7 +9,6 @@ export default defineContentConfig({
       source: 'agents/*.md',
       schema: z.object({
         id: z.string(),
-        agentId: z.string(), // This will map to the frontmatter 'id' field
         name: z.string(),
         email: z.string(),
         role: z.string(),
@@ -24,7 +23,8 @@ export default defineContentConfig({
         temperature: z.number(),
         max_tokens: z.number(),
         max_steps: z.number(),
-        mcp_servers: z.array(z.string())
+        mcp_servers: z.array(z.string()),
+        forbidden_tools: z.array(z.string()).optional()
       })
     })
   }

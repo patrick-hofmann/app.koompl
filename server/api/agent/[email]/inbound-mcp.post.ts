@@ -31,12 +31,15 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // URL decode the email parameter
+    const decodedAgentEmail = decodeURIComponent(agentEmail)
+
     // Check if this is a relayed request from team/inbound
     const forwardedBy = getHeader(event, 'x-forwarded-by')
     const forwardedTeamId = getHeader(event, 'x-team-id')
     const forwardedAgentId = getHeader(event, 'x-agent-id')
 
-    console.log('[AgentInboundMCP] Processing email for:', agentEmail, {
+    console.log('[AgentInboundMCP] Processing email for:', decodedAgentEmail, {
       forwardedBy,
       hasTeamId: !!forwardedTeamId,
       hasAgentId: !!forwardedAgentId
@@ -219,7 +222,7 @@ export default defineEventHandler(async (event) => {
       // Fallback: lookup by email (for direct calls or testing)
       console.log('[AgentInboundMCP] Looking up agent by email (no forwarded headers)')
 
-      const emailParts = agentEmail.split('@')
+      const emailParts = decodedAgentEmail.split('@')
       if (emailParts.length !== 2) {
         throw createError({
           statusCode: 400,
@@ -384,7 +387,7 @@ export default defineEventHandler(async (event) => {
       // Load MCP configuration for this agent
       let mcpConfigs: Record<string, { url: string }> = {}
       try {
-        const configResponse = await event.$fetch(`/api/agent/${agentEmail}/mcp-config`, {
+        const configResponse = await event.$fetch(`/api/agent/${decodedAgentEmail}/mcp-config`, {
           method: 'GET'
         })
         mcpConfigs = configResponse.mcpConfigs
