@@ -68,6 +68,19 @@ export default defineEventHandler(async (event) => {
 
     console.log('[MailgunInbound] Payload keys:', Object.keys(payload))
 
+    // ═══════════════════════════════════════════════════════════════════
+    // AUTHENTICATION: Verify token from payload against stored token
+    // ═══════════════════════════════════════════════════════════════════
+
+    const { verifyMailgunToken, extractMailgunToken } = await import('../../utils/mailgunAuth')
+    const headers = getHeaders(event)
+    const receivedToken = extractMailgunToken(payload, headers)
+
+    const authResult = verifyMailgunToken(receivedToken, 'MailgunInbound')
+    if (!authResult.success) {
+      return { ok: true, error: authResult.error }
+    }
+
     // Log signature and token if present
     if (payload.signature) {
       console.log('[MailgunInbound] Signature:', payload.signature)
@@ -175,7 +188,8 @@ export default defineEventHandler(async (event) => {
           originalHeaders['x-mailgun-signature'] || originalHeaders['X-Mailgun-Signature'],
         'X-Mailgun-Timestamp':
           originalHeaders['x-mailgun-timestamp'] || originalHeaders['X-Mailgun-Timestamp'],
-        'X-Mailgun-Token': originalHeaders['x-mailgun-token'] || originalHeaders['X-Mailgun-Token'],
+        'X-Mailgun-Token':
+          receivedToken || originalHeaders['x-mailgun-token'] || originalHeaders['X-Mailgun-Token'],
         // Our custom headers
         'x-forwarded-by': 'mailgun-inbound',
         'x-source-domain': recipientDomain,

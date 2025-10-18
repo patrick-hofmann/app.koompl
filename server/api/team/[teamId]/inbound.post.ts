@@ -24,6 +24,22 @@ export default defineEventHandler(async (event) => {
     payload = await readBody(event)
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // AUTHENTICATION: Verify token from payload or headers
+  // ═══════════════════════════════════════════════════════════════════
+
+  const { verifyMailgunToken, extractMailgunToken } = await import('../../../utils/mailgunAuth')
+  const headers = getHeaders(event)
+  const receivedToken = extractMailgunToken(payload, headers)
+
+  const authResult = verifyMailgunToken(receivedToken, 'TeamInbound')
+  if (!authResult.success) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: authResult.error || 'Authentication failed'
+    })
+  }
+
   const recipient = String(
     payload.recipient || payload.to || payload.To || payload.recipients || payload.Recipients || ''
   )
@@ -100,7 +116,8 @@ export default defineEventHandler(async (event) => {
       headers: {
         'x-forwarded-by': 'team-inbound',
         'x-team-id': teamId,
-        'x-agent-id': targetAgent.id
+        'x-agent-id': targetAgent.id,
+        'X-Mailgun-Token': receivedToken || ''
       }
     })
 

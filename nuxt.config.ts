@@ -134,7 +134,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     mailgun: {
-      key: process.env.MAILGUN_KEY || ''
+      key: process.env.MAILGUN_KEY || '',
+      token: process.env.MAILGUN_TOKEN || ''
     },
     feedback: {
       email: '',

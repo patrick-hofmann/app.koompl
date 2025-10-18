@@ -92,6 +92,22 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: 'No payload received' })
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // AUTHENTICATION: Verify token from payload or headers
+    // ═══════════════════════════════════════════════════════════════════
+
+    const { verifyMailgunToken, extractMailgunToken } = await import('../../../utils/mailgunAuth')
+    const headers = getHeaders(event)
+    const receivedToken = extractMailgunToken(payload, headers)
+
+    const authResult = verifyMailgunToken(receivedToken, 'AgentInboundMCP')
+    if (!authResult.success) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: authResult.error || 'Authentication failed'
+      })
+    }
+
     // Helper to extract email fields
     function firstString(...values: Array<unknown>): string | undefined {
       for (const v of values) {
