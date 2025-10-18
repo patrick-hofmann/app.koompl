@@ -400,8 +400,16 @@ export default defineEventHandler(async (event) => {
       // Build prompts
       const baseEmailGuidelines = agentConfig.behavior.emailGuidelines
 
-      const agentInstructions = (agent as any).prompt || 'You are a helpful AI assistant.'
+      const agentInstructions = agent.prompt || 'You are a helpful AI assistant.'
       const systemPrompt = `${agentInstructions}\n\n${baseEmailGuidelines}`
+
+      console.log('[AgentInboundMCP] System prompt loaded:', {
+        agentId: agent.id,
+        agentName: agent.name,
+        hasAgentPrompt: !!agent.prompt,
+        promptPreview: agent.prompt ? agent.prompt.substring(0, 200) + '...' : 'NO PROMPT',
+        systemPromptPreview: systemPrompt.substring(0, 200) + '...'
+      })
 
       // Build user prompt with attachment information if present
       let userPrompt = `New inbound email for ${fullAgentEmail}.\nMessage-ID: ${String(messageId || '')}\nFrom: ${String(from || '')}\nTo: ${String(to || '')}\nSubject: ${String(subject || '')}\nBody:\n${String(text || '')}`
