@@ -90,7 +90,6 @@ export default defineEventHandler(async (event) => {
     }
 
     // Log header data
-    const headers = getHeaders(event)
     console.log('[MailgunInbound] Request headers:', headers)
 
     // ═══════════════════════════════════════════════════════════════════
