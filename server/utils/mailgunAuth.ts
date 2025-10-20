@@ -30,6 +30,11 @@ export function verifyMailgunSignature(
   error?: string
 } {
   const config = useRuntimeConfig()
+  // In development, bypass signature verification to enable roundtrip tests and local flows
+  if (import.meta.dev) {
+    console.warn(`[${context}] Development mode detected - skipping Mailgun signature verification`)
+    return { success: true }
+  }
   const signingKey = config.mailgun?.signingKey
 
   if (!signingKey) {

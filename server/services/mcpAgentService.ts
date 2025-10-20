@@ -33,6 +33,11 @@ export class MCPAgentService {
 
 CRITICAL: You MUST always end your response by sending an email reply using the reply_to_email tool. This is your natural completion condition - do not just return text, always send an actual email reply.
 
+IMPORTANT TOOL CALL FORMAT:
+- When calling tools, use the proper function call format, not JSON strings
+- For reply_to_email, call it with proper parameters: message_id, reply_text, and optional attachments
+- Do NOT generate JSON strings - use the tool call mechanism directly
+
 Available tools:
 - datasafe tools: list_folder, create_folder, move_file, generate_report, download_file
 - email tools: reply_to_email, forward_email, send_datasafe_file_email

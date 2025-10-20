@@ -8,14 +8,17 @@ const _useDashboard = () => {
   defineShortcuts({
     'g-h': () => router.push('/'),
     'g-k': () => router.push('/agents'),
-    'g-d': () => router.push('/domains'),
+    'g-d': () => router.push('/domain'),
     'g-s': () => router.push('/settings'),
-    'n': () => isNotificationsSlideoverOpen.value = !isNotificationsSlideoverOpen.value
+    n: () => (isNotificationsSlideoverOpen.value = !isNotificationsSlideoverOpen.value)
   })
 
-  watch(() => route.fullPath, () => {
-    isNotificationsSlideoverOpen.value = false
-  })
+  watch(
+    () => route.fullPath,
+    () => {
+      isNotificationsSlideoverOpen.value = false
+    }
+  )
 
   return {
     isNotificationsSlideoverOpen
