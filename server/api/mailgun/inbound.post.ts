@@ -72,12 +72,9 @@ export default defineEventHandler(async (event) => {
     // AUTHENTICATION: Verify token from payload against stored token
     // ═══════════════════════════════════════════════════════════════════
 
-    const {
-      verifyMailgunToken,
-      extractMailgunToken,
-      verifyMailgunSignature,
-      extractMailgunSignatureParams
-    } = await import('../../utils/mailgunAuth')
+    const { verifyMailgunSignature, extractMailgunSignatureParams } = await import(
+      '../../utils/mailgunAuth'
+    )
     const headers = getHeaders(event)
 
     // Extract signature parameters for verification
@@ -96,21 +93,13 @@ export default defineEventHandler(async (event) => {
       return { ok: true, error: signatureResult.error }
     }
 
-    // Fallback to token verification if signature verification is not configured
-    const receivedToken = extractMailgunToken(payload, headers)
-    const tokenResult = verifyMailgunToken(receivedToken, 'MailgunInbound')
-    if (!tokenResult.success) {
-      console.error('[MailgunInbound] Token verification failed:', tokenResult.error)
-      return { ok: true, error: tokenResult.error }
-    }
+    // No token verification; signature is the source of truth per Mailgun docs
 
     // Log signature and token if present
     if (payload.signature) {
       console.log('[MailgunInbound] Signature:', payload.signature)
     }
-    if (payload.token) {
-      console.log('[MailgunInbound] Token:', payload.token)
-    }
+    // Do not log token to avoid leaking sensitive data
 
     // Log header data
     console.log('[MailgunInbound] Request headers:', headers)

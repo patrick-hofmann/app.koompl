@@ -125,40 +125,12 @@ function cacheToken(token: string): void {
  * @param context - Context for logging (e.g., 'MailgunInbound', 'TeamInbound')
  * @returns Object with success status and error message if failed
  */
+// Deprecated: MAILGUN_TOKEN support removed in favor of HMAC signature
 export function verifyMailgunToken(
-  receivedToken: string | undefined,
+  _receivedToken: string | undefined,
   context: string
-): {
-  success: boolean
-  error?: string
-} {
-  const config = useRuntimeConfig()
-  const expectedToken = config.mailgun?.token
-
-  if (!expectedToken) {
-    console.warn(`[${context}] No MAILGUN_TOKEN configured - skipping authentication`)
-    return { success: true }
-  }
-
-  if (!receivedToken) {
-    console.error(`[${context}] No token provided`)
-    return {
-      success: false,
-      error: 'Authentication required'
-    }
-  }
-
-  if (receivedToken !== expectedToken) {
-    console.error(
-      `[${context}] Token mismatch - received: ${receivedToken}, expected: ${expectedToken}`
-    )
-    return {
-      success: false,
-      error: 'Invalid token'
-    }
-  }
-
-  console.log(`[${context}] ✓ Token authentication successful`)
+): { success: boolean; error?: string } {
+  console.warn(`[${context}] Token auth deprecated; using signature verification only`)
   return { success: true }
 }
 
@@ -186,19 +158,8 @@ export function extractMailgunSignatureParams(payload: Record<string, unknown> |
  * @returns The token string if found, undefined otherwise
  */
 export function extractMailgunToken(
-  payload: Record<string, unknown> | undefined,
-  headers: Record<string, string | string[] | undefined>
+  _payload: Record<string, unknown> | undefined,
+  _headers: Record<string, string | string[] | undefined>
 ): string | undefined {
-  // First try to get from payload
-  if (payload?.token) {
-    return String(payload.token)
-  }
-
-  // Then try to get from headers
-  const headerToken = headers['x-mailgun-token'] || headers['X-Mailgun-Token']
-  if (headerToken) {
-    return Array.isArray(headerToken) ? headerToken[0] : headerToken
-  }
-
   return undefined
 }

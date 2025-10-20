@@ -28,13 +28,9 @@ export default defineEventHandler(async (event) => {
   // AUTHENTICATION: Verify signature and token from payload or headers
   // ═══════════════════════════════════════════════════════════════════
 
-  const {
-    verifyMailgunToken,
-    extractMailgunToken,
-    verifyMailgunSignature,
-    extractMailgunSignatureParams
-  } = await import('../../../utils/mailgunAuth')
-  const headers = getHeaders(event)
+  const { verifyMailgunSignature, extractMailgunSignatureParams } = await import(
+    '../../../utils/mailgunAuth'
+  )
 
   // If forwarded internally from mailgun/inbound, trust upstream verification.
   // Serverless environments (e.g., Vercel) are stateless and the same token will
@@ -62,16 +58,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Fallback to token verification if signature verification is not configured
-  const receivedToken = extractMailgunToken(payload, headers)
-  const tokenResult = verifyMailgunToken(receivedToken, 'TeamInbound')
-  if (!tokenResult.success) {
-    console.error('[TeamInbound] Token verification failed:', tokenResult.error)
-    throw createError({
-      statusCode: 401,
-      statusMessage: tokenResult.error || 'Authentication failed'
-    })
-  }
+  // No token verification; signature is the source of truth per Mailgun docs
 
   const recipient = String(
     payload.recipient || payload.to || payload.To || payload.recipients || payload.Recipients || ''

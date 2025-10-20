@@ -93,19 +93,29 @@ export default defineEventHandler(async (event) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // AUTHENTICATION: Verify token from payload or headers
+    // AUTHENTICATION: Trust upstream (team-inbound) or verify signature if direct
     // ═══════════════════════════════════════════════════════════════════
 
-    const { verifyMailgunToken, extractMailgunToken } = await import('../../../utils/mailgunAuth')
-    const headers = getHeaders(event)
-    const receivedToken = extractMailgunToken(payload, headers)
+    const { verifyMailgunSignature, extractMailgunSignatureParams } = await import(
+      '../../../utils/mailgunAuth'
+    )
 
-    const authResult = verifyMailgunToken(receivedToken, 'AgentInboundMCP')
-    if (!authResult.success) {
-      throw createError({
-        statusCode: 401,
-        statusMessage: authResult.error || 'Authentication failed'
-      })
+    const isForwardedFromTeamInbound = forwardedBy === 'team-inbound'
+    if (!isForwardedFromTeamInbound) {
+      const signatureParams = extractMailgunSignatureParams(payload)
+      const signatureResult = verifyMailgunSignature(
+        signatureParams.timestamp,
+        signatureParams.token,
+        signatureParams.signature,
+        'AgentInboundMCP'
+      )
+
+      if (!signatureResult.success) {
+        throw createError({
+          statusCode: 401,
+          statusMessage: signatureResult.error || 'Signature verification failed'
+        })
+      }
     }
 
     // Helper to extract email fields
