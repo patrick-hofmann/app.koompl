@@ -424,6 +424,13 @@ export default defineEventHandler(async (event) => {
         }
 
         if (toolName === 'reply_to_email') {
+          console.log('[BuiltinEmailMCP] Reply to email called:', {
+            args,
+            teamId,
+            userId,
+            agentId,
+            agentEmail
+          })
           // Validate required fields
           if (
             (!args.message_id || typeof args.message_id !== 'string') &&

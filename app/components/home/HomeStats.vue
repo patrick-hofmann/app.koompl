@@ -2,8 +2,8 @@
 import type { Period, Range, Stat } from '~/types'
 
 const props = defineProps<{
-  period: Period;
-  range: Range;
+  period: Period
+  range: Range
   direction?: 'received' | 'sent' | 'both'
 }>()
 
@@ -38,85 +38,89 @@ function getStatColor(variation: number, title?: string): string {
   return 'neutral'
 }
 
-const { data: stats } = await useAsyncData<Stat[]>('dashboard-stats', async () => {
-  try {
-    // Fetch real dashboard data
-    const statsData = await $fetch<{
-      agents: { count: number; variation: number };
-      emails: { received: number; responded: number; variation: number };
-      domains: { active: number; total: number; variation: number };
-      successRate: { percentage: number; variation: number }
-    }>('/api/stats/overview', {
-      query: {
-        period: props.period,
-        rangeStart: props.range.start.toISOString(),
-        rangeEnd: props.range.end.toISOString(),
-        direction: props.direction || 'both'
-      }
-    })
+const { data: stats } = await useAsyncData<Stat[]>(
+  'dashboard-stats',
+  async () => {
+    try {
+      // Fetch real dashboard data
+      const statsData = await $fetch<{
+        agents: { count: number; variation: number }
+        emails: { received: number; responded: number; variation: number }
+        domains: { active: number; total: number; variation: number }
+        successRate: { percentage: number; variation: number }
+      }>('/api/stats/overview', {
+        query: {
+          period: props.period,
+          rangeStart: props.range.start.toISOString(),
+          rangeEnd: props.range.end.toISOString(),
+          direction: props.direction || 'both'
+        }
+      })
 
-    const newStats: Stat[] = [
-      {
-        title: 'Koompls',
-        icon: 'i-lucide-bot',
-        value: statsData.agents.count,
-        variation: statsData.agents.variation
-      },
-      {
-        title: 'Email Responses',
-        icon: 'i-lucide-mail-fast',
-        value: statsData.emails.responded,
-        variation: statsData.emails.variation
-      },
-      {
-        title: 'Active Domains',
-        icon: 'i-lucide-globe',
-        value: statsData.domains.active,
-        variation: statsData.domains.variation
-      },
-      {
-        title: 'Success Rate',
-        icon: 'i-lucide-check-circle',
-        value: formatPercentage(statsData.successRate.percentage),
-        variation: statsData.successRate.variation
-      }
-    ]
+      const newStats: Stat[] = [
+        {
+          title: 'Koompls',
+          icon: 'i-lucide-bot',
+          value: statsData.agents.count,
+          variation: statsData.agents.variation
+        },
+        {
+          title: 'Email Responses',
+          icon: 'i-lucide-send',
+          value: statsData.emails.responded,
+          variation: statsData.emails.variation
+        },
+        {
+          title: 'Active Domains',
+          icon: 'i-lucide-globe',
+          value: statsData.domains.active,
+          variation: statsData.domains.variation
+        },
+        {
+          title: 'Success Rate',
+          icon: 'i-lucide-check-circle',
+          value: formatPercentage(statsData.successRate.percentage),
+          variation: statsData.successRate.variation
+        }
+      ]
 
-    return newStats
-  } catch (error) {
-    // Fallback to basic stats if API is not available
-    console.error('Failed to fetch dashboard stats:', error)
-    return [
-      {
-        title: 'Koompls',
-        icon: 'i-lucide-bot',
-        value: 0,
-        variation: 0
-      },
-      {
-        title: 'Email Responses',
-        icon: 'i-lucide-mail-fast',
-        value: 0,
-        variation: 0
-      },
-      {
-        title: 'Active Domains',
-        icon: 'i-lucide-globe',
-        value: 0,
-        variation: 0
-      },
-      {
-        title: 'Success Rate',
-        icon: 'i-lucide-check-circle',
-        value: formatPercentage(0),
-        variation: 0
-      }
-    ]
+      return newStats
+    } catch (error) {
+      // Fallback to basic stats if API is not available
+      console.error('Failed to fetch dashboard stats:', error)
+      return [
+        {
+          title: 'Koompls',
+          icon: 'i-lucide-bot',
+          value: 0,
+          variation: 0
+        },
+        {
+          title: 'Email Responses',
+          icon: 'i-lucide-send',
+          value: 0,
+          variation: 0
+        },
+        {
+          title: 'Active Domains',
+          icon: 'i-lucide-globe',
+          value: 0,
+          variation: 0
+        },
+        {
+          title: 'Success Rate',
+          icon: 'i-lucide-check-circle',
+          value: formatPercentage(0),
+          variation: 0
+        }
+      ]
+    }
+  },
+  {
+    watch: [() => props.period, () => props.range, () => props.direction],
+    default: () => []
   }
-}, {
-  watch: [() => props.period, () => props.range, () => props.direction],
-  default: () => []
-})
+)
 </script>
 
 <template>
