@@ -120,21 +120,6 @@ function cacheToken(token: string): void {
 }
 
 /**
- * Verify Mailgun token authentication
- * @param receivedToken - Token from the payload or header
- * @param context - Context for logging (e.g., 'MailgunInbound', 'TeamInbound')
- * @returns Object with success status and error message if failed
- */
-// Deprecated: MAILGUN_TOKEN support removed in favor of HMAC signature
-export function verifyMailgunToken(
-  _receivedToken: string | undefined,
-  context: string
-): { success: boolean; error?: string } {
-  console.warn(`[${context}] Token auth deprecated; using signature verification only`)
-  return { success: true }
-}
-
-/**
  * Extract signature parameters from payload
  * @param payload - The request payload
  * @returns Object with timestamp, token, and signature

@@ -136,8 +136,7 @@ export default defineEventHandler(async (event) => {
       headers: {
         'x-forwarded-by': 'team-inbound',
         'x-team-id': teamId,
-        'x-agent-id': targetAgent.id,
-        'X-Mailgun-Token': receivedToken || ''
+        'x-agent-id': targetAgent.id
       }
     })
 
