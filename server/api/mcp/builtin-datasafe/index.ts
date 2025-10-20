@@ -146,7 +146,7 @@ export default defineEventHandler(async (event) => {
             {
               name: 'list_folder',
               description:
-                'List folders and files for a given Datasafe path with detailed metadata',
+                'List folders and files for a given Datasafe path with detailed metadata and pagination',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -158,6 +158,17 @@ export default defineEventHandler(async (event) => {
                     type: 'boolean',
                     description:
                       'Include detailed file metadata (size, mimeType, dates) - default true'
+                  },
+                  page: {
+                    type: 'number',
+                    description: 'Page number for pagination (default 1)',
+                    minimum: 1
+                  },
+                  limit: {
+                    type: 'number',
+                    description: 'Number of items per page (default 20, max 100)',
+                    minimum: 1,
+                    maximum: 100
                   },
                   teamId: { type: 'string' },
                   userId: { type: 'string' }

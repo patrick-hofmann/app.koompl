@@ -91,6 +91,17 @@ export const datasafeDefinition: BuiltinMcpDefinition<DatasafeMcpContext> = {
           includeMetadata: {
             type: 'boolean',
             description: 'Include detailed file metadata (size, mimeType, dates) - default true'
+          },
+          page: {
+            type: 'number',
+            description: 'Page number for pagination (default 1)',
+            minimum: 1
+          },
+          limit: {
+            type: 'number',
+            description: 'Number of items per page (default 20, max 100)',
+            minimum: 1,
+            maximum: 100
           }
         },
         additionalProperties: false
@@ -99,50 +110,84 @@ export const datasafeDefinition: BuiltinMcpDefinition<DatasafeMcpContext> = {
         console.log('[BuiltinDatasafeMCP] Tool called: list_folder', {
           args: { path: (args as { path?: string }).path }
         })
-        const { path, includeMetadata = true } = args as {
+        const {
+          path,
+          includeMetadata = true,
+          page = 1,
+          limit = 20
+        } = args as {
           path?: string
           includeMetadata?: boolean
+          page?: number
+          limit?: number
         }
+
+        // Validate pagination parameters
+        const validatedPage = Math.max(1, page)
+        const validatedLimit = Math.min(Math.max(1, limit), 100)
+
         const folder = await listDatasafeFolder(context, path)
 
+        // Calculate pagination
+        const totalItems = folder.children.length
+        const startIndex = (validatedPage - 1) * validatedLimit
+        const endIndex = startIndex + validatedLimit
+        const paginatedChildren = folder.children.slice(startIndex, endIndex)
+        const hasMore = endIndex < totalItems
+
         // Enhance file metadata for better agent understanding
+        const enhancedChildren = paginatedChildren.map((child) => {
+          if (child.type === 'file' && includeMetadata) {
+            return {
+              ...child,
+              // Add human-readable size and date info
+              sizeFormatted: formatFileSize(child.size),
+              ageFormatted: formatFileAge(child.createdAt),
+              updatedAgeFormatted: formatFileAge(child.updatedAt),
+              // Add file type category for easier filtering
+              fileCategory: getFileCategory(child.mimeType),
+              // Add whether it's an image for quick identification
+              isImage: child.mimeType.startsWith('image/'),
+              isDocument: [
+                'application/pdf',
+                'text/',
+                'application/msword',
+                'application/vnd.openxmlformats-officedocument'
+              ].some((prefix) => child.mimeType.startsWith(prefix))
+            }
+          }
+          return child
+        })
+
         const enhancedFolder = {
           ...folder,
-          children: folder.children.map((child) => {
-            if (child.type === 'file' && includeMetadata) {
-              return {
-                ...child,
-                // Add human-readable size and date info
-                sizeFormatted: formatFileSize(child.size),
-                ageFormatted: formatFileAge(child.createdAt),
-                updatedAgeFormatted: formatFileAge(child.updatedAt),
-                // Add file type category for easier filtering
-                fileCategory: getFileCategory(child.mimeType),
-                // Add whether it's an image for quick identification
-                isImage: child.mimeType.startsWith('image/'),
-                isDocument: [
-                  'application/pdf',
-                  'text/',
-                  'application/msword',
-                  'application/vnd.openxmlformats-officedocument'
-                ].some((prefix) => child.mimeType.startsWith(prefix))
-              }
-            }
-            return child
-          })
+          children: enhancedChildren,
+          // Add pagination metadata
+          pagination: {
+            page: validatedPage,
+            limit: validatedLimit,
+            totalItems,
+            totalPages: Math.ceil(totalItems / validatedLimit),
+            hasMore,
+            showing: `${startIndex + 1}-${Math.min(endIndex, totalItems)} of ${totalItems}`
+          }
         }
 
         console.log('[BuiltinDatasafeMCP] Tool result: list_folder', {
           path: path || '/',
-          itemCount: folder.children.length,
-          files: folder.children.filter((c) => c.type === 'file').length,
-          folders: folder.children.filter((c) => c.type === 'folder').length
+          totalItems: folder.children.length,
+          showing: `${startIndex + 1}-${Math.min(endIndex, totalItems)} of ${totalItems}`,
+          page: validatedPage,
+          limit: validatedLimit,
+          hasMore,
+          files: paginatedChildren.filter((c) => c.type === 'file').length,
+          folders: paginatedChildren.filter((c) => c.type === 'folder').length
         })
 
         return {
           success: true,
           data: enhancedFolder,
-          summary: `Found ${folder.children.length} items in ${path || '/'} (${folder.children.filter((c) => c.type === 'file').length} files, ${folder.children.filter((c) => c.type === 'folder').length} folders)`
+          summary: `Found ${totalItems} items in ${path || '/'} (showing ${enhancedChildren.length} items, page ${validatedPage}/${Math.ceil(totalItems / validatedLimit)})${hasMore ? ' - use page parameter to see more' : ''}`
         }
       }
     },
