@@ -199,8 +199,6 @@ export default defineEventHandler(async (event) => {
           originalHeaders['x-mailgun-signature'] || originalHeaders['X-Mailgun-Signature'],
         'X-Mailgun-Timestamp':
           originalHeaders['x-mailgun-timestamp'] || originalHeaders['X-Mailgun-Timestamp'],
-        'X-Mailgun-Token':
-          receivedToken || originalHeaders['x-mailgun-token'] || originalHeaders['X-Mailgun-Token'],
         // Our custom headers
         'x-forwarded-by': 'mailgun-inbound',
         'x-source-domain': recipientDomain,
