@@ -130,12 +130,12 @@ export default defineEventHandler(async (event) => {
 
   // Use the agent's instructions as system prompt if not provided
   const agentInstructions =
-    body.systemPrompt || effectiveAgent.prompt || 'You are a helpful AI assistant.'
+    body.systemPrompt || effectiveAgent.system_prompt || 'You are a helpful AI assistant.'
 
   console.log('[AgentPrompt] System prompt source:', {
     usingBodySystemPrompt: !!body.systemPrompt,
-    usingAgentPrompt: !body.systemPrompt && !!effectiveAgent.prompt,
-    usingDefault: !body.systemPrompt && !effectiveAgent.prompt,
+    usingAgentPrompt: !body.systemPrompt && !!effectiveAgent.system_prompt,
+    usingDefault: !body.systemPrompt && !effectiveAgent.system_prompt,
     agentInstructionsPreview: agentInstructions.substring(0, 100) + '...'
   })
 

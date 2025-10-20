@@ -426,17 +426,6 @@ export default defineEventHandler(async (event) => {
       // Build prompts
       const baseEmailGuidelines = agentConfig.behavior.emailGuidelines
 
-      const agentInstructions = agent.prompt || 'You are a helpful AI assistant.'
-      const systemPrompt = `${agentInstructions}\n\n${baseEmailGuidelines}`
-
-      console.log('[AgentInboundMCP] System prompt loaded:', {
-        agentId: agent.id,
-        agentName: agent.name,
-        hasAgentPrompt: !!agent.prompt,
-        promptPreview: agent.prompt ? agent.prompt.substring(0, 200) + '...' : 'NO PROMPT',
-        systemPromptPreview: systemPrompt.substring(0, 200) + '...'
-      })
-
       // Build user prompt with attachment information if present
       let userPrompt = `New inbound email for ${fullAgentEmail}.\nMessage-ID: ${String(messageId || '')}\nFrom: ${String(from || '')}\nTo: ${String(to || '')}\nSubject: ${String(subject || '')}\nBody:\n${String(text || '')}`
 
@@ -470,6 +459,7 @@ export default defineEventHandler(async (event) => {
       let fmMaxTokens: number | undefined
       let fmMaxSteps: number | undefined
       let fmForbiddenTools: string[] | undefined
+      let predefinedAgent = null
 
       try {
         console.log(
@@ -478,6 +468,7 @@ export default defineEventHandler(async (event) => {
         const { loadPredefinedAgentById } = await import('../../../features/koompl/predefined')
         const doc = await loadPredefinedAgentById(agent.id, event)
         if (doc) {
+          predefinedAgent = doc
           fmModel = doc.model
           fmTemperature = doc.temperature
           fmMaxTokens = doc.max_tokens
@@ -487,6 +478,19 @@ export default defineEventHandler(async (event) => {
       } catch (e) {
         console.warn('[AgentInboundMCP] Failed to load agent frontmatter from content:', e)
       }
+
+      // Build system prompt using predefined agent data only
+      const systemPrompt = predefinedAgent?.system_prompt || 'You are a helpful AI assistant.'
+
+      console.log('[AgentInboundMCP] System prompt loaded:', {
+        agentId: agent.id,
+        agentName: agent.name,
+        hasAgentPrompt: !!predefinedAgent?.system_prompt,
+        promptPreview: predefinedAgent?.system_prompt
+          ? predefinedAgent.system_prompt.substring(0, 200) + '...'
+          : 'NO PROMPT',
+        systemPromptPreview: systemPrompt.substring(0, 200) + '...'
+      })
 
       const effectiveModel = fmModel || generalDefaults.model
       const effectiveTemperature =
@@ -516,7 +520,9 @@ export default defineEventHandler(async (event) => {
         maxTokens: effectiveMaxTokens,
         maxSteps: effectiveMaxSteps,
         // Tool restrictions
-        forbiddenTools: fmForbiddenTools || []
+        forbiddenTools: fmForbiddenTools || [],
+        // Additional instructions (email guidelines)
+        additionalInstructions: baseEmailGuidelines
       })
 
       const mcpDuration = Date.now() - mcpStart

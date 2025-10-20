@@ -32,6 +32,8 @@ interface RunMCPAgentOptions {
   maxSteps?: number
   // Tool restrictions
   forbiddenTools?: string[]
+  // Additional instructions
+  additionalInstructions?: string
 }
 
 /**
@@ -57,8 +59,16 @@ export async function runMCPAgentStreamingV2(
     // Get Nitro storage
     const storage = useStorage('mcp-tasks')
 
-    // Initialize MCP agent service
-    const agentService = new MCPAgentService(storage, forbiddenTools)
+    // Initialize MCP agent service with agent-specific configuration
+    const agentService = new MCPAgentService(storage, {
+      forbiddenTools,
+      systemPrompt: options.systemPrompt,
+      additionalInstructions: options.additionalInstructions,
+      model: options.model,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      maxSteps: options.maxSteps
+    })
     await agentService.initialize()
 
     if (onProgress) {

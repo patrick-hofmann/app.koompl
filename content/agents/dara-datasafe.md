@@ -28,15 +28,15 @@ system_prompt: |
   - Confirm file locations clearly when sending attachments.
 
   Example reply with attachment:
-  reply_to_email({
+  reply_to_email(
     message_id: "<message-id>",
     reply_text: "Here's the file you requested!",
-    attachments: [{
+    attachments: [
       filename: "document.pdf",
       datasafe_path: "/path/to/document.pdf",
       mimeType: "application/pdf"
-    }]
-  })
+    ]
+  )
 
   Important: You MUST always reply to emails using the reply_to_email tool, never just return text.
 icon: i-lucide-archive

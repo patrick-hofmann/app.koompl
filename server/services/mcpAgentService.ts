@@ -14,52 +14,48 @@ export class MCPAgentService {
   private storage: any // Nitro storage will be injected
   private forbiddenTools: string[] = []
 
-  constructor(storage: any, forbiddenTools: string[] = []) {
+  constructor(
+    storage: any,
+    options: {
+      forbiddenTools?: string[]
+      systemPrompt?: string
+      additionalInstructions?: string
+      model?: string
+      temperature?: number
+      maxTokens?: number
+      maxSteps?: number
+    } = {}
+  ) {
     this.storage = storage
-    this.forbiddenTools = forbiddenTools
+    this.forbiddenTools = options.forbiddenTools || []
     this.client = new MCPClient()
 
     // Create LLM for the agent
     const llm = new ChatOpenAI({
-      modelName: 'gpt-4o-mini',
-      temperature: 0.1,
+      modelName: options.model || 'gpt-4o-mini',
+      temperature: options.temperature ?? 0.1,
       openAIApiKey: process.env.OPENAI_API_KEY
     })
 
-    this.agent = new MCPAgent({
+    // Additional instructions are now handled by the system prompt from the agent configuration
+
+    const configuration = {
       llm,
       client: this.client,
-      systemPrompt: `You are a helpful AI agent that processes email requests by creating and executing task lists. 
-
-CRITICAL: You MUST always end your response by sending an email reply using the reply_to_email tool. This is your natural completion condition - do not just return text, always send an actual email reply.
-
-IMPORTANT TOOL CALL FORMAT:
-- When calling tools, use the proper function call format, not JSON strings
-- For reply_to_email, call it with proper parameters: message_id, reply_text, and optional attachments
-- Do NOT generate JSON strings - use the tool call mechanism directly
-
-Available tools:
-- datasafe tools: list_folder, create_folder, move_file, generate_report, download_file
-- email tools: reply_to_email, forward_email, send_datasafe_file_email
-
-EMAIL ATTACHMENT BEST PRACTICES:
-- When sending files as email attachments, ALWAYS use datasafe_path instead of downloading files
-- Use this format for attachments: filename: "file.pdf", datasafe_path: "/path/to/file.pdf", mimeType: "application/pdf"
-- The datasafe_path approach works with any file size and avoids token limits
-
-FILE REQUEST INTERPRETATION:
-- When users request files using paths like "/folder filename" or "/Logos_TAXPOINT Schriftmarke-weiß-1.svg", they want you to SEND/RETRIEVE the file
-- Use send_datasafe_file_email tool for replying to emails with files from datasafe as attachments
-- Format: send_datasafe_file_email(message_id="original-message-id", reply_text="Here is the requested file", datasafe_path="/folder/filename.ext")
-- This tool works like reply_to_email but automatically downloads and attaches files from datasafe
-- NEVER claim to have uploaded a file when someone asks to send/retrieve one
-
-Process the request, use the appropriate tools, and ALWAYS conclude by sending a reply email with your findings and results.`,
-      maxSteps: 20, // Increased step limit to allow for proper task completion
+      systemPrompt: options.systemPrompt,
+      additionalInstructions: options.additionalInstructions || undefined,
+      maxSteps: options.maxSteps || 20,
       autoInitialize: false,
       // Use native mcp-use tool restriction
-      disallowed_tools: forbiddenTools
+      disallowed_tools: this.forbiddenTools
+    }
+    console.log('creating agent with the following configuration')
+    console.log({
+      ...configuration,
+      llm: undefined,
+      client: undefined
     })
+    this.agent = new MCPAgent(configuration)
   }
 
   /**
