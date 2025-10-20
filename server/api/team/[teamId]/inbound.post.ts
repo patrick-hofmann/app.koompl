@@ -36,23 +36,30 @@ export default defineEventHandler(async (event) => {
   } = await import('../../../utils/mailgunAuth')
   const headers = getHeaders(event)
 
-  // Extract signature parameters for verification
-  const signatureParams = extractMailgunSignatureParams(payload)
+  // If forwarded internally from mailgun/inbound, trust upstream verification.
+  // Serverless environments (e.g., Vercel) are stateless and the same token will
+  // be reused on the internal hop, which would otherwise trigger replay checks.
+  const isForwardedFromMailgunInbound = forwardedBy === 'mailgun-inbound'
 
-  // Verify signature first (more secure than token verification)
-  const signatureResult = verifyMailgunSignature(
-    signatureParams.timestamp,
-    signatureParams.token,
-    signatureParams.signature,
-    'TeamInbound'
-  )
+  if (!isForwardedFromMailgunInbound) {
+    // Extract signature parameters for verification
+    const signatureParams = extractMailgunSignatureParams(payload)
 
-  if (!signatureResult.success) {
-    console.error('[TeamInbound] Signature verification failed:', signatureResult.error)
-    throw createError({
-      statusCode: 401,
-      statusMessage: signatureResult.error || 'Signature verification failed'
-    })
+    // Verify signature first (more secure than token verification)
+    const signatureResult = verifyMailgunSignature(
+      signatureParams.timestamp,
+      signatureParams.token,
+      signatureParams.signature,
+      'TeamInbound'
+    )
+
+    if (!signatureResult.success) {
+      console.error('[TeamInbound] Signature verification failed:', signatureResult.error)
+      throw createError({
+        statusCode: 401,
+        statusMessage: signatureResult.error || 'Signature verification failed'
+      })
+    }
   }
 
   // Fallback to token verification if signature verification is not configured
