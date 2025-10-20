@@ -72,13 +72,36 @@ export default defineEventHandler(async (event) => {
     // AUTHENTICATION: Verify token from payload against stored token
     // ═══════════════════════════════════════════════════════════════════
 
-    const { verifyMailgunToken, extractMailgunToken } = await import('../../utils/mailgunAuth')
+    const {
+      verifyMailgunToken,
+      extractMailgunToken,
+      verifyMailgunSignature,
+      extractMailgunSignatureParams
+    } = await import('../../utils/mailgunAuth')
     const headers = getHeaders(event)
-    const receivedToken = extractMailgunToken(payload, headers)
 
-    const authResult = verifyMailgunToken(receivedToken, 'MailgunInbound')
-    if (!authResult.success) {
-      return { ok: true, error: authResult.error }
+    // Extract signature parameters for verification
+    const signatureParams = extractMailgunSignatureParams(payload)
+
+    // Verify signature first (more secure than token verification)
+    const signatureResult = verifyMailgunSignature(
+      signatureParams.timestamp,
+      signatureParams.token,
+      signatureParams.signature,
+      'MailgunInbound'
+    )
+
+    if (!signatureResult.success) {
+      console.error('[MailgunInbound] Signature verification failed:', signatureResult.error)
+      return { ok: true, error: signatureResult.error }
+    }
+
+    // Fallback to token verification if signature verification is not configured
+    const receivedToken = extractMailgunToken(payload, headers)
+    const tokenResult = verifyMailgunToken(receivedToken, 'MailgunInbound')
+    if (!tokenResult.success) {
+      console.error('[MailgunInbound] Token verification failed:', tokenResult.error)
+      return { ok: true, error: tokenResult.error }
     }
 
     // Log signature and token if present

@@ -25,18 +25,44 @@ export default defineEventHandler(async (event) => {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // AUTHENTICATION: Verify token from payload or headers
+  // AUTHENTICATION: Verify signature and token from payload or headers
   // ═══════════════════════════════════════════════════════════════════
 
-  const { verifyMailgunToken, extractMailgunToken } = await import('../../../utils/mailgunAuth')
+  const {
+    verifyMailgunToken,
+    extractMailgunToken,
+    verifyMailgunSignature,
+    extractMailgunSignatureParams
+  } = await import('../../../utils/mailgunAuth')
   const headers = getHeaders(event)
-  const receivedToken = extractMailgunToken(payload, headers)
 
-  const authResult = verifyMailgunToken(receivedToken, 'TeamInbound')
-  if (!authResult.success) {
+  // Extract signature parameters for verification
+  const signatureParams = extractMailgunSignatureParams(payload)
+
+  // Verify signature first (more secure than token verification)
+  const signatureResult = verifyMailgunSignature(
+    signatureParams.timestamp,
+    signatureParams.token,
+    signatureParams.signature,
+    'TeamInbound'
+  )
+
+  if (!signatureResult.success) {
+    console.error('[TeamInbound] Signature verification failed:', signatureResult.error)
     throw createError({
       statusCode: 401,
-      statusMessage: authResult.error || 'Authentication failed'
+      statusMessage: signatureResult.error || 'Signature verification failed'
+    })
+  }
+
+  // Fallback to token verification if signature verification is not configured
+  const receivedToken = extractMailgunToken(payload, headers)
+  const tokenResult = verifyMailgunToken(receivedToken, 'TeamInbound')
+  if (!tokenResult.success) {
+    console.error('[TeamInbound] Token verification failed:', tokenResult.error)
+    throw createError({
+      statusCode: 401,
+      statusMessage: tokenResult.error || 'Authentication failed'
     })
   }
 
